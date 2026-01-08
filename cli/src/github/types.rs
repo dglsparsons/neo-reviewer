@@ -70,11 +70,14 @@ pub struct ReviewComment {
     pub id: u64,
     pub path: String,
     pub line: Option<u32>,
+    pub start_line: Option<u32>,
     pub side: String,
+    pub start_side: Option<String>,
     pub body: String,
     pub author: String,
     pub created_at: String,
     pub html_url: String,
+    pub in_reply_to_id: Option<u64>,
 }
 
 /// Response from the fetch command

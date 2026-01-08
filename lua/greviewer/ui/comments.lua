@@ -3,13 +3,38 @@ local state = require("greviewer.state")
 local M = {}
 
 local ns = vim.api.nvim_create_namespace("greviewer_comments")
+local thread_win = nil
+local thread_buf = nil
 
 local function define_highlights()
     vim.api.nvim_set_hl(0, "GReviewerComment", { fg = "#61afef", italic = true, default = true })
     vim.api.nvim_set_hl(0, "GReviewerCommentSign", { fg = "#61afef", bold = true, default = true })
+    vim.api.nvim_set_hl(0, "GReviewerCommentRange", { fg = "#61afef", default = true })
+    vim.api.nvim_set_hl(0, "GReviewerThreadAuthor", { fg = "#e5c07b", bold = true, default = true })
+    vim.api.nvim_set_hl(0, "GReviewerThreadDate", { fg = "#5c6370", italic = true, default = true })
+    vim.api.nvim_set_hl(0, "GReviewerThreadBody", { fg = "#abb2bf", default = true })
+    vim.api.nvim_set_hl(0, "GReviewerThreadSeparator", { fg = "#3e4451", default = true })
+    vim.api.nvim_set_hl(0, "GReviewerThreadReply", { fg = "#98c379", default = true })
 end
 
-function M.add_at_cursor()
+local function find_comment_position(file, cursor_line)
+    local hunks = file.hunks or {}
+
+    for _, hunk in ipairs(hunks) do
+        local deleted_at = hunk.deleted_at or {}
+        local deleted_old_lines = hunk.deleted_old_lines or {}
+        for i, del_pos in ipairs(deleted_at) do
+            if del_pos == cursor_line and deleted_old_lines[i] then
+                return { line = deleted_old_lines[i], side = "LEFT" }
+            end
+        end
+    end
+
+    return { line = cursor_line, side = "RIGHT" }
+end
+
+function M.add_at_cursor(opts)
+    opts = opts or {}
     define_highlights()
 
     local buffer = require("greviewer.ui.buffer")
@@ -21,9 +46,20 @@ function M.add_at_cursor()
         return
     end
 
-    local line = vim.api.nvim_win_get_cursor(0)[1]
+    local start_line, end_line
+    if opts.line1 and opts.line2 and opts.line1 ~= opts.line2 then
+        start_line = math.min(opts.line1, opts.line2)
+        end_line = math.max(opts.line1, opts.line2)
+    else
+        end_line = vim.api.nvim_win_get_cursor(0)[1]
+    end
 
-    vim.ui.input({ prompt = "Comment: " }, function(body)
+    local end_pos = find_comment_position(file, end_line)
+    local start_pos = start_line and find_comment_position(file, start_line) or nil
+
+    local prompt = start_line and string.format("Comment (lines %d-%d): ", start_line, end_line) or "Comment: "
+
+    vim.ui.input({ prompt = prompt }, function(body)
         if not body or body == "" then
             return
         end
@@ -31,12 +67,19 @@ function M.add_at_cursor()
         vim.notify("Submitting comment...", vim.log.levels.INFO)
 
         local cli = require("greviewer.cli")
-        cli.add_comment(pr_url, {
+        local comment_data = {
             path = file.path,
-            line = line,
-            side = "RIGHT",
+            line = end_pos.line,
+            side = end_pos.side,
             body = body,
-        }, function(data, err)
+        }
+
+        if start_pos then
+            comment_data.start_line = start_pos.line
+            comment_data.start_side = start_pos.side
+        end
+
+        cli.add_comment(pr_url, comment_data, function(data, err)
             if err then
                 vim.notify("Failed to add comment: " .. err, vim.log.levels.ERROR)
                 return
@@ -47,8 +90,10 @@ function M.add_at_cursor()
             local comment = {
                 id = data.comment_id,
                 path = file.path,
-                line = line,
-                side = "RIGHT",
+                line = end_line,
+                start_line = start_line,
+                side = end_pos.side,
+                start_side = start_pos and start_pos.side or nil,
                 body = body,
                 author = "you",
                 created_at = os.date("%Y-%m-%dT%H:%M:%S"),
@@ -62,14 +107,48 @@ function M.add_at_cursor()
     end)
 end
 
-function M.show_comment(bufnr, comment)
-    if not comment.line then
+local function map_old_line_to_new(hunks, old_line)
+    for _, hunk in ipairs(hunks or {}) do
+        local deleted_old_lines = hunk.deleted_old_lines or {}
+        for i, old_ln in ipairs(deleted_old_lines) do
+            if old_ln == old_line then
+                local deleted_at = hunk.deleted_at or {}
+                if deleted_at[i] then
+                    return deleted_at[i]
+                end
+            end
+        end
+    end
+    return nil
+end
+
+function M.show_comment(bufnr, comment, hunks, reply_count)
+    if type(comment.line) ~= "number" then
         return
     end
 
-    local row = comment.line - 1
+    local display_end_line = comment.line
+    if comment.side == "LEFT" and hunks then
+        local mapped = map_old_line_to_new(hunks, comment.line)
+        if mapped then
+            display_end_line = mapped
+        end
+    end
+
+    local display_start_line = nil
+    if type(comment.start_line) == "number" then
+        display_start_line = comment.start_line
+        if comment.start_side == "LEFT" and hunks then
+            local mapped = map_old_line_to_new(hunks, comment.start_line)
+            if mapped then
+                display_start_line = mapped
+            end
+        end
+    end
+
     local line_count = vim.api.nvim_buf_line_count(bufnr)
-    if row >= line_count then
+    local end_row = display_end_line - 1
+    if end_row >= line_count then
         return
     end
 
@@ -80,28 +159,367 @@ function M.show_comment(bufnr, comment)
     display_body = display_body:gsub("\n", " ")
 
     local text = string.format(" %s: %s", comment.author, display_body)
+    if reply_count and reply_count > 0 then
+        text = text .. string.format(" (+%d %s)", reply_count, reply_count == 1 and "reply" or "replies")
+    end
 
-    vim.api.nvim_buf_set_extmark(bufnr, ns, row, 0, {
-        virt_text = { { text, "GReviewerComment" } },
-        virt_text_pos = "eol",
-        sign_text = "",
-        sign_hl_group = "GReviewerCommentSign",
-        priority = 20,
-    })
+    if display_start_line and display_start_line < display_end_line then
+        local start_row = display_start_line - 1
+        if start_row >= 0 and start_row < line_count then
+            for row = start_row, end_row do
+                local bracket
+                if row == start_row then
+                    bracket = "┐"
+                elseif row == end_row then
+                    bracket = "┘"
+                else
+                    bracket = "│"
+                end
+
+                vim.api.nvim_buf_set_extmark(bufnr, ns, row, 0, {
+                    virt_text = { { bracket, "GReviewerCommentRange" } },
+                    virt_text_pos = "right_align",
+                    priority = 20,
+                })
+            end
+
+            vim.api.nvim_buf_set_extmark(bufnr, ns, end_row, 0, {
+                virt_text = { { text, "GReviewerComment" } },
+                virt_text_pos = "eol",
+                priority = 20,
+            })
+        end
+    else
+        vim.api.nvim_buf_set_extmark(bufnr, ns, end_row, 0, {
+            virt_text = { { text, "GReviewerComment" } },
+            virt_text_pos = "eol",
+            sign_text = "",
+            sign_hl_group = "GReviewerCommentSign",
+            priority = 20,
+        })
+    end
+end
+
+local function is_reply(comment)
+    return type(comment.in_reply_to_id) == "number"
 end
 
 function M.show_existing(bufnr, file_path)
     define_highlights()
 
+    local file = state.get_file_by_path(file_path)
+    local hunks = file and file.hunks or {}
     local comments = state.get_comments_for_file(file_path)
 
+    local root_comments = {}
+    local reply_counts = {}
+
     for _, comment in ipairs(comments) do
-        M.show_comment(bufnr, comment)
+        if not is_reply(comment) then
+            table.insert(root_comments, comment)
+            reply_counts[comment.id] = 0
+        end
+    end
+
+    for _, comment in ipairs(comments) do
+        if is_reply(comment) and reply_counts[comment.in_reply_to_id] then
+            reply_counts[comment.in_reply_to_id] = reply_counts[comment.in_reply_to_id] + 1
+        end
+    end
+
+    for _, comment in ipairs(root_comments) do
+        M.show_comment(bufnr, comment, hunks, reply_counts[comment.id])
     end
 end
 
 function M.clear(bufnr)
     vim.api.nvim_buf_clear_namespace(bufnr, ns, 0, -1)
+end
+
+local function comment_matches_line(comment, line, hunks)
+    local end_line = comment.line
+    if type(end_line) ~= "number" then
+        return false
+    end
+
+    local start_line = comment.start_line
+    if type(start_line) ~= "number" then
+        start_line = nil
+    end
+
+    if comment.side == "LEFT" then
+        end_line = map_old_line_to_new(hunks, comment.line) or end_line
+    end
+
+    if start_line and comment.start_side == "LEFT" then
+        start_line = map_old_line_to_new(hunks, comment.start_line) or start_line
+    end
+
+    if start_line and start_line < end_line then
+        return line >= start_line and line <= end_line
+    else
+        return end_line == line
+    end
+end
+
+local function get_threads_for_line(file_path, line, hunks)
+    local comments = state.get_comments_for_file(file_path)
+    local threads = {}
+
+    for _, comment in ipairs(comments) do
+        if comment_matches_line(comment, line, hunks) and not is_reply(comment) then
+            local thread = { comment }
+            for _, reply in ipairs(comments) do
+                if is_reply(reply) and reply.in_reply_to_id == comment.id then
+                    table.insert(thread, reply)
+                end
+            end
+            table.sort(thread, function(a, b)
+                return (a.created_at or "") < (b.created_at or "")
+            end)
+            table.insert(threads, thread)
+        end
+    end
+
+    if #threads == 0 then
+        for _, comment in ipairs(comments) do
+            if comment_matches_line(comment, line, hunks) then
+                table.insert(threads, { comment })
+            end
+        end
+    end
+
+    return threads
+end
+
+local function format_date(iso_date)
+    if not iso_date then
+        return ""
+    end
+    local pattern = "(%d+)-(%d+)-(%d+)T(%d+):(%d+)"
+    local year, month, day, hour, min = iso_date:match(pattern)
+    if year then
+        return string.format("%s-%s-%s %s:%s", year, month, day, hour, min)
+    end
+    return iso_date
+end
+
+local function build_thread_lines(threads)
+    local lines = {}
+    local highlights = {}
+    local comment_positions = {}
+
+    for thread_idx, thread in ipairs(threads) do
+        if thread_idx > 1 then
+            table.insert(lines, "")
+            table.insert(lines, string.rep("─", 50))
+            table.insert(highlights, { line = #lines, hl = "GReviewerThreadSeparator", col_start = 0, col_end = -1 })
+            table.insert(lines, "")
+        end
+
+        for comment_idx, comment in ipairs(thread) do
+            local start_line_num = #lines + 1
+            local indent = comment_idx > 1 and "  ↳ " or ""
+
+            local author_line = indent .. "@" .. (comment.author or "unknown")
+            if comment_idx == 1 and type(comment.start_line) == "number" and type(comment.line) == "number" then
+                author_line = author_line .. string.format("  [lines %d-%d]", comment.start_line, comment.line)
+            elseif comment_idx == 1 and type(comment.line) == "number" then
+                author_line = author_line .. string.format("  [line %d]", comment.line)
+            end
+            table.insert(lines, author_line)
+            table.insert(highlights, {
+                line = #lines,
+                hl = "GReviewerThreadAuthor",
+                col_start = #indent,
+                col_end = #author_line,
+            })
+
+            local date_line = indent .. "  " .. format_date(comment.created_at)
+            table.insert(lines, date_line)
+            table.insert(highlights, {
+                line = #lines,
+                hl = "GReviewerThreadDate",
+                col_start = 0,
+                col_end = -1,
+            })
+
+            table.insert(lines, "")
+
+            local body = comment.body or ""
+            for body_line in (body .. "\n"):gmatch("([^\n]*)\n") do
+                table.insert(lines, indent .. "  " .. body_line)
+                table.insert(highlights, {
+                    line = #lines,
+                    hl = "GReviewerThreadBody",
+                    col_start = 0,
+                    col_end = -1,
+                })
+            end
+
+            comment_positions[start_line_num] = comment
+
+            if comment_idx < #thread then
+                table.insert(lines, "")
+            end
+        end
+    end
+
+    local config = require("greviewer.config")
+    local keys = config.values.thread_window.keys
+    local reply_key = type(keys.reply) == "table" and keys.reply[1] or keys.reply
+    local close_key = type(keys.close) == "table" and keys.close[1] or keys.close
+
+    table.insert(lines, "")
+    table.insert(lines, string.format("[%s] Reply  [%s] Close", reply_key, close_key))
+    table.insert(highlights, {
+        line = #lines,
+        hl = "GReviewerThreadReply",
+        col_start = 0,
+        col_end = -1,
+    })
+
+    return lines, highlights, comment_positions
+end
+
+local function close_thread_window()
+    if thread_win and vim.api.nvim_win_is_valid(thread_win) then
+        vim.api.nvim_win_close(thread_win, true)
+    end
+    if thread_buf and vim.api.nvim_buf_is_valid(thread_buf) then
+        vim.api.nvim_buf_delete(thread_buf, { force = true })
+    end
+    thread_win = nil
+    thread_buf = nil
+end
+
+local function get_comment_at_cursor(comment_positions)
+    if not thread_buf or not vim.api.nvim_buf_is_valid(thread_buf) then
+        return nil
+    end
+
+    local cursor_line = vim.api.nvim_win_get_cursor(thread_win)[1]
+
+    local closest_comment = nil
+    local closest_line = 0
+    for line, comment in pairs(comment_positions) do
+        if line <= cursor_line and line > closest_line then
+            closest_line = line
+            closest_comment = comment
+        end
+    end
+
+    return closest_comment
+end
+
+local function prompt_reply(comment, pr_url)
+    close_thread_window()
+
+    vim.ui.input({ prompt = "Reply: " }, function(body)
+        if not body or body == "" then
+            return
+        end
+
+        vim.notify("Submitting reply...", vim.log.levels.INFO)
+
+        local cli = require("greviewer.cli")
+        cli.reply_to_comment(pr_url, comment.id, body, function(data, err)
+            if err then
+                vim.notify("Failed to reply: " .. err, vim.log.levels.ERROR)
+                return
+            end
+
+            vim.notify("Reply added!", vim.log.levels.INFO)
+
+            local reply = {
+                id = data.comment_id,
+                path = comment.path,
+                line = comment.line,
+                side = comment.side or "RIGHT",
+                body = body,
+                author = "you",
+                created_at = os.date("%Y-%m-%dT%H:%M:%S"),
+                html_url = data.html_url or "",
+                in_reply_to_id = comment.id,
+            }
+            state.add_comment(reply)
+        end)
+    end)
+end
+
+function M.show_thread()
+    define_highlights()
+
+    local buffer = require("greviewer.ui.buffer")
+    local file = buffer.get_current_file_from_buffer()
+    local pr_url = buffer.get_pr_url_from_buffer()
+
+    if not file or not pr_url then
+        vim.notify("Not in a review buffer", vim.log.levels.WARN)
+        return
+    end
+
+    local line = vim.api.nvim_win_get_cursor(0)[1]
+    local threads = get_threads_for_line(file.path, line, file.hunks)
+
+    if #threads == 0 then
+        vim.notify("No comments on this line", vim.log.levels.INFO)
+        return
+    end
+
+    close_thread_window()
+
+    local lines, highlights, comment_positions = build_thread_lines(threads)
+
+    thread_buf = vim.api.nvim_create_buf(false, true)
+    vim.api.nvim_buf_set_lines(thread_buf, 0, -1, false, lines)
+    vim.api.nvim_buf_set_option(thread_buf, "modifiable", false)
+    vim.api.nvim_buf_set_option(thread_buf, "buftype", "nofile")
+    vim.api.nvim_buf_set_option(thread_buf, "filetype", "greviewer_thread")
+
+    for _, hl in ipairs(highlights) do
+        vim.api.nvim_buf_add_highlight(thread_buf, -1, hl.hl, hl.line - 1, hl.col_start, hl.col_end)
+    end
+
+    local width = math.min(80, math.floor(vim.o.columns * 0.8))
+    local height = math.min(#lines, math.floor(vim.o.lines * 0.6))
+    local row = math.floor((vim.o.lines - height) / 2)
+    local col = math.floor((vim.o.columns - width) / 2)
+
+    thread_win = vim.api.nvim_open_win(thread_buf, true, {
+        relative = "editor",
+        width = width,
+        height = height,
+        row = row,
+        col = col,
+        style = "minimal",
+        border = "rounded",
+        title = " Comment Thread ",
+        title_pos = "center",
+    })
+
+    vim.api.nvim_win_set_option(thread_win, "wrap", true)
+    vim.api.nvim_win_set_option(thread_win, "cursorline", true)
+
+    local config = require("greviewer.config")
+    local keys = config.values.thread_window.keys
+
+    local close_keys = type(keys.close) == "table" and keys.close or { keys.close }
+    for _, key in ipairs(close_keys) do
+        vim.keymap.set("n", key, close_thread_window, { buffer = thread_buf, nowait = true })
+    end
+
+    local reply_keys = type(keys.reply) == "table" and keys.reply or { keys.reply }
+    for _, key in ipairs(reply_keys) do
+        vim.keymap.set("n", key, function()
+            local comment = get_comment_at_cursor(comment_positions)
+            if comment then
+                prompt_reply(comment, pr_url)
+            else
+                vim.notify("No comment found at cursor", vim.log.levels.WARN)
+            end
+        end, { buffer = thread_buf, nowait = true })
+    end
 end
 
 return M

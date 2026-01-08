@@ -9,6 +9,12 @@ M.values = {
     },
     wrap_navigation = true,
     auto_expand_deletes = false,
+    thread_window = {
+        keys = {
+            close = { "q", "<Esc>" },
+            reply = "r",
+        },
+    },
 }
 
 function M.setup(opts)

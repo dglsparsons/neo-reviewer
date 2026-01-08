@@ -44,6 +44,10 @@ function M.setup(opts)
     vim.api.nvim_create_user_command("GReviewSubmit", function()
         M.submit_review()
     end, { desc = "Submit review (approve or request changes)" })
+
+    vim.api.nvim_create_user_command("GReviewComment", function(ctx)
+        M.add_comment({ line1 = ctx.line1, line2 = ctx.line2 })
+    end, { range = true, desc = "Add comment at cursor or on visual selection" })
 end
 
 function M.open()
@@ -304,9 +308,14 @@ function M.toggle_inline()
     virtual.toggle_at_cursor()
 end
 
-function M.add_comment()
+function M.add_comment(opts)
     local comments = require("greviewer.ui.comments")
-    comments.add_at_cursor()
+    comments.add_at_cursor(opts)
+end
+
+function M.show_comment()
+    local comments = require("greviewer.ui.comments")
+    comments.show_thread()
 end
 
 function M.check_auth()
