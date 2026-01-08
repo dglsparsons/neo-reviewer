@@ -3,32 +3,45 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+    crane.url = "github:ipetkov/crane";
     flake-utils.url = "github:numtide/flake-utils";
   };
 
-  outputs = { self, nixpkgs, flake-utils }:
+  outputs = { self, nixpkgs, crane, flake-utils }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
+        craneLib = crane.mkLib pkgs;
+
+        # Filter to only include Rust-relevant files
+        rustSrc = craneLib.cleanCargoSource ./.;
+
+        # Common build arguments
+        commonArgs = {
+          src = rustSrc;
+          pname = "greviewer-cli";
+          version = "0.1.0";
+
+          nativeBuildInputs = with pkgs; [ pkg-config ];
+          buildInputs = with pkgs; lib.optionals stdenv.isDarwin [
+            apple-sdk_15
+          ] ++ lib.optionals stdenv.isLinux [
+            openssl
+          ];
+        };
+
+        # Build *just* the dependencies (cached separately)
+        cargoArtifacts = craneLib.buildDepsOnly commonArgs;
+
+        # Build the actual binary (uses cached deps)
+        greviewer-cli = craneLib.buildPackage (commonArgs // {
+          inherit cargoArtifacts;
+          cargoExtraArgs = "-p greviewer-cli";
+        });
       in
       {
         packages = {
-          greviewer-cli = pkgs.rustPlatform.buildRustPackage {
-            pname = "greviewer-cli";
-            version = "0.1.0";
-            src = ./.;
-            cargoLock.lockFile = ./Cargo.lock;
-            
-            cargoBuildFlags = [ "-p" "greviewer-cli" ];
-            cargoTestFlags = [ "-p" "greviewer-cli" ];
-            
-            nativeBuildInputs = with pkgs; [ pkg-config ];
-            buildInputs = with pkgs; lib.optionals stdenv.isDarwin [
-              apple-sdk_15
-            ] ++ lib.optionals stdenv.isLinux [
-              openssl
-            ];
-          };
+          inherit greviewer-cli;
 
           # The Neovim plugin
           greviewer-nvim = pkgs.vimUtils.buildVimPlugin {
@@ -38,7 +51,7 @@
             doCheck = false;
           };
 
-          default = self.packages.${system}.greviewer-cli;
+          default = greviewer-cli;
         };
       }
     ) // {
