@@ -1,7 +1,7 @@
 [package]
 name = "greviewer-cli"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 description = "CLI tool for reviewing GitHub pull requests in Neovim"
 license = "MIT"
 
@@ -11,7 +11,7 @@ path = "src/main.rs"
 
 [dependencies]
 # GitHub API client
-octocrab = "0.41"
+octocrab = "0.49"
 
 # Async runtime
 tokio = { version = "1", features = ["full"] }
@@ -32,4 +32,4 @@ regex = "1.11"
 url = "2.5"
 
 # HTTP client for raw API requests
-reqwest = { version = "0.12", features = ["json"] }
+reqwest = { version = "0.13", features = ["json"] }
