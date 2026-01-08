@@ -192,4 +192,31 @@ function M.check_auth(callback)
     }):start()
 end
 
+function M.submit_review(url, event, body, callback)
+    local args = { "submit", "--url", url, "--event", event }
+    if body then
+        table.insert(args, "--body")
+        table.insert(args, body)
+    end
+
+    Job:new({
+        command = config.values.cli_path,
+        args = args,
+        on_exit = vim.schedule_wrap(function(j, code)
+            if code == 0 then
+                local output = table.concat(j:result(), "\n")
+                local ok, data = pcall(vim.json.decode, output)
+                if ok and data.success then
+                    callback(true, nil)
+                else
+                    callback(false, data and data.error or "Unknown error")
+                end
+            else
+                local stderr = table.concat(j:stderr_result(), "\n")
+                callback(false, stderr)
+            end
+        end),
+    }):start()
+end
+
 return M

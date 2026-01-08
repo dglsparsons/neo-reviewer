@@ -22,6 +22,7 @@ function M.set_review(review_data)
         did_stash = false,
         applied_buffers = {},
         autocmd_id = nil,
+        overlays_visible = true,
     }
     return state.active_review
 end
@@ -142,6 +143,51 @@ function M.add_comment(comment)
     if state.active_review then
         table.insert(state.active_review.comments, comment)
     end
+end
+
+function M.are_overlays_visible()
+    if state.active_review then
+        return state.active_review.overlays_visible
+    end
+    return false
+end
+
+function M.set_overlays_visible(visible)
+    if state.active_review then
+        state.active_review.overlays_visible = visible
+    end
+end
+
+function M.hide_overlays()
+    if not state.active_review then
+        return
+    end
+
+    if state.active_review.autocmd_id then
+        vim.api.nvim_del_autocmd(state.active_review.autocmd_id)
+        state.active_review.autocmd_id = nil
+    end
+
+    local signs = require("greviewer.ui.signs")
+    local virtual = require("greviewer.ui.virtual")
+    local comments = require("greviewer.ui.comments")
+
+    for bufnr, _ in pairs(state.active_review.applied_buffers) do
+        if vim.api.nvim_buf_is_valid(bufnr) then
+            signs.clear(bufnr)
+            virtual.clear(bufnr)
+            comments.clear(bufnr)
+        end
+    end
+
+    state.active_review.overlays_visible = false
+end
+
+function M.get_applied_buffers()
+    if state.active_review then
+        return state.active_review.applied_buffers
+    end
+    return {}
 end
 
 return M

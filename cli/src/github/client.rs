@@ -234,9 +234,53 @@ impl GitHubClient {
             html_url: raw.html_url.unwrap_or_default(),
         })
     }
+
+    pub async fn submit_review(
+        &self,
+        pr_ref: &PrRef,
+        event: &str,
+        body: Option<&str>,
+    ) -> Result<()> {
+        let url = format!(
+            "https://api.github.com/repos/{}/{}/pulls/{}/reviews",
+            pr_ref.owner, pr_ref.repo, pr_ref.number
+        );
+
+        #[derive(serde::Serialize)]
+        struct ReviewRequest {
+            event: String,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            body: Option<String>,
+        }
+
+        let client = reqwest::Client::new();
+        let response = client
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", self.token))
+            .header("Accept", "application/vnd.github+json")
+            .header("User-Agent", "greviewer-cli")
+            .header("X-GitHub-Api-Version", "2022-11-28")
+            .json(&ReviewRequest {
+                event: event.to_string(),
+                body: body.map(|s| s.to_string()),
+            })
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_body = response.text().await.unwrap_or_default();
+            return Err(anyhow!(
+                "Failed to submit review: {} - {}",
+                status,
+                error_body
+            ));
+        }
+
+        Ok(())
+    }
 }
 
-/// Decode base64 content (GitHub returns file content base64 encoded)
 fn base64_decode(encoded: &str) -> Result<String> {
     // Remove newlines that GitHub adds
     let cleaned: String = encoded.chars().filter(|c| !c.is_whitespace()).collect();

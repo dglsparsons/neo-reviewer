@@ -53,6 +53,21 @@ enum Commands {
         url: String,
     },
 
+    /// Submit a review (approve or request changes)
+    Submit {
+        /// GitHub PR URL
+        #[arg(short, long)]
+        url: String,
+
+        /// Review event: APPROVE or REQUEST_CHANGES
+        #[arg(short, long)]
+        event: String,
+
+        /// Optional review body/message
+        #[arg(short, long)]
+        body: Option<String>,
+    },
+
     /// Check authentication status
     Auth,
 }
@@ -76,6 +91,9 @@ async fn main() -> Result<()> {
         }
         Commands::Comments { url } => {
             commands::comments::run(&url).await?;
+        }
+        Commands::Submit { url, event, body } => {
+            commands::submit::run(&url, &event, body.as_deref()).await?;
         }
         Commands::Auth => {
             commands::auth::run().await?;

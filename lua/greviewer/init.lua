@@ -13,6 +13,8 @@ function M.setup(opts)
 
     vim.api.nvim_create_user_command("GReview", function(ctx)
         local arg = ctx.args
+        local state = require("greviewer.state")
+
         if arg and arg ~= "" then
             local pr_number = tonumber(arg)
             if pr_number then
@@ -20,10 +22,12 @@ function M.setup(opts)
             else
                 M.open_url(arg)
             end
+        elseif state.get_review() then
+            M.toggle_overlays()
         else
             M.open()
         end
-    end, { nargs = "?", desc = "Open PR review (no args = current branch, number = checkout PR, URL = legacy)" })
+    end, { nargs = "?", desc = "Open PR review, or toggle overlays if review is active" })
 
     vim.api.nvim_create_user_command("GReviewDone", function()
         M.done()
@@ -36,6 +40,10 @@ function M.setup(opts)
     vim.api.nvim_create_user_command("GReviewAuth", function()
         M.check_auth()
     end, { desc = "Check GitHub authentication" })
+
+    vim.api.nvim_create_user_command("GReviewSubmit", function()
+        M.submit_review()
+    end, { desc = "Submit review (approve or request changes)" })
 end
 
 function M.open()
@@ -310,6 +318,98 @@ function M.check_auth()
             vim.notify(output, vim.log.levels.ERROR)
         end
     end)
+end
+
+function M.submit_review()
+    local state = require("greviewer.state")
+    local cli = require("greviewer.cli")
+    local review = state.get_review()
+
+    if not review then
+        vim.notify("No active review", vim.log.levels.WARN)
+        return
+    end
+
+    vim.ui.select({ "Approve", "Request Changes" }, {
+        prompt = "Submit review:",
+    }, function(choice)
+        if not choice then
+            return
+        end
+
+        if choice == "Approve" then
+            cli.submit_review(review.url, "APPROVE", nil, function(ok, err)
+                if ok then
+                    vim.notify("Review approved", vim.log.levels.INFO)
+                else
+                    vim.notify("Failed to submit review: " .. (err or "unknown error"), vim.log.levels.ERROR)
+                end
+            end)
+        else
+            vim.ui.input({
+                prompt = "Message (leave empty for default): ",
+            }, function(input)
+                local body = input
+                if not body or body == "" then
+                    body = "Please see inline comments"
+                end
+                cli.submit_review(review.url, "REQUEST_CHANGES", body, function(ok, err)
+                    if ok then
+                        vim.notify("Changes requested", vim.log.levels.INFO)
+                    else
+                        vim.notify("Failed to submit review: " .. (err or "unknown error"), vim.log.levels.ERROR)
+                    end
+                end)
+            end)
+        end
+    end)
+end
+
+function M.show_overlays()
+    local state = require("greviewer.state")
+    local review = state.get_review()
+    if not review then
+        return
+    end
+
+    local autocmd_id = vim.api.nvim_create_autocmd({ "BufEnter", "BufWinEnter" }, {
+        callback = function(args)
+            M.apply_overlay_to_buffer(args.buf)
+        end,
+    })
+    state.set_autocmd_id(autocmd_id)
+
+    local signs = require("greviewer.ui.signs")
+    local comments_ui = require("greviewer.ui.comments")
+
+    for bufnr, _ in pairs(state.get_applied_buffers()) do
+        if vim.api.nvim_buf_is_valid(bufnr) then
+            local ok, file = pcall(vim.api.nvim_buf_get_var, bufnr, "greviewer_file")
+            if ok and file then
+                signs.place(bufnr, file.hunks)
+                comments_ui.show_existing(bufnr, file.path)
+            end
+        end
+    end
+
+    state.set_overlays_visible(true)
+end
+
+function M.toggle_overlays()
+    local state = require("greviewer.state")
+    local review = state.get_review()
+    if not review then
+        return false
+    end
+
+    if state.are_overlays_visible() then
+        state.hide_overlays()
+        vim.notify("Review overlays hidden", vim.log.levels.INFO)
+    else
+        M.show_overlays()
+        vim.notify("Review overlays shown", vim.log.levels.INFO)
+    end
+    return true
 end
 
 return M
