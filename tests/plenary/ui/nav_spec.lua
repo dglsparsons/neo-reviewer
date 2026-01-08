@@ -40,7 +40,7 @@ describe("greviewer.ui.nav", function()
     end
 
     describe("next_hunk", function()
-        it("jumps to first change line from before first change", function()
+        it("jumps to first hunk from before first change", function()
             setup_review_buffer(fixtures.navigation_pr)
             helpers.set_cursor(1)
 
@@ -50,17 +50,17 @@ describe("greviewer.ui.nav", function()
             assert.are.equal(3, cursor[1])
         end)
 
-        it("jumps to next change line within same hunk", function()
+        it("jumps to next hunk from within first hunk", function()
             setup_review_buffer(fixtures.navigation_pr)
             helpers.set_cursor(3)
 
             nav.next_hunk(false)
 
             local cursor = helpers.get_cursor()
-            assert.are.equal(4, cursor[1])
+            assert.are.equal(10, cursor[1])
         end)
 
-        it("jumps to next hunk's first change line", function()
+        it("jumps to next hunk from between hunks", function()
             setup_review_buffer(fixtures.navigation_pr)
             helpers.set_cursor(5)
 
@@ -80,18 +80,17 @@ describe("greviewer.ui.nav", function()
             assert.are.equal(20, cursor[1])
         end)
 
-        it("navigates through consecutive change lines", function()
+        it("stays at last hunk when no wrap and at end", function()
             setup_review_buffer(fixtures.navigation_pr)
             helpers.set_cursor(20)
 
             nav.next_hunk(false)
-            assert.are.equal(21, helpers.get_cursor()[1])
 
-            nav.next_hunk(false)
-            assert.are.equal(22, helpers.get_cursor()[1])
+            local cursor = helpers.get_cursor()
+            assert.are.equal(20, cursor[1])
         end)
 
-        it("wraps to first change when wrap=true and at end", function()
+        it("wraps to first hunk when wrap=true and at end", function()
             setup_review_buffer(fixtures.navigation_pr)
             helpers.set_cursor(22)
 
@@ -111,7 +110,7 @@ describe("greviewer.ui.nav", function()
             assert.are.equal(22, cursor[1])
         end)
 
-        it("notifies when not in review buffer", function()
+        it("notifies when no active review", function()
             helpers.create_test_buffer({ "not", "a", "review" })
             local notifications = helpers.capture_notifications()
 
@@ -120,49 +119,49 @@ describe("greviewer.ui.nav", function()
             local msgs = notifications.get()
             notifications.restore()
             assert.are.equal(1, #msgs)
-            assert.matches("Not in a review buffer", msgs[1].msg)
+            assert.matches("No active review", msgs[1].msg)
         end)
     end)
 
     describe("prev_hunk", function()
-        it("jumps to previous change line from after last change", function()
+        it("jumps to last hunk from after last change", function()
             setup_review_buffer(fixtures.navigation_pr)
             helpers.set_cursor(25)
 
             nav.prev_hunk(false)
 
             local cursor = helpers.get_cursor()
-            assert.are.equal(22, cursor[1])
+            assert.are.equal(20, cursor[1])
         end)
 
-        it("jumps to previous change line within same hunk", function()
+        it("jumps to previous hunk from current hunk", function()
             setup_review_buffer(fixtures.navigation_pr)
-            helpers.set_cursor(22)
+            helpers.set_cursor(20)
 
             nav.prev_hunk(false)
 
             local cursor = helpers.get_cursor()
-            assert.are.equal(21, cursor[1])
+            assert.are.equal(10, cursor[1])
         end)
 
-        it("jumps to previous hunk's last change line", function()
+        it("jumps to previous hunk from between hunks", function()
             setup_review_buffer(fixtures.navigation_pr)
             helpers.set_cursor(8)
 
             nav.prev_hunk(false)
 
             local cursor = helpers.get_cursor()
-            assert.are.equal(4, cursor[1])
+            assert.are.equal(3, cursor[1])
         end)
 
-        it("wraps to last change when wrap=true and at beginning", function()
+        it("wraps to last hunk when wrap=true and at beginning", function()
             setup_review_buffer(fixtures.navigation_pr)
             helpers.set_cursor(1)
 
             nav.prev_hunk(true)
 
             local cursor = helpers.get_cursor()
-            assert.are.equal(22, cursor[1])
+            assert.are.equal(20, cursor[1])
         end)
 
         it("does not wrap when wrap=false and at beginning", function()
@@ -177,7 +176,7 @@ describe("greviewer.ui.nav", function()
     end)
 
     describe("first_hunk", function()
-        it("jumps to first change line", function()
+        it("jumps to first hunk start", function()
             setup_review_buffer(fixtures.navigation_pr)
             helpers.set_cursor(15)
 
@@ -189,14 +188,14 @@ describe("greviewer.ui.nav", function()
     end)
 
     describe("last_hunk", function()
-        it("jumps to last change line", function()
+        it("jumps to last hunk start", function()
             setup_review_buffer(fixtures.navigation_pr)
             helpers.set_cursor(1)
 
             nav.last_hunk()
 
             local cursor = helpers.get_cursor()
-            assert.are.equal(22, cursor[1])
+            assert.are.equal(20, cursor[1])
         end)
     end)
 end)

@@ -1,135 +1,202 @@
 local M = {}
 
-local function collect_change_lines(hunks)
-    local lines = {}
-    local seen = {}
-    for _, hunk in ipairs(hunks) do
-        for _, ln in ipairs(hunk.added_lines or {}) do
-            if not seen[ln] then
-                table.insert(lines, ln)
-                seen[ln] = true
-            end
+local function get_hunk_first_change(hunk)
+    local first_add = hunk.added_lines and hunk.added_lines[1]
+    local first_del = hunk.deleted_at and hunk.deleted_at[1]
+    if first_add and first_del then
+        return math.min(first_add, first_del)
+    end
+    return first_add or first_del
+end
+
+local function collect_hunk_starts(hunks)
+    local starts = {}
+    for _, hunk in ipairs(hunks or {}) do
+        local first = get_hunk_first_change(hunk)
+        if first then
+            table.insert(starts, first)
         end
-        for _, ln in ipairs(hunk.deleted_at or {}) do
-            if not seen[ln] then
-                table.insert(lines, ln)
-                seen[ln] = true
+    end
+    table.sort(starts)
+    return starts
+end
+
+local function get_current_file_index(review)
+    local buffer = require("greviewer.ui.buffer")
+    local current_file = buffer.get_current_file_from_buffer()
+    if current_file then
+        for i, file in ipairs(review.files) do
+            if file.path == current_file.path then
+                return i
             end
         end
     end
-    table.sort(lines)
-    return lines
+    return nil
+end
+
+local function jump_to(file_path, line)
+    vim.cmd("normal! m'")
+
+    local buffer = require("greviewer.ui.buffer")
+    local current_file = buffer.get_current_file_from_buffer()
+    local is_same_file = current_file and current_file.path == file_path
+
+    if not is_same_file then
+        local current_name = vim.api.nvim_buf_get_name(0)
+        is_same_file = current_name:match(vim.pesc(file_path) .. "$")
+
+        if not is_same_file then
+            vim.cmd("edit " .. vim.fn.fnameescape(file_path))
+        end
+    end
+
+    local line_count = vim.api.nvim_buf_line_count(0)
+    if line <= line_count then
+        vim.api.nvim_win_set_cursor(0, { line, 0 })
+        vim.cmd("normal! zz")
+    end
 end
 
 function M.next_hunk(wrap)
-    local buffer = require("greviewer.ui.buffer")
-    local file = buffer.get_current_file_from_buffer()
-    if not file then
-        vim.notify("Not in a review buffer", vim.log.levels.WARN)
+    local state = require("greviewer.state")
+    local review = state.get_review()
+    if not review then
+        vim.notify("No active review", vim.log.levels.WARN)
         return
     end
 
-    local hunks = file.hunks
-    if not hunks or #hunks == 0 then
-        vim.notify("No changes in this file", vim.log.levels.INFO)
-        return
-    end
-
-    local change_lines = collect_change_lines(hunks)
-    if #change_lines == 0 then
-        vim.notify("No changes in this file", vim.log.levels.INFO)
-        return
-    end
-
+    local current_idx = get_current_file_index(review)
     local cursor_line = vim.api.nvim_win_get_cursor(0)[1]
 
-    for _, ln in ipairs(change_lines) do
-        if ln > cursor_line then
-            vim.cmd("normal! m'")
-            vim.api.nvim_win_set_cursor(0, { ln, 0 })
-            vim.cmd("normal! zz")
-            return
+    if current_idx then
+        local current_file = review.files[current_idx]
+        local hunk_starts = collect_hunk_starts(current_file.hunks)
+        for _, ln in ipairs(hunk_starts) do
+            if ln > cursor_line then
+                jump_to(current_file.path, ln)
+                return
+            end
+        end
+
+        for i = current_idx + 1, #review.files do
+            local file = review.files[i]
+            local starts = collect_hunk_starts(file.hunks)
+            if #starts > 0 then
+                jump_to(file.path, starts[1])
+                return
+            end
+        end
+    else
+        for _, file in ipairs(review.files) do
+            local starts = collect_hunk_starts(file.hunks)
+            if #starts > 0 then
+                jump_to(file.path, starts[1])
+                return
+            end
         end
     end
 
     if wrap then
-        vim.cmd("normal! m'")
-        vim.api.nvim_win_set_cursor(0, { change_lines[1], 0 })
-        vim.cmd("normal! zz")
-        vim.notify("Wrapped to first change", vim.log.levels.INFO)
-    else
-        vim.notify("No more changes below", vim.log.levels.INFO)
+        for _, file in ipairs(review.files) do
+            local starts = collect_hunk_starts(file.hunks)
+            if #starts > 0 then
+                jump_to(file.path, starts[1])
+                vim.notify("Wrapped to first change", vim.log.levels.INFO)
+                return
+            end
+        end
     end
+
+    vim.notify("No more changes", vim.log.levels.INFO)
 end
 
 function M.prev_hunk(wrap)
-    local buffer = require("greviewer.ui.buffer")
-    local file = buffer.get_current_file_from_buffer()
-    if not file then
-        vim.notify("Not in a review buffer", vim.log.levels.WARN)
+    local state = require("greviewer.state")
+    local review = state.get_review()
+    if not review then
+        vim.notify("No active review", vim.log.levels.WARN)
         return
     end
 
-    local hunks = file.hunks
-    if not hunks or #hunks == 0 then
-        vim.notify("No changes in this file", vim.log.levels.INFO)
-        return
-    end
-
-    local change_lines = collect_change_lines(hunks)
-    if #change_lines == 0 then
-        vim.notify("No changes in this file", vim.log.levels.INFO)
-        return
-    end
-
+    local current_idx = get_current_file_index(review)
     local cursor_line = vim.api.nvim_win_get_cursor(0)[1]
 
-    for i = #change_lines, 1, -1 do
-        if change_lines[i] < cursor_line then
-            vim.cmd("normal! m'")
-            vim.api.nvim_win_set_cursor(0, { change_lines[i], 0 })
-            vim.cmd("normal! zz")
-            return
+    if current_idx then
+        local current_file = review.files[current_idx]
+        local hunk_starts = collect_hunk_starts(current_file.hunks)
+        for i = #hunk_starts, 1, -1 do
+            if hunk_starts[i] < cursor_line then
+                jump_to(current_file.path, hunk_starts[i])
+                return
+            end
+        end
+
+        for i = current_idx - 1, 1, -1 do
+            local file = review.files[i]
+            local starts = collect_hunk_starts(file.hunks)
+            if #starts > 0 then
+                jump_to(file.path, starts[#starts])
+                return
+            end
+        end
+    else
+        for i = #review.files, 1, -1 do
+            local file = review.files[i]
+            local starts = collect_hunk_starts(file.hunks)
+            if #starts > 0 then
+                jump_to(file.path, starts[#starts])
+                return
+            end
         end
     end
 
     if wrap then
-        vim.cmd("normal! m'")
-        vim.api.nvim_win_set_cursor(0, { change_lines[#change_lines], 0 })
-        vim.cmd("normal! zz")
-        vim.notify("Wrapped to last change", vim.log.levels.INFO)
-    else
-        vim.notify("No more changes above", vim.log.levels.INFO)
+        for i = #review.files, 1, -1 do
+            local file = review.files[i]
+            local starts = collect_hunk_starts(file.hunks)
+            if #starts > 0 then
+                jump_to(file.path, starts[#starts])
+                vim.notify("Wrapped to last change", vim.log.levels.INFO)
+                return
+            end
+        end
     end
+
+    vim.notify("No more changes", vim.log.levels.INFO)
 end
 
 function M.first_hunk()
-    local buffer = require("greviewer.ui.buffer")
-    local file = buffer.get_current_file_from_buffer()
-    if not file then
+    local state = require("greviewer.state")
+    local review = state.get_review()
+    if not review then
+        vim.notify("No active review", vim.log.levels.WARN)
         return
     end
 
-    local change_lines = collect_change_lines(file.hunks or {})
-    if #change_lines > 0 then
-        vim.cmd("normal! m'")
-        vim.api.nvim_win_set_cursor(0, { change_lines[1], 0 })
-        vim.cmd("normal! zz")
+    for _, file in ipairs(review.files) do
+        local starts = collect_hunk_starts(file.hunks)
+        if #starts > 0 then
+            jump_to(file.path, starts[1])
+            return
+        end
     end
 end
 
 function M.last_hunk()
-    local buffer = require("greviewer.ui.buffer")
-    local file = buffer.get_current_file_from_buffer()
-    if not file then
+    local state = require("greviewer.state")
+    local review = state.get_review()
+    if not review then
+        vim.notify("No active review", vim.log.levels.WARN)
         return
     end
 
-    local change_lines = collect_change_lines(file.hunks or {})
-    if #change_lines > 0 then
-        vim.cmd("normal! m'")
-        vim.api.nvim_win_set_cursor(0, { change_lines[#change_lines], 0 })
-        vim.cmd("normal! zz")
+    for i = #review.files, 1, -1 do
+        local file = review.files[i]
+        local starts = collect_hunk_starts(file.hunks)
+        if #starts > 0 then
+            jump_to(file.path, starts[#starts])
+            return
+        end
     end
 end
 
