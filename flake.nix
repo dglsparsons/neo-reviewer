@@ -13,10 +13,8 @@
         pkgs = nixpkgs.legacyPackages.${system};
         craneLib = crane.mkLib pkgs;
 
-        # Filter to only include Rust-relevant files
         rustSrc = craneLib.cleanCargoSource ./.;
 
-        # Common build arguments
         commonArgs = {
           src = rustSrc;
           pname = "greviewer-cli";
@@ -30,10 +28,8 @@
           ];
         };
 
-        # Build *just* the dependencies (cached separately)
         cargoArtifacts = craneLib.buildDepsOnly commonArgs;
 
-        # Build the actual binary (uses cached deps)
         greviewer-cli = craneLib.buildPackage (commonArgs // {
           inherit cargoArtifacts;
           cargoExtraArgs = "-p greviewer-cli";
@@ -43,7 +39,6 @@
         packages = {
           inherit greviewer-cli;
 
-          # The Neovim plugin
           greviewer-nvim = pkgs.vimUtils.buildVimPlugin {
             pname = "greviewer";
             version = "0.1.0";
@@ -53,9 +48,21 @@
 
           default = greviewer-cli;
         };
+
+        checks = {
+          inherit greviewer-cli;
+
+          clippy = craneLib.cargoClippy (commonArgs // {
+            inherit cargoArtifacts;
+            cargoClippyExtraArgs = "-p greviewer-cli -- -D warnings";
+          });
+
+          fmt = craneLib.cargoFmt {
+            src = rustSrc;
+          };
+        };
       }
     ) // {
-      # Overlay for easy integration
       overlays.default = final: prev: {
         greviewer-cli = self.packages.${prev.system}.greviewer-cli;
         vimPlugins = prev.vimPlugins // {

@@ -287,3 +287,164 @@ fn base64_decode(encoded: &str) -> Result<String> {
     let bytes = base64::engine::general_purpose::STANDARD.decode(&cleaned)?;
     Ok(String::from_utf8(bytes)?)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    mod parse_pr_url {
+        use super::*;
+
+        #[test]
+        fn valid_url() {
+            let result = GitHubClient::parse_pr_url("https://github.com/owner/repo/pull/123");
+            assert!(result.is_ok());
+            let pr_ref = result.unwrap();
+            assert_eq!(pr_ref.owner, "owner");
+            assert_eq!(pr_ref.repo, "repo");
+            assert_eq!(pr_ref.number, 123);
+        }
+
+        #[test]
+        fn valid_url_with_trailing_slash() {
+            let result = GitHubClient::parse_pr_url("https://github.com/owner/repo/pull/123/");
+            assert!(result.is_ok());
+            let pr_ref = result.unwrap();
+            assert_eq!(pr_ref.number, 123);
+        }
+
+        #[test]
+        fn valid_url_with_query_params() {
+            let result =
+                GitHubClient::parse_pr_url("https://github.com/owner/repo/pull/456?tab=files");
+            assert!(result.is_ok());
+            let pr_ref = result.unwrap();
+            assert_eq!(pr_ref.number, 456);
+        }
+
+        #[test]
+        fn valid_url_with_fragment() {
+            let result = GitHubClient::parse_pr_url(
+                "https://github.com/owner/repo/pull/789#issuecomment-123",
+            );
+            assert!(result.is_ok());
+            let pr_ref = result.unwrap();
+            assert_eq!(pr_ref.number, 789);
+        }
+
+        #[test]
+        fn valid_url_http() {
+            let result = GitHubClient::parse_pr_url("http://github.com/owner/repo/pull/42");
+            assert!(result.is_ok());
+        }
+
+        #[test]
+        fn valid_url_with_hyphens_and_underscores() {
+            let result = GitHubClient::parse_pr_url("https://github.com/my-org/my_repo/pull/100");
+            assert!(result.is_ok());
+            let pr_ref = result.unwrap();
+            assert_eq!(pr_ref.owner, "my-org");
+            assert_eq!(pr_ref.repo, "my_repo");
+        }
+
+        #[test]
+        fn invalid_url_not_github() {
+            let result = GitHubClient::parse_pr_url("https://gitlab.com/owner/repo/pull/123");
+            assert!(result.is_err());
+        }
+
+        #[test]
+        fn invalid_url_not_pr() {
+            let result = GitHubClient::parse_pr_url("https://github.com/owner/repo/issues/123");
+            assert!(result.is_err());
+        }
+
+        #[test]
+        fn invalid_url_missing_number() {
+            let result = GitHubClient::parse_pr_url("https://github.com/owner/repo/pull/");
+            assert!(result.is_err());
+        }
+
+        #[test]
+        fn invalid_url_non_numeric_pr() {
+            let result = GitHubClient::parse_pr_url("https://github.com/owner/repo/pull/abc");
+            assert!(result.is_err());
+        }
+
+        #[test]
+        fn invalid_url_empty() {
+            let result = GitHubClient::parse_pr_url("");
+            assert!(result.is_err());
+        }
+
+        #[test]
+        fn invalid_url_random_string() {
+            let result = GitHubClient::parse_pr_url("not a url at all");
+            assert!(result.is_err());
+        }
+    }
+
+    mod base64_decode {
+        use super::*;
+
+        #[test]
+        fn decode_hello() {
+            let result = base64_decode("SGVsbG8=").unwrap();
+            assert_eq!(result, "Hello");
+        }
+
+        #[test]
+        fn decode_strips_newlines() {
+            let result = base64_decode("SGVs\nbG8=").unwrap();
+            assert_eq!(result, "Hello");
+        }
+
+        #[test]
+        fn decode_multiline_content() {
+            let result = base64_decode("SGVsbG8KV29ybGQ=").unwrap();
+            assert_eq!(result, "Hello\nWorld");
+        }
+
+        #[test]
+        fn decode_empty_string() {
+            let result = base64_decode("").unwrap();
+            assert_eq!(result, "");
+        }
+
+        #[test]
+        fn decode_no_padding() {
+            let result = base64_decode("YWJj").unwrap();
+            assert_eq!(result, "abc");
+        }
+
+        #[test]
+        fn decode_single_padding() {
+            let result = base64_decode("YWI=").unwrap();
+            assert_eq!(result, "ab");
+        }
+
+        #[test]
+        fn decode_double_padding() {
+            let result = base64_decode("YQ==").unwrap();
+            assert_eq!(result, "a");
+        }
+
+        #[test]
+        fn decode_with_plus_and_slash() {
+            let result = base64_decode("Pj4/").unwrap();
+            assert_eq!(result, ">>?");
+        }
+
+        #[test]
+        fn invalid_base64_char() {
+            let result = base64_decode("Invalid!Char");
+            assert!(result.is_err());
+        }
+
+        #[test]
+        fn decode_strips_all_whitespace() {
+            let result = base64_decode("  SGVs\t\nbG8=  ").unwrap();
+            assert_eq!(result, "Hello");
+        }
+    }
+}

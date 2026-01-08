@@ -2,8 +2,8 @@ use anyhow::{Result, anyhow};
 use std::process::Command;
 
 /// Get GitHub token, prioritizing `gh auth token` for SSO compatibility
+#[allow(clippy::collapsible_if)]
 pub fn get_token() -> Result<String> {
-    // Try gh auth token first (handles SSO, MFA, etc.)
     if let Ok(output) = Command::new("gh").args(["auth", "token"]).output() {
         if output.status.success() {
             let token = String::from_utf8(output.stdout)?.trim().to_string();

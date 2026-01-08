@@ -9,7 +9,8 @@ on:
       - main
 
 jobs:
-  test:
+  lua:
+    name: Lua Tests
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -33,3 +34,21 @@ jobs:
 
       - name: Run tests
         run: make test
+
+  rust:
+    name: Rust (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+
+      - name: Build and test
+        run: nix build -L
+
+      - name: Clippy and fmt
+        run: nix flake check -L

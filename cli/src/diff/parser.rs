@@ -41,11 +41,11 @@ pub fn parse_patch(patch: &str) -> Vec<Hunk> {
                     break;
                 }
 
-                if content_line.starts_with('-') {
-                    old_lines.push(content_line[1..].to_string());
+                if let Some(stripped) = content_line.strip_prefix('-') {
+                    old_lines.push(stripped.to_string());
                     deleted_at.push(new_line_num);
                     has_deletions = true;
-                } else if content_line.starts_with('+') {
+                } else if content_line.strip_prefix('+').is_some() {
                     added_lines.push(new_line_num);
                     has_additions = true;
                     new_line_num += 1;
@@ -146,5 +146,115 @@ mod tests {
         assert_eq!(hunks.len(), 2);
         assert_eq!(hunks[0].start, 1);
         assert_eq!(hunks[1].start, 11);
+    }
+
+    #[test]
+    fn test_parse_empty_patch() {
+        let hunks = parse_patch("");
+        assert!(hunks.is_empty());
+    }
+
+    #[test]
+    fn test_parse_context_only_skipped() {
+        let patch = r#"@@ -1,3 +1,3 @@
+ line1
+ line2
+ line3"#;
+
+        let hunks = parse_patch(patch);
+        assert!(hunks.is_empty());
+    }
+
+    #[test]
+    fn test_parse_no_newline_marker() {
+        let patch = r#"@@ -1,2 +1,2 @@
+-old line
++new line
+\ No newline at end of file"#;
+
+        let hunks = parse_patch(patch);
+        assert_eq!(hunks.len(), 1);
+        assert_eq!(hunks[0].hunk_type, HunkType::Change);
+    }
+
+    #[test]
+    fn test_parse_single_line_hunk() {
+        let patch = r#"@@ -1 +1 @@
+-old
++new"#;
+
+        let hunks = parse_patch(patch);
+        assert_eq!(hunks.len(), 1);
+        assert_eq!(hunks[0].old_count, 1);
+        assert_eq!(hunks[0].count, 1);
+    }
+
+    #[test]
+    fn test_parse_large_line_numbers() {
+        let patch = r#"@@ -10000,3 +10001,4 @@
+ context
++added
+ more context
+ end"#;
+
+        let hunks = parse_patch(patch);
+        assert_eq!(hunks.len(), 1);
+        assert_eq!(hunks[0].old_start, 10000);
+        assert_eq!(hunks[0].start, 10001);
+    }
+
+    #[test]
+    fn test_parse_multiple_additions() {
+        let patch = r#"@@ -1,2 +1,5 @@
+ line1
++added1
++added2
++added3
+ line2"#;
+
+        let hunks = parse_patch(patch);
+        assert_eq!(hunks.len(), 1);
+        assert_eq!(hunks[0].hunk_type, HunkType::Add);
+        assert_eq!(hunks[0].added_lines.len(), 3);
+    }
+
+    #[test]
+    fn test_parse_multiple_deletions() {
+        let patch = r#"@@ -1,5 +1,2 @@
+ line1
+-del1
+-del2
+-del3
+ line2"#;
+
+        let hunks = parse_patch(patch);
+        assert_eq!(hunks.len(), 1);
+        assert_eq!(hunks[0].hunk_type, HunkType::Delete);
+        assert_eq!(hunks[0].old_lines.len(), 3);
+    }
+
+    #[test]
+    fn test_parse_tracks_added_line_numbers() {
+        let patch = r#"@@ -1,3 +1,5 @@
+ line1
++added1
+ line2
++added2
+ line3"#;
+
+        let hunks = parse_patch(patch);
+        assert_eq!(hunks[0].added_lines, vec![2, 4]);
+    }
+
+    #[test]
+    fn test_parse_tracks_deleted_positions() {
+        let patch = r#"@@ -1,4 +1,2 @@
+ line1
+-deleted1
+-deleted2
+ line2"#;
+
+        let hunks = parse_patch(patch);
+        assert_eq!(hunks[0].deleted_at, vec![2, 2]);
     }
 }

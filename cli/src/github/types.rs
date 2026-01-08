@@ -99,3 +99,75 @@ pub struct CommentResponse {
 pub struct CommentsResponse {
     pub comments: Vec<ReviewComment>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    mod file_status_from {
+        use super::*;
+
+        #[test]
+        fn added() {
+            assert_eq!(FileStatus::from("added"), FileStatus::Added);
+            assert_eq!(FileStatus::from("ADDED"), FileStatus::Added);
+            assert_eq!(FileStatus::from("Added"), FileStatus::Added);
+        }
+
+        #[test]
+        fn deleted() {
+            assert_eq!(FileStatus::from("deleted"), FileStatus::Deleted);
+            assert_eq!(FileStatus::from("removed"), FileStatus::Deleted);
+            assert_eq!(FileStatus::from("REMOVED"), FileStatus::Deleted);
+        }
+
+        #[test]
+        fn renamed() {
+            assert_eq!(FileStatus::from("renamed"), FileStatus::Renamed);
+            assert_eq!(FileStatus::from("RENAMED"), FileStatus::Renamed);
+        }
+
+        #[test]
+        fn modified_explicit() {
+            assert_eq!(FileStatus::from("modified"), FileStatus::Modified);
+            assert_eq!(FileStatus::from("MODIFIED"), FileStatus::Modified);
+        }
+
+        #[test]
+        fn modified_fallback() {
+            assert_eq!(FileStatus::from("changed"), FileStatus::Modified);
+            assert_eq!(FileStatus::from("unknown"), FileStatus::Modified);
+            assert_eq!(FileStatus::from(""), FileStatus::Modified);
+        }
+    }
+
+    mod pr_ref_url {
+        use super::*;
+
+        #[test]
+        fn formats_correctly() {
+            let pr_ref = PrRef {
+                owner: "octocat".to_string(),
+                repo: "hello-world".to_string(),
+                number: 42,
+            };
+            assert_eq!(
+                pr_ref.url(),
+                "https://github.com/octocat/hello-world/pull/42"
+            );
+        }
+
+        #[test]
+        fn handles_special_chars_in_names() {
+            let pr_ref = PrRef {
+                owner: "my-org".to_string(),
+                repo: "my_repo.nvim".to_string(),
+                number: 1,
+            };
+            assert_eq!(
+                pr_ref.url(),
+                "https://github.com/my-org/my_repo.nvim/pull/1"
+            );
+        }
+    }
+}
