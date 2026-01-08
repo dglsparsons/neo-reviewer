@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use octocrab::Octocrab;
 use regex::Regex;
 
@@ -282,41 +282,8 @@ impl GitHubClient {
 }
 
 fn base64_decode(encoded: &str) -> Result<String> {
-    // Remove newlines that GitHub adds
+    use base64::Engine;
     let cleaned: String = encoded.chars().filter(|c| !c.is_whitespace()).collect();
-
-    // Use a simple base64 decoder
-    let bytes = base64_decode_bytes(&cleaned)?;
+    let bytes = base64::engine::general_purpose::STANDARD.decode(&cleaned)?;
     Ok(String::from_utf8(bytes)?)
-}
-
-fn base64_decode_bytes(input: &str) -> Result<Vec<u8>> {
-    const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-
-    let mut output = Vec::new();
-    let mut buffer: u32 = 0;
-    let mut bits_collected = 0;
-
-    for c in input.bytes() {
-        if c == b'=' {
-            break;
-        }
-
-        let value = ALPHABET
-            .iter()
-            .position(|&x| x == c)
-            .ok_or_else(|| anyhow!("Invalid base64 character: {}", c as char))?
-            as u32;
-
-        buffer = (buffer << 6) | value;
-        bits_collected += 6;
-
-        if bits_collected >= 8 {
-            bits_collected -= 8;
-            output.push((buffer >> bits_collected) as u8);
-            buffer &= (1 << bits_collected) - 1;
-        }
-    }
-
-    Ok(output)
 }

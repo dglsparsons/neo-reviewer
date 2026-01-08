@@ -98,19 +98,6 @@ function M.set_current_file_idx(idx)
     end
 end
 
-function M.get_file_buffer(file_path)
-    if state.active_review then
-        return state.active_review.buffers[file_path]
-    end
-    return nil
-end
-
-function M.set_file_buffer(file_path, bufnr)
-    if state.active_review then
-        state.active_review.buffers[file_path] = bufnr
-    end
-end
-
 function M.is_hunk_expanded(file_path, hunk_start)
     if state.active_review then
         local key = file_path .. ":" .. hunk_start
@@ -180,6 +167,7 @@ function M.hide_overlays()
         end
     end
 
+    state.active_review.applied_buffers = {}
     state.active_review.overlays_visible = false
 end
 

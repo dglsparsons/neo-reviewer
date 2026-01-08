@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use std::process::Command;
 
 /// Get GitHub token, prioritizing `gh auth token` for SSO compatibility

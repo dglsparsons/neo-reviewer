@@ -367,31 +367,11 @@ end
 
 function M.show_overlays()
     local state = require("greviewer.state")
-    local review = state.get_review()
-    if not review then
+    if not state.get_review() then
         return
     end
 
-    local autocmd_id = vim.api.nvim_create_autocmd({ "BufEnter", "BufWinEnter" }, {
-        callback = function(args)
-            M.apply_overlay_to_buffer(args.buf)
-        end,
-    })
-    state.set_autocmd_id(autocmd_id)
-
-    local signs = require("greviewer.ui.signs")
-    local comments_ui = require("greviewer.ui.comments")
-
-    for bufnr, _ in pairs(state.get_applied_buffers()) do
-        if vim.api.nvim_buf_is_valid(bufnr) then
-            local ok, file = pcall(vim.api.nvim_buf_get_var, bufnr, "greviewer_file")
-            if ok and file then
-                signs.place(bufnr, file.hunks)
-                comments_ui.show_existing(bufnr, file.path)
-            end
-        end
-    end
-
+    M.enable_overlay()
     state.set_overlays_visible(true)
 end
 

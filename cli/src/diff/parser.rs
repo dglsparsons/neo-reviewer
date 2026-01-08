@@ -79,16 +79,6 @@ pub fn parse_patch(patch: &str) -> Vec<Hunk> {
         }
     }
 
-    // Post-process: split hunks that have non-contiguous changes
-    // This gives better granularity for navigation
-    expand_hunks(hunks)
-}
-
-/// Expand hunks to provide finer granularity
-/// A single patch hunk might contain multiple logical changes separated by context
-fn expand_hunks(hunks: Vec<Hunk>) -> Vec<Hunk> {
-    // For now, return as-is. We can add more sophisticated splitting later.
-    // The basic parsing is sufficient for MVP.
     hunks
 }
 
