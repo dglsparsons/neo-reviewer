@@ -506,13 +506,20 @@ function M.show_thread()
     local config = require("greviewer.config")
     local keys = config.values.thread_window.keys
 
-    local close_keys = type(keys.close) == "table" and keys.close or { keys.close }
-    for _, key in ipairs(close_keys) do
+    ---@param key_config string|string[]
+    ---@return string[]
+    local function normalize_keys(key_config)
+        if type(key_config) == "table" then
+            return key_config
+        end
+        return { key_config }
+    end
+
+    for _, key in ipairs(normalize_keys(keys.close)) do
         vim.keymap.set("n", key, close_thread_window, { buffer = thread_buf, nowait = true })
     end
 
-    local reply_keys = type(keys.reply) == "table" and keys.reply or { keys.reply }
-    for _, key in ipairs(reply_keys) do
+    for _, key in ipairs(normalize_keys(keys.reply)) do
         vim.keymap.set("n", key, function()
             local comment = get_comment_at_cursor(comment_positions)
             if comment then

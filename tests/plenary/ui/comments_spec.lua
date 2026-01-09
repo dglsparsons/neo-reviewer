@@ -170,8 +170,10 @@ describe("greviewer.ui.comments", function()
             assert.is_not_nil(root_comment)
             assert.are.equal(2, #replies)
 
-            for _, reply in ipairs(replies) do
-                assert.are.equal(root_comment.id, reply.in_reply_to_id)
+            if root_comment then
+                for _, reply in ipairs(replies) do
+                    assert.are.equal(root_comment.id, reply.in_reply_to_id)
+                end
             end
         end)
     end)
