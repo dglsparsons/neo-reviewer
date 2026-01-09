@@ -75,6 +75,26 @@ Tests use plenary.nvim. Mock data in `tests/fixtures/mock_pr_data.lua`. Helpers 
 
 Test buffers don't have real file paths - navigation code checks `greviewer_file` buffer variable for file matching.
 
+**When changing logic, always consider:**
+- Do existing tests cover the changed code paths?
+- Are new tests needed for new functionality?
+- Do fixtures need updating for new data structures?
+- Run `make test` to verify changes don't break existing tests
+
+If tests pass without modification after significant logic changes, that's a red flag - the new code paths likely aren't covered.
+
+## Documentation
+
+User-facing documentation lives in `doc/greviewer.txt` (Neovim help format).
+
+**When adding or changing the public API, always update the docs:**
+- New functions exposed via `require("greviewer")` → add to FUNCTIONS section
+- New user commands (`:GReview*`) → add to COMMANDS section
+- New configuration options → add to CONFIGURATION section
+- Changed behavior → update relevant descriptions
+
+Keep the docs in sync with `lua/greviewer/init.lua` (commands/functions) and `lua/greviewer/config.lua` (configuration options).
+
 ## Nix
 
 `flake.nix` builds both CLI and plugin. Uses `src = ./.` which only includes git-tracked files - uncommitted changes won't appear in Nix builds.

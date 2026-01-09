@@ -30,9 +30,11 @@ pub fn parse_patch(patch: &str) -> Vec<Hunk> {
             let mut old_lines = Vec::new();
             let mut added_lines = Vec::new();
             let mut deleted_at = Vec::new();
+            let mut deleted_old_lines = Vec::new();
             let mut has_additions = false;
             let mut has_deletions = false;
             let mut new_line_num = new_start;
+            let mut old_line_num = old_start;
 
             while i < lines.len() {
                 let content_line = lines[i];
@@ -44,13 +46,16 @@ pub fn parse_patch(patch: &str) -> Vec<Hunk> {
                 if let Some(stripped) = content_line.strip_prefix('-') {
                     old_lines.push(stripped.to_string());
                     deleted_at.push(new_line_num);
+                    deleted_old_lines.push(old_line_num);
                     has_deletions = true;
+                    old_line_num += 1;
                 } else if content_line.strip_prefix('+').is_some() {
                     added_lines.push(new_line_num);
                     has_additions = true;
                     new_line_num += 1;
                 } else if content_line.starts_with(' ') || content_line.is_empty() {
                     new_line_num += 1;
+                    old_line_num += 1;
                 }
 
                 i += 1;
@@ -73,6 +78,7 @@ pub fn parse_patch(patch: &str) -> Vec<Hunk> {
                 hunk_type,
                 added_lines,
                 deleted_at,
+                deleted_old_lines,
             });
         } else {
             i += 1;

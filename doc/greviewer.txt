@@ -21,7 +21,10 @@ your editor. It provides:
 - Expandable old code preview (toggle to see what was changed)
 - Navigation between changes
 - Add review comments directly from Neovim
-- View existing PR comments inline
+- View existing PR comments inline with threaded replies and reply counts
+- Reply to comment threads
+- Multi-line comments with visual range selection
+- Submit reviews (approve or request changes)
 - Telescope integration for file picker
 
 ==============================================================================
@@ -31,7 +34,7 @@ your editor. It provides:
 - plenary.nvim (required)
 - telescope.nvim (optional, for file picker)
 - greviewer-cli (Rust CLI tool)
-- GitHub authentication via `gh` CLI or GITHUB_TOKEN
+- GitHub authentication via `gh` CLI
 
 ==============================================================================
 3. INSTALLATION                                        *greviewer-installation*
@@ -68,18 +71,35 @@ Call setup() with your options: >lua
         },
         wrap_navigation = true,      -- Wrap ]c/[c at file boundaries
         auto_expand_deletes = false, -- Auto-expand deleted lines
+        thread_window = {
+            keys = {
+                close = { "q", "<Esc>" },  -- Keys to close thread window
+                reply = "r",               -- Key to reply to comment
+            },
+        },
     })
 <
+
+                                                  *greviewer-config-thread_window*
+thread_window.keys ~
+    Configure keybindings for the comment thread floating window.
+    - `close`: Key(s) to close the window. String or table of strings.
+    - `reply`: Key(s) to reply to the comment under cursor.
 
 ==============================================================================
 5. COMMANDS                                                *greviewer-commands*
 
-:GReview {url}                                                       *:GReview*
-    Open a PR for review. URL should be a GitHub PR URL like:
-    https://github.com/owner/repo/pull/123
+:GReview {url|number}                                                *:GReview*
+    Open a PR for review. Accepts either:
+    - A GitHub PR URL: https://github.com/owner/repo/pull/123
+    - A PR number (will checkout the PR branch): :GReview 123
+    - No argument (detects PR for current branch): :GReview
+    
+    If a review is already active, toggles overlay visibility.
 
-:GReviewClose                                                   *:GReviewClose*
-    Close the current review and clean up buffers.
+:GReviewDone                                                     *:GReviewDone*
+    Close the current review, clean up buffers, and restore previous
+    branch state if a PR was checked out.
 
 :GReviewFiles                                                   *:GReviewFiles*
     Open the Telescope file picker (or fallback) to switch between
@@ -87,6 +107,25 @@ Call setup() with your options: >lua
 
 :GReviewAuth                                                     *:GReviewAuth*
     Check GitHub authentication status.
+
+:GReviewSubmit                                                 *:GReviewSubmit*
+    Submit the review. Prompts to select "Approve" or "Request Changes".
+    For "Request Changes", prompts for an optional message.
+
+:[range]GReviewComment                                       *:GReviewComment*
+    Add a review comment. When called with a visual selection, creates a
+    multi-line comment spanning the selected lines. Without a selection,
+    comments on the current line.
+
+    Multi-line comments show brackets on the right (aligned to window edge),
+    so diff signs remain visible:
+>
+        10 │ +  code line 1                              ┐
+        11 │ ~  code line 2                              │
+        12 │ +  code line 3  @reviewer: comment          ┘
+<
+    Opening the thread window (|greviewer.show_comment()|) works from any
+    line within the comment range.
 
 ==============================================================================
 6. FUNCTIONS                                              *greviewer-functions*
@@ -100,11 +139,27 @@ require("greviewer").prev_hunk()                         *greviewer.prev_hunk()*
 require("greviewer").toggle_inline()                 *greviewer.toggle_inline()*
     Toggle inline preview of old code at cursor position.
 
-require("greviewer").add_comment()                     *greviewer.add_comment()*
-    Add a review comment at the current cursor line.
+require("greviewer").add_comment({opts})               *greviewer.add_comment()*
+    Add a review comment. When called with {line1} and {line2} in opts,
+    creates a multi-line comment spanning those lines. Otherwise comments
+    on the current cursor line.
+
+require("greviewer").show_comment()                   *greviewer.show_comment()*
+    Show the comment thread for the current line in a floating window.
+    If there are comments on the line, opens an interactive window where
+    you can view the full thread and reply to any comment.
 
 require("greviewer").show_file_picker()           *greviewer.show_file_picker()*
     Show the file picker (Telescope or fallback).
+
+require("greviewer").check_auth()                       *greviewer.check_auth()*
+    Check GitHub authentication status and notify the result.
+
+require("greviewer").submit_review()                 *greviewer.submit_review()*
+    Submit the review with a prompt to approve or request changes.
+
+require("greviewer").toggle_overlays()             *greviewer.toggle_overlays()*
+    Toggle visibility of review overlays (signs, comments, etc.).
 
 ==============================================================================
 7. KEYMAPS                                                  *greviewer-keymaps*
@@ -126,9 +181,20 @@ greviewer does not set any keymaps by default. Add your own: >lua
         require("greviewer").add_comment()
     end, { desc = "Add comment" })
 
+    vim.keymap.set("v", "<leader>cc", ":'<,'>GReviewComment<CR>",
+        { desc = "Add comment on selection" })
+
+    vim.keymap.set("n", "<leader>cv", function()
+        require("greviewer").show_comment()
+    end, { desc = "View comment thread" })
+
     vim.keymap.set("n", "<leader>cf", function()
         require("greviewer").show_file_picker()
     end, { desc = "Show files" })
+
+    vim.keymap.set("n", "<leader>cs", function()
+        require("greviewer").submit_review()
+    end, { desc = "Submit review" })
 <
 
 ==============================================================================

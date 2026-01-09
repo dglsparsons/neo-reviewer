@@ -128,21 +128,33 @@ function M.fetch_pr(url, callback)
 end
 
 function M.add_comment(url, comment, callback)
+    local args = {
+        "comment",
+        "--url",
+        url,
+        "--path",
+        comment.path,
+        "--line",
+        tostring(comment.line),
+        "--side",
+        comment.side,
+        "--body",
+        comment.body,
+    }
+
+    if comment.start_line then
+        table.insert(args, "--start-line")
+        table.insert(args, tostring(comment.start_line))
+    end
+
+    if comment.start_side then
+        table.insert(args, "--start-side")
+        table.insert(args, comment.start_side)
+    end
+
     Job:new({
         command = config.values.cli_path,
-        args = {
-            "comment",
-            "--url",
-            url,
-            "--path",
-            comment.path,
-            "--line",
-            tostring(comment.line),
-            "--side",
-            comment.side,
-            "--body",
-            comment.body,
-        },
+        args = args,
         on_exit = vim.schedule_wrap(function(j, code)
             if code == 0 then
                 local output = table.concat(j:result(), "\n")
@@ -172,6 +184,35 @@ function M.fetch_comments(url, callback)
                     callback(data.comments, nil)
                 else
                     callback(nil, "Failed to parse JSON")
+                end
+            else
+                local stderr = table.concat(j:stderr_result(), "\n")
+                callback(nil, stderr)
+            end
+        end),
+    }):start()
+end
+
+function M.reply_to_comment(url, comment_id, body, callback)
+    Job:new({
+        command = config.values.cli_path,
+        args = {
+            "reply",
+            "--url",
+            url,
+            "--comment-id",
+            tostring(comment_id),
+            "--body",
+            body,
+        },
+        on_exit = vim.schedule_wrap(function(j, code)
+            if code == 0 then
+                local output = table.concat(j:result(), "\n")
+                local ok, data = pcall(vim.json.decode, output)
+                if ok and data.success then
+                    callback(data, nil)
+                else
+                    callback(nil, data and data.error or "Unknown error")
                 end
             else
                 local stderr = table.concat(j:stderr_result(), "\n")

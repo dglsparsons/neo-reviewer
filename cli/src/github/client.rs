@@ -127,32 +127,75 @@ impl GitHubClient {
 
     /// Fetch review comments for the PR
     pub async fn get_review_comments(&self, pr_ref: &PrRef) -> Result<Vec<ReviewComment>> {
-        let comments = self
-            .octocrab
-            .pulls(&pr_ref.owner, &pr_ref.repo)
-            .list_comments(Some(pr_ref.number))
+        let url = format!(
+            "https://api.github.com/repos/{}/{}/pulls/{}/comments",
+            pr_ref.owner, pr_ref.repo, pr_ref.number
+        );
+
+        #[derive(serde::Deserialize)]
+        struct CommentRaw {
+            id: u64,
+            path: String,
+            line: Option<u32>,
+            start_line: Option<u32>,
+            side: Option<String>,
+            start_side: Option<String>,
+            body: String,
+            user: Option<UserRaw>,
+            created_at: String,
+            html_url: String,
+            in_reply_to_id: Option<u64>,
+        }
+
+        #[derive(serde::Deserialize)]
+        struct UserRaw {
+            login: String,
+        }
+
+        let client = reqwest::Client::new();
+        let response = client
+            .get(&url)
+            .header("Authorization", format!("Bearer {}", self.token))
+            .header("Accept", "application/vnd.github+json")
+            .header("User-Agent", "greviewer-cli")
+            .header("X-GitHub-Api-Version", "2022-11-28")
             .send()
             .await?;
 
-        let review_comments: Vec<ReviewComment> = comments
-            .items
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_body = response.text().await.unwrap_or_default();
+            return Err(anyhow!(
+                "Failed to fetch comments: {} - {}",
+                status,
+                error_body
+            ));
+        }
+
+        let raw_comments: Vec<CommentRaw> = response.json().await?;
+
+        let review_comments: Vec<ReviewComment> = raw_comments
             .into_iter()
             .map(|c| ReviewComment {
-                id: c.id.0,
+                id: c.id,
                 path: c.path,
-                line: c.line.map(|l| l as u32),
+                line: c.line,
+                start_line: c.start_line,
                 side: c.side.unwrap_or_default(),
+                start_side: c.start_side,
                 body: c.body,
                 author: c.user.map(|u| u.login).unwrap_or_default(),
-                created_at: c.created_at.to_rfc3339(),
-                html_url: c.html_url.to_string(),
+                created_at: c.created_at,
+                html_url: c.html_url,
+                in_reply_to_id: c.in_reply_to_id,
             })
             .collect();
 
         Ok(review_comments)
     }
 
-    /// Add a review comment to a specific line using raw API
+    /// Add a review comment to a specific line or line range using raw API
+    #[allow(clippy::too_many_arguments)]
     pub async fn add_review_comment(
         &self,
         pr_ref: &PrRef,
@@ -161,8 +204,9 @@ impl GitHubClient {
         line: u32,
         side: &str,
         body: &str,
+        start_line: Option<u32>,
+        start_side: Option<&str>,
     ) -> Result<ReviewComment> {
-        // Use raw API request since octocrab's builder API is complex
         let url = format!(
             "https://api.github.com/repos/{}/{}/pulls/{}/comments",
             pr_ref.owner, pr_ref.repo, pr_ref.number
@@ -175,6 +219,10 @@ impl GitHubClient {
             path: String,
             line: u32,
             side: String,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            start_line: Option<u32>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            start_side: Option<String>,
         }
 
         #[derive(serde::Deserialize)]
@@ -182,7 +230,9 @@ impl GitHubClient {
             id: u64,
             path: Option<String>,
             line: Option<u32>,
+            start_line: Option<u32>,
             side: Option<String>,
+            start_side: Option<String>,
             body: Option<String>,
             user: Option<UserRaw>,
             created_at: Option<String>,
@@ -207,6 +257,8 @@ impl GitHubClient {
                 path: path.to_string(),
                 line,
                 side: side.to_uppercase(),
+                start_line,
+                start_side: start_side.map(|s| s.to_uppercase()),
             })
             .send()
             .await?;
@@ -227,11 +279,88 @@ impl GitHubClient {
             id: raw.id,
             path: raw.path.unwrap_or_default(),
             line: raw.line,
+            start_line: raw.start_line,
             side: raw.side.unwrap_or_default(),
+            start_side: raw.start_side,
             body: raw.body.unwrap_or_default(),
             author: raw.user.map(|u| u.login).unwrap_or_default(),
             created_at: raw.created_at.unwrap_or_default(),
             html_url: raw.html_url.unwrap_or_default(),
+            in_reply_to_id: None,
+        })
+    }
+
+    pub async fn reply_to_comment(
+        &self,
+        pr_ref: &PrRef,
+        comment_id: u64,
+        body: &str,
+    ) -> Result<ReviewComment> {
+        let url = format!(
+            "https://api.github.com/repos/{}/{}/pulls/{}/comments/{}/replies",
+            pr_ref.owner, pr_ref.repo, pr_ref.number, comment_id
+        );
+
+        #[derive(serde::Serialize)]
+        struct ReplyRequest {
+            body: String,
+        }
+
+        #[derive(serde::Deserialize)]
+        struct ReplyResponseRaw {
+            id: u64,
+            path: Option<String>,
+            line: Option<u32>,
+            side: Option<String>,
+            body: Option<String>,
+            user: Option<UserRaw>,
+            created_at: Option<String>,
+            html_url: Option<String>,
+            in_reply_to_id: Option<u64>,
+        }
+
+        #[derive(serde::Deserialize)]
+        struct UserRaw {
+            login: String,
+        }
+
+        let client = reqwest::Client::new();
+        let response = client
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", self.token))
+            .header("Accept", "application/vnd.github+json")
+            .header("User-Agent", "greviewer-cli")
+            .header("X-GitHub-Api-Version", "2022-11-28")
+            .json(&ReplyRequest {
+                body: body.to_string(),
+            })
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_body = response.text().await.unwrap_or_default();
+            return Err(anyhow!(
+                "Failed to reply to comment: {} - {}",
+                status,
+                error_body
+            ));
+        }
+
+        let raw: ReplyResponseRaw = response.json().await?;
+
+        Ok(ReviewComment {
+            id: raw.id,
+            path: raw.path.unwrap_or_default(),
+            line: raw.line,
+            start_line: None,
+            side: raw.side.unwrap_or_default(),
+            start_side: None,
+            body: raw.body.unwrap_or_default(),
+            author: raw.user.map(|u| u.login).unwrap_or_default(),
+            created_at: raw.created_at.unwrap_or_default(),
+            html_url: raw.html_url.unwrap_or_default(),
+            in_reply_to_id: raw.in_reply_to_id,
         })
     }
 

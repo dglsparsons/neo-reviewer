@@ -339,7 +339,7 @@ describe("greviewer.state", function()
             state.set_review(data)
 
             local comments = state.get_comments_for_file("src/foo.lua")
-            assert.are.equal(1, #comments)
+            assert.are.equal(3, #comments)
             assert.are.equal("Looks good!", comments[1].body)
         end)
 

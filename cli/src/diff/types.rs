@@ -19,6 +19,8 @@ pub struct Hunk {
     pub added_lines: Vec<u32>,
     /// Line numbers in new file where deletions occurred (position after which old lines were removed)
     pub deleted_at: Vec<u32>,
+    /// Corresponding old file line numbers for each deletion (parallel to deleted_at/old_lines)
+    pub deleted_old_lines: Vec<u32>,
 }
 
 /// Type of change in a hunk
