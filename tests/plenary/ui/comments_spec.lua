@@ -178,6 +178,63 @@ describe("greviewer.ui.comments", function()
         end)
     end)
 
+    describe("parse_suggestion", function()
+        it("returns nil for comment without suggestion", function()
+            local result = comments.parse_suggestion("This is a regular comment")
+            assert.is_nil(result)
+        end)
+
+        it("returns nil for nil body", function()
+            local result = comments.parse_suggestion(nil)
+            assert.is_nil(result)
+        end)
+
+        it("parses single-line suggestion", function()
+            local body = "Consider this:\n\n```suggestion\nlocal x = 1\n```"
+            local result = comments.parse_suggestion(body)
+
+            assert.is_not_nil(result)
+            assert.are.same({ "Consider this:", "" }, result.before_text)
+            assert.are.same({ "local x = 1" }, result.suggestion_lines)
+            assert.are.same({}, result.after_text)
+        end)
+
+        it("parses multi-line suggestion", function()
+            local body = "Update:\n\n```suggestion\nline 1\nline 2\nline 3\n```"
+            local result = comments.parse_suggestion(body)
+
+            assert.is_not_nil(result)
+            assert.are.same({ "line 1", "line 2", "line 3" }, result.suggestion_lines)
+        end)
+
+        it("parses suggestion with text after", function()
+            local body = "Before\n\n```suggestion\ncode\n```\n\nAfter text"
+            local result = comments.parse_suggestion(body)
+
+            assert.is_not_nil(result)
+            assert.are.same({ "Before", "" }, result.before_text)
+            assert.are.same({ "code" }, result.suggestion_lines)
+            assert.are.same({ "", "After text" }, result.after_text)
+        end)
+
+        it("parses empty suggestion", function()
+            local body = "Delete this line:\n\n```suggestion\n```"
+            local result = comments.parse_suggestion(body)
+
+            assert.is_not_nil(result)
+            assert.are.same({}, result.suggestion_lines)
+        end)
+
+        it("handles suggestion block at start of body", function()
+            local body = "```suggestion\nreplacement\n```"
+            local result = comments.parse_suggestion(body)
+
+            assert.is_not_nil(result)
+            assert.are.same({}, result.before_text)
+            assert.are.same({ "replacement" }, result.suggestion_lines)
+        end)
+    end)
+
     describe("LEFT side comments", function()
         it("show_comment maps LEFT side comment to deleted_at position", function()
             local bufnr = helpers.create_test_buffer({ "line 1", "line 2", "line 3", "line 4", "line 5" })

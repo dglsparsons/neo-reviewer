@@ -13,6 +13,8 @@ M.values = {
         keys = {
             close = { "q", "<Esc>" },
             reply = "r",
+            toggle_old = "o",
+            apply = "a",
         },
     },
 }

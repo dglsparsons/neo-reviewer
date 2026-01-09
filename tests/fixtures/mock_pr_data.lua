@@ -402,4 +402,141 @@ M.comment_navigation_pr = {
     },
 }
 
+M.suggestion_pr = {
+    pr = {
+        number = 1001,
+        title = "PR with suggestions",
+        body = "PR containing code suggestions",
+        state = "open",
+        author = "testuser",
+    },
+    files = {
+        {
+            path = "src/example.lua",
+            status = "modified",
+            additions = 5,
+            deletions = 2,
+            content = table.concat({
+                "local M = {}",
+                "",
+                "local x = foo()",
+                "",
+                "function M.setup()",
+                "    print('hello')",
+                "    print('world')",
+                "end",
+                "",
+                "return M",
+            }, "\n"),
+            hunks = {
+                {
+                    start = 3,
+                    count = 1,
+                    hunk_type = "add",
+                    old_lines = {},
+                    added_lines = { 3 },
+                    deleted_at = {},
+                    deleted_old_lines = {},
+                },
+                {
+                    start = 6,
+                    count = 2,
+                    hunk_type = "change",
+                    old_lines = { "    print('old')" },
+                    added_lines = { 6, 7 },
+                    deleted_at = { 6 },
+                    deleted_old_lines = { 6 },
+                },
+            },
+        },
+    },
+    comments = {
+        {
+            id = 100,
+            path = "src/example.lua",
+            line = 3,
+            side = "RIGHT",
+            body = "Consider using a more descriptive name:\n\n```suggestion\nlocal descriptive_name = foo()\n```",
+            author = "reviewer",
+            created_at = "2024-01-15T10:30:00Z",
+            html_url = "https://github.com/owner/repo/pull/1001#discussion_r100",
+            in_reply_to_id = nil,
+        },
+        {
+            id = 101,
+            path = "src/example.lua",
+            line = 7,
+            start_line = 6,
+            side = "RIGHT",
+            start_side = "RIGHT",
+            body = "These print statements could be combined:\n\n```suggestion\n    print('hello world')\n```\n\nThis reduces the number of function calls.",
+            author = "reviewer",
+            created_at = "2024-01-15T11:00:00Z",
+            html_url = "https://github.com/owner/repo/pull/1001#discussion_r101",
+            in_reply_to_id = nil,
+        },
+        {
+            id = 102,
+            path = "src/example.lua",
+            line = 3,
+            side = "RIGHT",
+            body = "Good suggestion, I'll update this.",
+            author = "author",
+            created_at = "2024-01-15T12:00:00Z",
+            html_url = "https://github.com/owner/repo/pull/1001#discussion_r102",
+            in_reply_to_id = 100,
+        },
+    },
+}
+
+M.multiline_suggestion_pr = {
+    pr = {
+        number = 1002,
+        title = "PR with multi-line suggestion",
+        body = "PR with a multi-line code suggestion",
+        state = "open",
+        author = "testuser",
+    },
+    files = {
+        {
+            path = "src/config.lua",
+            status = "modified",
+            additions = 3,
+            deletions = 1,
+            content = table.concat({
+                "local config = {",
+                "    name = 'test',",
+                "    value = 42,",
+                "}",
+            }, "\n"),
+            hunks = {
+                {
+                    start = 2,
+                    count = 2,
+                    hunk_type = "change",
+                    old_lines = { "    old = true," },
+                    added_lines = { 2, 3 },
+                    deleted_at = { 2 },
+                    deleted_old_lines = { 2 },
+                },
+            },
+        },
+    },
+    comments = {
+        {
+            id = 200,
+            path = "src/config.lua",
+            line = 3,
+            start_line = 2,
+            side = "RIGHT",
+            start_side = "RIGHT",
+            body = "Let's add some more fields:\n\n```suggestion\n    name = 'test',\n    value = 42,\n    enabled = true,\n    debug = false,\n```",
+            author = "reviewer",
+            created_at = "2024-01-16T09:00:00Z",
+            html_url = "https://github.com/owner/repo/pull/1002#discussion_r200",
+            in_reply_to_id = nil,
+        },
+    },
+}
+
 return M

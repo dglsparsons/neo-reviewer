@@ -15,6 +15,47 @@ local function define_highlights()
     vim.api.nvim_set_hl(0, "GReviewerThreadBody", { fg = "#abb2bf", default = true })
     vim.api.nvim_set_hl(0, "GReviewerThreadSeparator", { fg = "#3e4451", default = true })
     vim.api.nvim_set_hl(0, "GReviewerThreadReply", { fg = "#98c379", default = true })
+    vim.api.nvim_set_hl(0, "GReviewerSuggestionNew", { fg = "#98c379", default = true })
+    vim.api.nvim_set_hl(0, "GReviewerSuggestionOld", { fg = "#e06c75", bg = "#3b2d2d", default = true })
+    vim.api.nvim_set_hl(0, "GReviewerSuggestionGutter", { fg = "#e5c07b", bold = true, default = true })
+    vim.api.nvim_set_hl(0, "GReviewerSuggestionBorder", { fg = "#5c6370", default = true })
+end
+
+local function parse_suggestion(body)
+    if not body then
+        return nil
+    end
+
+    local before = {}
+    local suggestion_lines = {}
+    local after = {}
+    local in_suggestion = false
+    local found_suggestion = false
+
+    for line in (body .. "\n"):gmatch("([^\n]*)\n") do
+        if line:match("^```suggestion") then
+            in_suggestion = true
+            found_suggestion = true
+        elseif in_suggestion and line:match("^```$") then
+            in_suggestion = false
+        elseif in_suggestion then
+            table.insert(suggestion_lines, line)
+        elseif found_suggestion then
+            table.insert(after, line)
+        else
+            table.insert(before, line)
+        end
+    end
+
+    if not found_suggestion then
+        return nil
+    end
+
+    return {
+        before_text = before,
+        suggestion_lines = suggestion_lines,
+        after_text = after,
+    }
 end
 
 local function find_comment_position(file, cursor_line)
@@ -350,6 +391,7 @@ local function build_thread_lines(threads, is_local_review)
     local lines = {}
     local highlights = {}
     local comment_positions = {}
+    local suggestions = {}
 
     for thread_idx, thread in ipairs(threads) do
         if thread_idx > 1 then
@@ -361,9 +403,9 @@ local function build_thread_lines(threads, is_local_review)
 
         for comment_idx, comment in ipairs(thread) do
             local start_line_num = #lines + 1
-            local is_reply = comment_idx > 1
-            local reply_marker = is_reply and "  ↳ " or ""
-            local reply_indent = is_reply and "    " or ""
+            local is_reply_comment = comment_idx > 1
+            local reply_marker = is_reply_comment and "  ↳ " or ""
+            local reply_indent = is_reply_comment and "    " or ""
 
             local author_line = reply_marker .. "@" .. (comment.author or "unknown")
             if comment_idx == 1 and type(comment.start_line) == "number" and type(comment.line) == "number" then
@@ -391,14 +433,92 @@ local function build_thread_lines(threads, is_local_review)
             table.insert(lines, "")
 
             local body = comment.body or ""
-            for body_line in (body .. "\n"):gmatch("([^\n]*)\n") do
-                table.insert(lines, reply_indent .. "  " .. body_line)
+            local suggestion = parse_suggestion(body)
+
+            if suggestion then
+                for _, text_line in ipairs(suggestion.before_text) do
+                    table.insert(lines, reply_indent .. "  " .. text_line)
+                    table.insert(highlights, {
+                        line = #lines,
+                        hl = "GReviewerThreadBody",
+                        col_start = 0,
+                        col_end = -1,
+                    })
+                end
+
+                if #suggestion.before_text > 0 then
+                    table.insert(lines, "")
+                end
+
+                table.insert(lines, reply_indent .. "  ┌─ Suggestion " .. string.rep("─", 35))
                 table.insert(highlights, {
                     line = #lines,
-                    hl = "GReviewerThreadBody",
+                    hl = "GReviewerSuggestionBorder",
                     col_start = 0,
                     col_end = -1,
                 })
+
+                local suggestion_start_line = #lines + 1
+                for _, sugg_line in ipairs(suggestion.suggestion_lines) do
+                    table.insert(lines, reply_indent .. "  ~ │ " .. sugg_line)
+                    table.insert(highlights, {
+                        line = #lines,
+                        hl = "GReviewerSuggestionGutter",
+                        col_start = #reply_indent + 2,
+                        col_end = #reply_indent + 3,
+                    })
+                    table.insert(highlights, {
+                        line = #lines,
+                        hl = "GReviewerSuggestionBorder",
+                        col_start = #reply_indent + 4,
+                        col_end = #reply_indent + 5,
+                    })
+                    table.insert(highlights, {
+                        line = #lines,
+                        hl = "GReviewerSuggestionNew",
+                        col_start = #reply_indent + 6,
+                        col_end = -1,
+                    })
+                end
+                local suggestion_end_line = #lines
+
+                table.insert(lines, reply_indent .. "  └" .. string.rep("─", 47))
+                table.insert(highlights, {
+                    line = #lines,
+                    hl = "GReviewerSuggestionBorder",
+                    col_start = 0,
+                    col_end = -1,
+                })
+
+                table.insert(suggestions, {
+                    comment = comment,
+                    suggestion_lines = suggestion.suggestion_lines,
+                    display_start = suggestion_start_line,
+                    display_end = suggestion_end_line,
+                })
+
+                if #suggestion.after_text > 0 then
+                    table.insert(lines, "")
+                    for _, text_line in ipairs(suggestion.after_text) do
+                        table.insert(lines, reply_indent .. "  " .. text_line)
+                        table.insert(highlights, {
+                            line = #lines,
+                            hl = "GReviewerThreadBody",
+                            col_start = 0,
+                            col_end = -1,
+                        })
+                    end
+                end
+            else
+                for body_line in (body .. "\n"):gmatch("([^\n]*)\n") do
+                    table.insert(lines, reply_indent .. "  " .. body_line)
+                    table.insert(highlights, {
+                        line = #lines,
+                        hl = "GReviewerThreadBody",
+                        col_start = 0,
+                        col_end = -1,
+                    })
+                end
             end
 
             comment_positions[start_line_num] = comment
@@ -412,14 +532,21 @@ local function build_thread_lines(threads, is_local_review)
     local config = require("greviewer.config")
     local keys = config.values.thread_window.keys
     local close_key = type(keys.close) == "table" and keys.close[1] or keys.close
+    local toggle_key = type(keys.toggle_old) == "table" and keys.toggle_old[1] or keys.toggle_old
+    local apply_key = type(keys.apply) == "table" and keys.apply[1] or keys.apply
 
     table.insert(lines, "")
+    local help_line
     if is_local_review then
-        table.insert(lines, string.format("[%s] Close", close_key))
+        help_line = string.format("[%s] Close", close_key)
     else
         local reply_key = type(keys.reply) == "table" and keys.reply[1] or keys.reply
-        table.insert(lines, string.format("[%s] Reply  [%s] Close", reply_key, close_key))
+        help_line = string.format("[%s] Reply  [%s] Close", reply_key, close_key)
     end
+    if #suggestions > 0 then
+        help_line = string.format("[%s] Toggle old  [%s] Apply  ", toggle_key, apply_key) .. help_line
+    end
+    table.insert(lines, help_line)
     table.insert(highlights, {
         line = #lines,
         hl = "GReviewerThreadReply",
@@ -427,7 +554,7 @@ local function build_thread_lines(threads, is_local_review)
         col_end = -1,
     })
 
-    return lines, highlights, comment_positions
+    return lines, highlights, comment_positions, suggestions
 end
 
 local function close_thread_window()
@@ -495,6 +622,115 @@ local function prompt_reply(comment, pr_url)
     end)
 end
 
+local function get_current_code_lines(source_bufnr, comment)
+    local start_line = comment.start_line or comment.line
+    local end_line = comment.line
+    if not start_line or not end_line then
+        return {}
+    end
+
+    local line_count = vim.api.nvim_buf_line_count(source_bufnr)
+    if start_line > line_count or end_line > line_count then
+        return {}
+    end
+
+    return vim.api.nvim_buf_get_lines(source_bufnr, start_line - 1, end_line, false)
+end
+
+local function find_suggestion_at_cursor(suggestions)
+    if not thread_win or not vim.api.nvim_win_is_valid(thread_win) then
+        return nil
+    end
+
+    local cursor_line = vim.api.nvim_win_get_cursor(thread_win)[1]
+
+    for _, sugg in ipairs(suggestions) do
+        if cursor_line >= sugg.display_start and cursor_line <= sugg.display_end + 1 then
+            return sugg
+        end
+    end
+
+    if #suggestions == 1 then
+        return suggestions[1]
+    end
+
+    return nil
+end
+
+local function toggle_old_code(source_bufnr, suggestions)
+    if not thread_buf or not vim.api.nvim_buf_is_valid(thread_buf) then
+        return
+    end
+
+    local sugg = find_suggestion_at_cursor(suggestions)
+    if not sugg then
+        vim.notify("No suggestion at cursor", vim.log.levels.INFO)
+        return
+    end
+
+    local old_lines = get_current_code_lines(source_bufnr, sugg.comment)
+    if #old_lines == 0 then
+        vim.notify("Could not retrieve current code", vim.log.levels.WARN)
+        return
+    end
+
+    if sugg.extmark_id then
+        pcall(vim.api.nvim_buf_del_extmark, thread_buf, ns, sugg.extmark_id)
+        sugg.extmark_id = nil
+    else
+        local virt_lines = {}
+        for _, old_line in ipairs(old_lines) do
+            table.insert(virt_lines, {
+                { "    │ " .. old_line, "GReviewerSuggestionOld" },
+            })
+        end
+
+        sugg.extmark_id = vim.api.nvim_buf_set_extmark(thread_buf, ns, sugg.display_start - 1, 0, {
+            virt_lines = virt_lines,
+            virt_lines_above = true,
+        })
+    end
+end
+
+local function apply_suggestion(source_bufnr, suggestions, file_path)
+    local sugg = find_suggestion_at_cursor(suggestions)
+    if not sugg then
+        vim.notify("No suggestion at cursor", vim.log.levels.INFO)
+        return
+    end
+
+    local comment = sugg.comment
+    local start_line = comment.start_line or comment.line
+    local end_line = comment.line
+
+    if not start_line or not end_line then
+        vim.notify("Invalid suggestion line range", vim.log.levels.ERROR)
+        return
+    end
+
+    vim.api.nvim_buf_set_lines(source_bufnr, start_line - 1, end_line, false, sugg.suggestion_lines)
+
+    close_thread_window()
+
+    local comments = require("greviewer.ui.comments")
+    comments.clear(source_bufnr)
+    comments.show_existing(source_bufnr, file_path)
+
+    local signs = require("greviewer.ui.signs")
+    signs.clear(source_bufnr)
+    signs.show(source_bufnr, file_path)
+
+    vim.notify(
+        string.format(
+            "Applied suggestion to line%s %d%s",
+            start_line ~= end_line and "s" or "",
+            start_line,
+            start_line ~= end_line and ("-" .. end_line) or ""
+        ),
+        vim.log.levels.INFO
+    )
+end
+
 function M.show_thread()
     define_highlights()
 
@@ -513,6 +749,7 @@ function M.show_thread()
         return
     end
 
+    local source_bufnr = vim.api.nvim_get_current_buf()
     local line = vim.api.nvim_win_get_cursor(0)[1]
     local threads = get_threads_for_line(file.path, line, file.hunks)
 
@@ -523,7 +760,7 @@ function M.show_thread()
 
     close_thread_window()
 
-    local lines, highlights, comment_positions = build_thread_lines(threads, is_local)
+    local lines, highlights, comment_positions, suggestions = build_thread_lines(threads, is_local)
 
     thread_buf = vim.api.nvim_create_buf(false, true)
     vim.api.nvim_buf_set_lines(thread_buf, 0, -1, false, lines)
@@ -583,6 +820,22 @@ function M.show_thread()
             end, { buffer = thread_buf, nowait = true })
         end
     end
+
+    if #suggestions > 0 then
+        for _, key in ipairs(normalize_keys(keys.toggle_old)) do
+            vim.keymap.set("n", key, function()
+                toggle_old_code(source_bufnr, suggestions)
+            end, { buffer = thread_buf, nowait = true })
+        end
+
+        for _, key in ipairs(normalize_keys(keys.apply)) do
+            vim.keymap.set("n", key, function()
+                apply_suggestion(source_bufnr, suggestions, file.path)
+            end, { buffer = thread_buf, nowait = true })
+        end
+    end
 end
+
+M.parse_suggestion = parse_suggestion
 
 return M
