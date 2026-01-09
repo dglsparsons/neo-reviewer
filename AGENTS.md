@@ -40,6 +40,9 @@ make test
 # Format Rust code (required before committing)
 cargo fmt --all
 
+# Format Terraform (required before committing)
+terraform fmt -recursive repo/
+
 # Build CLI
 cargo build -p greviewer-cli --release
 
