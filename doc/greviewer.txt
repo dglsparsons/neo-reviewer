@@ -33,7 +33,7 @@ your editor. It provides:
 - Neovim >= 0.9.0
 - plenary.nvim (required)
 - telescope.nvim (optional, for file picker)
-- greviewer-cli (Rust CLI tool)
+- greviewer CLI (Rust CLI tool)
 - GitHub authentication via `gh` CLI
 
 ==============================================================================
@@ -63,7 +63,7 @@ Authenticate with GitHub: >bash
 
 Call setup() with your options: >lua
     require("greviewer").setup({
-        cli_path = "greviewer-cli",  -- Path to CLI binary
+        cli_path = "greviewer",  -- Path to CLI binary
         signs = {
             add = "+",
             delete = "-",

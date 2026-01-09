@@ -61,7 +61,7 @@ The plugin uses `gh auth token` to get your GitHub token, which handles SSO and 
 
 ```lua
 require("greviewer").setup({
-    cli_path = "greviewer-cli",  -- Path to CLI binary
+    cli_path = "greviewer",  -- Path to CLI binary
     signs = {
         add = "+",
         delete = "-",

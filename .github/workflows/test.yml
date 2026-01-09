@@ -60,7 +60,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Run tests
-        run: cargo test -p greviewer-cli --all-targets
+        run: cargo test -p greviewer --all-targets
 
   terraform:
     name: Terraform

@@ -1,7 +1,7 @@
 use std::process::Command;
 
 fn cli_path() -> &'static str {
-    env!("CARGO_BIN_EXE_greviewer-cli")
+    env!("CARGO_BIN_EXE_greviewer")
 }
 
 mod tls {
