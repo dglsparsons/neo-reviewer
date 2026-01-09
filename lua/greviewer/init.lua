@@ -5,7 +5,7 @@ function M.setup(opts)
     config.setup(opts)
 
     if vim.fn.executable(config.values.cli_path) == 0 then
-        vim.notify("greviewer-cli not found. Please install it with: cargo install --path cli", vim.log.levels.WARN)
+        vim.notify("greviewer CLI not found. Please install it with: cargo install --path cli", vim.log.levels.WARN)
     end
 
     vim.api.nvim_create_user_command("GReview", function(ctx)

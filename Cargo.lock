@@ -705,7 +705,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "greviewer-cli"
+name = "greviewer"
 version = "0.1.0"
 dependencies = [
  "anyhow",

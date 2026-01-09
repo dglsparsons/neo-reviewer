@@ -1,7 +1,7 @@
 local M = {}
 
 M.values = {
-    cli_path = "greviewer-cli",
+    cli_path = "greviewer",
     signs = {
         add = "+",
         delete = "-",

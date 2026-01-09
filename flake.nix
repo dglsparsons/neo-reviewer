@@ -17,7 +17,7 @@
 
         commonArgs = {
           src = rustSrc;
-          pname = "greviewer-cli";
+          pname = "greviewer";
           version = "0.1.0";
 
           nativeBuildInputs = with pkgs; [ pkg-config ];
@@ -30,14 +30,14 @@
 
         cargoArtifacts = craneLib.buildDepsOnly commonArgs;
 
-        greviewer-cli = craneLib.buildPackage (commonArgs // {
+        greviewer = craneLib.buildPackage (commonArgs // {
           inherit cargoArtifacts;
-          cargoExtraArgs = "-p greviewer-cli";
+          cargoExtraArgs = "-p greviewer";
         });
       in
       {
         packages = {
-          inherit greviewer-cli;
+          inherit greviewer;
 
           greviewer-nvim = pkgs.vimUtils.buildVimPlugin {
             pname = "greviewer";
@@ -46,20 +46,20 @@
             doCheck = false;
           };
 
-          default = greviewer-cli;
+          default = greviewer;
         };
 
         checks = {
-          inherit greviewer-cli;
+          inherit greviewer;
 
           clippy = craneLib.cargoClippy (commonArgs // {
             inherit cargoArtifacts;
-            cargoClippyExtraArgs = "-p greviewer-cli -- -D warnings";
+            cargoClippyExtraArgs = "-p greviewer -- -D warnings";
           });
 
           fmt = craneLib.cargoFmt {
             src = rustSrc;
-            pname = "greviewer-cli";
+            pname = "greviewer";
             version = "0.1.0";
           };
 
@@ -82,7 +82,7 @@
       }
     ) // {
       overlays.default = final: prev: {
-        greviewer-cli = self.packages.${prev.system}.greviewer-cli;
+        greviewer = self.packages.${prev.system}.greviewer;
         vimPlugins = prev.vimPlugins // {
           greviewer-nvim = self.packages.${prev.system}.greviewer-nvim;
         };

@@ -1,12 +1,12 @@
 [package]
-name = "greviewer-cli"
+name = "greviewer"
 version = "0.1.0"
 edition = "2024"
 description = "CLI tool for reviewing GitHub pull requests in Neovim"
 license = "MIT"
 
 [[bin]]
-name = "greviewer-cli"
+name = "greviewer"
 path = "src/main.rs"
 
 [dependencies]
