@@ -1,5 +1,11 @@
+---@class GReviewerAddCommentOpts
+---@field line1? integer Start line from visual selection
+---@field line2? integer End line from visual selection
+
+---@class GReviewerModule
 local M = {}
 
+---@param opts? GReviewerPartialConfig
 function M.setup(opts)
     local config = require("greviewer.config")
     config.setup(opts)
@@ -34,19 +40,21 @@ function M.setup(opts)
     end, { nargs = "?", desc = "Request changes on the PR" })
 end
 
+---@param url_or_number? string|integer
 function M.review(url_or_number)
     if url_or_number == nil then
         M.open()
     elseif type(url_or_number) == "number" or tonumber(url_or_number) then
-        M.open_with_checkout(tonumber(url_or_number))
+        local pr_number = tonumber(url_or_number) --[[@as integer]]
+        M.open_with_checkout(pr_number)
     else
+        ---@cast url_or_number string
         M.open_url(url_or_number)
     end
 end
 
 function M.open()
     local cli = require("greviewer.cli")
-    local state = require("greviewer.state")
 
     cli.get_pr_for_branch(function(pr_info, err)
         if err then
@@ -61,6 +69,7 @@ function M.open()
     end)
 end
 
+---@param pr_number integer
 function M.open_with_checkout(pr_number)
     local cli = require("greviewer.cli")
     local state = require("greviewer.state")
@@ -88,6 +97,7 @@ function M.open_with_checkout(pr_number)
     end)
 end
 
+---@param url string
 function M.open_url(url)
     M.fetch_and_enable(url)
 end
@@ -121,6 +131,8 @@ function M.review_diff()
     end)
 end
 
+---@param url string
+---@param on_ready? fun()
 function M.fetch_and_enable(url, on_ready)
     local cli = require("greviewer.cli")
     local state = require("greviewer.state")
@@ -176,6 +188,7 @@ function M.enable_overlay()
     end
 end
 
+---@param bufnr integer
 function M.apply_overlay_to_buffer(bufnr)
     local state = require("greviewer.state")
     local review = state.get_review()
@@ -239,6 +252,7 @@ function M.show_file_picker()
     local actions = require("telescope.actions")
     local action_state = require("telescope.actions.state")
 
+    ---@type {display: string, path: string, idx: integer}[]
     local entries = {}
     for i, file in ipairs(review.files) do
         local icon = ({ added = "+", deleted = "-", modified = "~", renamed = "R" })[file.status] or "?"
@@ -331,6 +345,7 @@ function M.toggle_prev_code()
     virtual.toggle_at_cursor()
 end
 
+---@param opts? GReviewerAddCommentOpts
 function M.add_comment(opts)
     local comments = require("greviewer.ui.comments")
     comments.add_at_cursor(opts)
@@ -371,6 +386,7 @@ function M.approve()
     end)
 end
 
+---@param message? string
 function M.request_changes(message)
     local state = require("greviewer.state")
     local cli = require("greviewer.cli")
@@ -418,7 +434,7 @@ function M.done()
 
     if did_checkout and prev_branch then
         vim.notify("Restoring previous branch...", vim.log.levels.INFO)
-        cli.restore_branch(prev_branch, did_stash, function(ok, err)
+        cli.restore_branch(prev_branch, did_stash or false, function(ok, err)
             if ok then
                 vim.notify(string.format("Restored to branch: %s", prev_branch), vim.log.levels.INFO)
             else

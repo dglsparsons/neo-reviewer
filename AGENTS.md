@@ -119,6 +119,13 @@ GitHub Actions use Nix for reproducible builds. When adding new CI jobs, prefer 
 - Use `DeterminateSystems/nix-installer-action` and `magic-nix-cache-action`
 - Add checks to `flake.nix` and run via `nix build .#checks...` or `nix flake check`
 
+## Lua Coding Standards
+
+- **Type Annotations:** Use LuaCATS (`---@param`, `---@return`, `---@type`) for ALL functions and complex variables.
+- **Classes:** Define plugin modules and configuration objects using `---@class`.
+- **LSP Compatibility:** Ensure all annotations are compatible with `lua-language-server`.
+- **Strictness:** Favor explicit types over `any`.
+
 ## Git Operations
 
 User handles git - don't commit unless explicitly asked.

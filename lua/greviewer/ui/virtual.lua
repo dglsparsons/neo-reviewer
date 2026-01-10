@@ -1,5 +1,10 @@
 local state = require("greviewer.state")
 
+---@class GReviewerDeletionGroup
+---@field position integer Line position where deletion occurred
+---@field lines string[] Deleted line contents
+
+---@class GReviewerVirtualModule
 local M = {}
 
 local ns = vim.api.nvim_create_namespace("greviewer_virtual")
@@ -8,12 +13,16 @@ local function define_highlights()
     vim.api.nvim_set_hl(0, "GReviewerVirtualDelete", { fg = "#e06c75", bg = "#3b2d2d", default = true })
 end
 
+---@param hunk GReviewerHunk
+---@return GReviewerDeletionGroup[]
 local function group_deletions_by_position(hunk)
     if not hunk.deleted_at or #hunk.deleted_at == 0 then
         return {}
     end
 
+    ---@type GReviewerDeletionGroup[]
     local groups = {}
+    ---@type GReviewerDeletionGroup?
     local current_group = nil
 
     for i, old_line in ipairs(hunk.old_lines) do
@@ -63,6 +72,9 @@ function M.toggle_at_cursor()
     end
 end
 
+---@param bufnr integer
+---@param hunk GReviewerHunk
+---@param file_path string
 function M.expand(bufnr, hunk, file_path)
     local groups = group_deletions_by_position(hunk)
 
@@ -70,10 +82,12 @@ function M.expand(bufnr, hunk, file_path)
         return
     end
 
+    ---@type integer[]
     local extmark_ids = {}
     local line_count = vim.api.nvim_buf_line_count(bufnr)
 
     for _, group in ipairs(groups) do
+        ---@type {[1]: string, [2]: string}[][]
         local virt_lines = {}
 
         for _, old_line in ipairs(group.lines) do
@@ -98,6 +112,9 @@ function M.expand(bufnr, hunk, file_path)
     state.set_hunk_expanded(file_path, hunk.start, extmark_ids)
 end
 
+---@param bufnr integer
+---@param hunk GReviewerHunk
+---@param file_path string
 function M.collapse(bufnr, hunk, file_path)
     local extmark_ids = state.get_hunk_extmarks(file_path, hunk.start)
 
@@ -110,6 +127,9 @@ function M.collapse(bufnr, hunk, file_path)
     state.set_hunk_expanded(file_path, hunk.start, nil)
 end
 
+---@param hunks? GReviewerHunk[]
+---@param line integer
+---@return GReviewerHunk?
 function M.find_hunk_at_line(hunks, line)
     if not hunks then
         return nil
@@ -132,6 +152,7 @@ function M.find_hunk_at_line(hunks, line)
     return nil
 end
 
+---@param bufnr integer
 function M.clear(bufnr)
     vim.api.nvim_buf_clear_namespace(bufnr, ns, 0, -1)
 end

@@ -1,11 +1,41 @@
 local state = require("greviewer.state")
 
+---@class GReviewerCommentPosition
+---@field line integer Line number
+---@field side GReviewerCommentSide Side of the diff
+
+---@class GReviewerParsedSuggestion
+---@field before_text string[] Text before the suggestion block
+---@field suggestion_lines string[] The suggested replacement lines
+---@field after_text string[] Text after the suggestion block
+
+---@class GReviewerHighlight
+---@field line integer 1-indexed line number
+---@field hl string Highlight group name
+---@field col_start integer Start column
+---@field col_end integer End column (-1 for end of line)
+
+---@class GReviewerSuggestionInfo
+---@field comment GReviewerComment The comment containing the suggestion
+---@field suggestion_lines string[] The suggested replacement lines
+---@field display_start integer Start line in thread buffer (1-indexed)
+---@field display_end integer End line in thread buffer (1-indexed)
+---@field extmark_id? integer Extmark ID for toggle state
+
+---@class GReviewerMultilineInputOpts
+---@field title? string Title for the input window
+
+---@class GReviewerCommentsModule
 local M = {}
 
 local ns = vim.api.nvim_create_namespace("greviewer_comments")
+---@type integer?
 local thread_win = nil
+---@type integer?
 local thread_buf = nil
+---@type integer?
 local input_win = nil
+---@type integer?
 local input_buf = nil
 
 local function close_input_window()
@@ -19,6 +49,8 @@ local function close_input_window()
     input_buf = nil
 end
 
+---@param opts GReviewerMultilineInputOpts
+---@param callback fun(body: string)
 function M.open_multiline_input(opts, callback)
     local config = require("greviewer.config")
     local keys = config.values.input_window.keys
@@ -90,13 +122,18 @@ local function define_highlights()
     vim.api.nvim_set_hl(0, "GReviewerSuggestionBorder", { fg = "#5c6370", default = true })
 end
 
+---@param body? string
+---@return GReviewerParsedSuggestion?
 local function parse_suggestion(body)
     if not body then
         return nil
     end
 
+    ---@type string[]
     local before = {}
+    ---@type string[]
     local suggestion_lines = {}
+    ---@type string[]
     local after = {}
     local in_suggestion = false
     local found_suggestion = false
@@ -127,6 +164,9 @@ local function parse_suggestion(body)
     }
 end
 
+---@param file GReviewerFile
+---@param cursor_line integer
+---@return GReviewerCommentPosition
 local function find_comment_position(file, cursor_line)
     local hunks = file.hunks or {}
 
@@ -143,6 +183,7 @@ local function find_comment_position(file, cursor_line)
     return { line = cursor_line, side = "RIGHT" }
 end
 
+---@param opts? GReviewerAddCommentOpts
 function M.add_at_cursor(opts)
     opts = opts or {}
     define_highlights()
@@ -163,28 +204,35 @@ function M.add_at_cursor(opts)
         return
     end
 
-    local start_line, end_line
+    local cursor_line = vim.api.nvim_win_get_cursor(0)[1]
+    ---@type integer?
+    local start_line = nil
+    ---@type integer
+    local end_line = cursor_line
     if opts.line1 and opts.line2 and opts.line1 ~= opts.line2 then
         start_line = math.min(opts.line1, opts.line2)
-        end_line = math.max(opts.line1, opts.line2)
-    else
-        end_line = vim.api.nvim_win_get_cursor(0)[1]
+        end_line = math.max(opts.line1, opts.line2) --[[@as integer]]
     end
 
-    local end_pos = find_comment_position(file, end_line)
+    local end_pos = find_comment_position(file, end_line --[[@as integer]])
     local start_pos = start_line and find_comment_position(file, start_line) or nil
 
     local title = start_line and string.format(" Comment (lines %d-%d) ", start_line, end_line) or " Comment "
 
     M.open_multiline_input({ title = title }, function(body)
         if is_local then
-            M.add_local_comment(file, start_line, end_line, body)
+            M.add_local_comment(file, start_line, end_line --[[@as integer]], body)
         else
-            M.add_pr_comment(file, pr_url, start_line, end_line, end_pos, start_pos, body)
+            ---@cast pr_url string
+            M.add_pr_comment(file, pr_url, start_line, end_line --[[@as integer]], end_pos, start_pos, body)
         end
     end)
 end
 
+---@param file GReviewerFile
+---@param start_line? integer
+---@param end_line integer
+---@param body string
 function M.add_local_comment(file, start_line, end_line, body)
     local comments_file = require("greviewer.ui.comments_file")
 
@@ -196,6 +244,7 @@ function M.add_local_comment(file, start_line, end_line, body)
 
     vim.notify("Comment added to REVIEW_COMMENTS.md", vim.log.levels.INFO)
 
+    ---@type GReviewerComment
     local comment = {
         id = os.time(),
         path = file.path,
@@ -204,7 +253,7 @@ function M.add_local_comment(file, start_line, end_line, body)
         side = "RIGHT",
         body = body,
         author = "you",
-        created_at = os.date("%Y-%m-%dT%H:%M:%S"),
+        created_at = os.date("%Y-%m-%dT%H:%M:%S") --[[@as string]],
     }
     state.add_comment(comment)
 
@@ -212,10 +261,18 @@ function M.add_local_comment(file, start_line, end_line, body)
     M.show_comment(bufnr, comment)
 end
 
+---@param file GReviewerFile
+---@param pr_url string
+---@param start_line? integer
+---@param end_line integer
+---@param end_pos GReviewerCommentPosition
+---@param start_pos? GReviewerCommentPosition
+---@param body string
 function M.add_pr_comment(file, pr_url, start_line, end_line, end_pos, start_pos, body)
     vim.notify("Submitting comment...", vim.log.levels.INFO)
 
     local cli = require("greviewer.cli")
+    ---@type GReviewerCommentData
     local comment_data = {
         path = file.path,
         line = end_pos.line,
@@ -236,6 +293,7 @@ function M.add_pr_comment(file, pr_url, start_line, end_line, end_pos, start_pos
 
         vim.notify("Comment added!", vim.log.levels.INFO)
 
+        ---@type GReviewerComment
         local comment = {
             id = data.comment_id,
             path = file.path,
@@ -245,7 +303,7 @@ function M.add_pr_comment(file, pr_url, start_line, end_line, end_pos, start_pos
             start_side = start_pos and start_pos.side or nil,
             body = body,
             author = "you",
-            created_at = os.date("%Y-%m-%dT%H:%M:%S"),
+            created_at = os.date("%Y-%m-%dT%H:%M:%S") --[[@as string]],
             html_url = data.html_url or "",
         }
         state.add_comment(comment)
@@ -255,6 +313,9 @@ function M.add_pr_comment(file, pr_url, start_line, end_line, end_pos, start_pos
     end)
 end
 
+---@param hunks? GReviewerHunk[]
+---@param old_line integer
+---@return integer?
 local function map_old_line_to_new(hunks, old_line)
     for _, hunk in ipairs(hunks or {}) do
         local deleted_old_lines = hunk.deleted_old_lines or {}
@@ -270,6 +331,10 @@ local function map_old_line_to_new(hunks, old_line)
     return nil
 end
 
+---@param bufnr integer
+---@param comment GReviewerComment
+---@param hunks? GReviewerHunk[]
+---@param reply_count? integer
 function M.show_comment(bufnr, comment, hunks, reply_count)
     if type(comment.line) ~= "number" then
         return
@@ -283,6 +348,7 @@ function M.show_comment(bufnr, comment, hunks, reply_count)
         end
     end
 
+    ---@type integer?
     local display_start_line = nil
     if type(comment.start_line) == "number" then
         display_start_line = comment.start_line
@@ -348,10 +414,14 @@ function M.show_comment(bufnr, comment, hunks, reply_count)
     end
 end
 
+---@param comment GReviewerComment
+---@return boolean
 local function is_reply(comment)
     return type(comment.in_reply_to_id) == "number"
 end
 
+---@param bufnr integer
+---@param file_path string
 function M.show_existing(bufnr, file_path)
     define_highlights()
 
@@ -359,7 +429,9 @@ function M.show_existing(bufnr, file_path)
     local hunks = file and file.hunks or {}
     local comments = state.get_comments_for_file(file_path)
 
+    ---@type GReviewerComment[]
     local root_comments = {}
+    ---@type table<integer|string, integer>
     local reply_counts = {}
 
     for _, comment in ipairs(comments) do
@@ -380,16 +452,22 @@ function M.show_existing(bufnr, file_path)
     end
 end
 
+---@param bufnr integer
 function M.clear(bufnr)
     vim.api.nvim_buf_clear_namespace(bufnr, ns, 0, -1)
 end
 
+---@param comment GReviewerComment
+---@param line integer
+---@param hunks? GReviewerHunk[]
+---@return boolean
 local function comment_matches_line(comment, line, hunks)
     local end_line = comment.line
     if type(end_line) ~= "number" then
         return false
     end
 
+    ---@type integer?
     local start_line = comment.start_line
     if type(start_line) ~= "number" then
         start_line = nil
@@ -410,12 +488,18 @@ local function comment_matches_line(comment, line, hunks)
     end
 end
 
+---@param file_path string
+---@param line integer
+---@param hunks? GReviewerHunk[]
+---@return GReviewerComment[][]
 local function get_threads_for_line(file_path, line, hunks)
     local comments = state.get_comments_for_file(file_path)
+    ---@type GReviewerComment[][]
     local threads = {}
 
     for _, comment in ipairs(comments) do
         if comment_matches_line(comment, line, hunks) and not is_reply(comment) then
+            ---@type GReviewerComment[]
             local thread = { comment }
             for _, reply in ipairs(comments) do
                 if is_reply(reply) and reply.in_reply_to_id == comment.id then
@@ -440,6 +524,8 @@ local function get_threads_for_line(file_path, line, hunks)
     return threads
 end
 
+---@param iso_date? string
+---@return string
 local function format_date(iso_date)
     if not iso_date then
         return ""
@@ -452,10 +538,20 @@ local function format_date(iso_date)
     return iso_date
 end
 
+---@param threads GReviewerComment[][]
+---@param is_local_review boolean
+---@return string[] lines
+---@return GReviewerHighlight[] highlights
+---@return table<integer, GReviewerComment> comment_positions
+---@return GReviewerSuggestionInfo[] suggestions
 local function build_thread_lines(threads, is_local_review)
+    ---@type string[]
     local lines = {}
+    ---@type GReviewerHighlight[]
     local highlights = {}
+    ---@type table<integer, GReviewerComment>
     local comment_positions = {}
+    ---@type GReviewerSuggestionInfo[]
     local suggestions = {}
 
     for thread_idx, thread in ipairs(threads) do
@@ -633,6 +729,8 @@ local function close_thread_window()
     thread_buf = nil
 end
 
+---@param comment_positions table<integer, GReviewerComment>
+---@return GReviewerComment?
 local function get_comment_at_cursor(comment_positions)
     if not thread_buf or not vim.api.nvim_buf_is_valid(thread_buf) then
         return nil
@@ -640,6 +738,7 @@ local function get_comment_at_cursor(comment_positions)
 
     local cursor_line = vim.api.nvim_win_get_cursor(thread_win)[1]
 
+    ---@type GReviewerComment?
     local closest_comment = nil
     local closest_line = 0
     for line, comment in pairs(comment_positions) do
@@ -652,6 +751,8 @@ local function get_comment_at_cursor(comment_positions)
     return closest_comment
 end
 
+---@param comment GReviewerComment
+---@param pr_url string
 local function prompt_reply(comment, pr_url)
     close_thread_window()
 
@@ -667,6 +768,7 @@ local function prompt_reply(comment, pr_url)
 
             vim.notify("Reply added!", vim.log.levels.INFO)
 
+            ---@type GReviewerComment
             local reply = {
                 id = data.comment_id,
                 path = comment.path,
@@ -674,7 +776,7 @@ local function prompt_reply(comment, pr_url)
                 side = comment.side or "RIGHT",
                 body = body,
                 author = "you",
-                created_at = os.date("%Y-%m-%dT%H:%M:%S"),
+                created_at = os.date("%Y-%m-%dT%H:%M:%S") --[[@as string]],
                 html_url = data.html_url or "",
                 in_reply_to_id = comment.id,
             }
@@ -683,6 +785,9 @@ local function prompt_reply(comment, pr_url)
     end)
 end
 
+---@param source_bufnr integer
+---@param comment GReviewerComment
+---@return string[]
 local function get_current_code_lines(source_bufnr, comment)
     local start_line = comment.start_line or comment.line
     local end_line = comment.line
@@ -698,6 +803,8 @@ local function get_current_code_lines(source_bufnr, comment)
     return vim.api.nvim_buf_get_lines(source_bufnr, start_line - 1, end_line, false)
 end
 
+---@param suggestions GReviewerSuggestionInfo[]
+---@return GReviewerSuggestionInfo?
 local function find_suggestion_at_cursor(suggestions)
     if not thread_win or not vim.api.nvim_win_is_valid(thread_win) then
         return nil
@@ -718,6 +825,8 @@ local function find_suggestion_at_cursor(suggestions)
     return nil
 end
 
+---@param source_bufnr integer
+---@param suggestions GReviewerSuggestionInfo[]
 local function toggle_old_code(source_bufnr, suggestions)
     if not thread_buf or not vim.api.nvim_buf_is_valid(thread_buf) then
         return
@@ -739,6 +848,7 @@ local function toggle_old_code(source_bufnr, suggestions)
         pcall(vim.api.nvim_buf_del_extmark, thread_buf, ns, sugg.extmark_id)
         sugg.extmark_id = nil
     else
+        ---@type {[1]: string, [2]: string}[][]
         local virt_lines = {}
         for _, old_line in ipairs(old_lines) do
             table.insert(virt_lines, {
@@ -753,6 +863,9 @@ local function toggle_old_code(source_bufnr, suggestions)
     end
 end
 
+---@param source_bufnr integer
+---@param suggestions GReviewerSuggestionInfo[]
+---@param file_path string
 local function apply_suggestion(source_bufnr, suggestions, file_path)
     local sugg = find_suggestion_at_cursor(suggestions)
     if not sugg then
@@ -870,7 +983,7 @@ function M.show_thread()
         vim.keymap.set("n", key, close_thread_window, { buffer = thread_buf, nowait = true })
     end
 
-    if not is_local then
+    if not is_local and pr_url then
         for _, key in ipairs(normalize_keys(keys.reply)) do
             vim.keymap.set("n", key, function()
                 local comment = get_comment_at_cursor(comment_positions)
