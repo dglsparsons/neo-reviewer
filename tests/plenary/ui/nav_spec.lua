@@ -261,6 +261,37 @@ describe("greviewer.ui.nav", function()
             assert.are.equal(1, #msgs)
             assert.matches("No more comments", msgs[1].msg)
         end)
+
+        it("handles comments with vim.NIL in_reply_to_id (JSON null)", function()
+            local data = helpers.deep_copy(fixtures.navigation_pr)
+            data.comments = {
+                {
+                    id = 1,
+                    path = "test.lua",
+                    line = 10,
+                    side = "RIGHT",
+                    body = "Comment with vim.NIL",
+                    author = "reviewer",
+                    created_at = "2024-01-01T12:00:00Z",
+                    in_reply_to_id = vim.NIL,
+                },
+            }
+            state.set_review(data)
+            local review = state.get_review()
+            review.url = "https://github.com/owner/repo/pull/789"
+
+            local file = data.files[1]
+            local lines = vim.split(file.content, "\n")
+            local bufnr = helpers.create_test_buffer(lines)
+            vim.api.nvim_buf_set_var(bufnr, "greviewer_file", file)
+            vim.api.nvim_buf_set_var(bufnr, "greviewer_pr_url", review.url)
+
+            helpers.set_cursor(1)
+            nav.next_comment(false)
+
+            local cursor = helpers.get_cursor()
+            assert.are.equal(10, cursor[1])
+        end)
     end)
 
     describe("prev_comment", function()

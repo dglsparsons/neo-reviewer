@@ -717,8 +717,9 @@ local function apply_suggestion(source_bufnr, suggestions, file_path)
     comments.show_existing(source_bufnr, file_path)
 
     local signs = require("greviewer.ui.signs")
+    local file = state.get_file_by_path(file_path)
     signs.clear(source_bufnr)
-    signs.show(source_bufnr, file_path)
+    signs.place(source_bufnr, file and file.hunks or {})
 
     vim.notify(
         string.format(

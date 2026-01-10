@@ -33,7 +33,7 @@ local function collect_comment_lines(file_path, hunks)
     local seen = {}
 
     for _, comment in ipairs(comments) do
-        if not comment.in_reply_to_id then
+        if type(comment.in_reply_to_id) ~= "number" then
             local display_line = get_comment_display_line(comment, hunks)
             if display_line and not seen[display_line] then
                 table.insert(lines, display_line)
