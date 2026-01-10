@@ -1,5 +1,51 @@
 local M = {}
 
+local function map_old_line_to_new(hunks, old_line)
+    for _, hunk in ipairs(hunks or {}) do
+        local deleted_old_lines = hunk.deleted_old_lines or {}
+        for i, old_ln in ipairs(deleted_old_lines) do
+            if old_ln == old_line then
+                local deleted_at = hunk.deleted_at or {}
+                if deleted_at[i] then
+                    return deleted_at[i]
+                end
+            end
+        end
+    end
+    return nil
+end
+
+local function get_comment_display_line(comment, hunks)
+    local line = comment.line
+    if type(line) ~= "number" then
+        return nil
+    end
+    if comment.side == "LEFT" then
+        return map_old_line_to_new(hunks, line) or line
+    end
+    return line
+end
+
+local function collect_comment_lines(file_path, hunks)
+    local state = require("greviewer.state")
+    local comments = state.get_comments_for_file(file_path)
+    local lines = {}
+    local seen = {}
+
+    for _, comment in ipairs(comments) do
+        if not comment.in_reply_to_id then
+            local display_line = get_comment_display_line(comment, hunks)
+            if display_line and not seen[display_line] then
+                table.insert(lines, display_line)
+                seen[display_line] = true
+            end
+        end
+    end
+
+    table.sort(lines)
+    return lines
+end
+
 local function get_hunk_first_change(hunk)
     local first_add = hunk.added_lines and hunk.added_lines[1]
     local first_del = hunk.deleted_at and hunk.deleted_at[1]
@@ -198,6 +244,114 @@ function M.last_hunk()
             return
         end
     end
+end
+
+function M.next_comment(wrap)
+    local state = require("greviewer.state")
+    local review = state.get_review()
+    if not review then
+        vim.notify("No active review", vim.log.levels.WARN)
+        return
+    end
+
+    local current_idx = get_current_file_index(review)
+    local cursor_line = vim.api.nvim_win_get_cursor(0)[1]
+
+    if current_idx then
+        local current_file = review.files[current_idx]
+        local comment_lines = collect_comment_lines(current_file.path, current_file.hunks)
+        for _, ln in ipairs(comment_lines) do
+            if ln > cursor_line then
+                jump_to(current_file.path, ln)
+                return
+            end
+        end
+
+        for i = current_idx + 1, #review.files do
+            local file = review.files[i]
+            local lines = collect_comment_lines(file.path, file.hunks)
+            if #lines > 0 then
+                jump_to(file.path, lines[1])
+                return
+            end
+        end
+    else
+        for _, file in ipairs(review.files) do
+            local lines = collect_comment_lines(file.path, file.hunks)
+            if #lines > 0 then
+                jump_to(file.path, lines[1])
+                return
+            end
+        end
+    end
+
+    if wrap then
+        for _, file in ipairs(review.files) do
+            local lines = collect_comment_lines(file.path, file.hunks)
+            if #lines > 0 then
+                jump_to(file.path, lines[1])
+                vim.notify("Wrapped to first comment", vim.log.levels.INFO)
+                return
+            end
+        end
+    end
+
+    vim.notify("No more comments", vim.log.levels.INFO)
+end
+
+function M.prev_comment(wrap)
+    local state = require("greviewer.state")
+    local review = state.get_review()
+    if not review then
+        vim.notify("No active review", vim.log.levels.WARN)
+        return
+    end
+
+    local current_idx = get_current_file_index(review)
+    local cursor_line = vim.api.nvim_win_get_cursor(0)[1]
+
+    if current_idx then
+        local current_file = review.files[current_idx]
+        local comment_lines = collect_comment_lines(current_file.path, current_file.hunks)
+        for i = #comment_lines, 1, -1 do
+            if comment_lines[i] < cursor_line then
+                jump_to(current_file.path, comment_lines[i])
+                return
+            end
+        end
+
+        for i = current_idx - 1, 1, -1 do
+            local file = review.files[i]
+            local lines = collect_comment_lines(file.path, file.hunks)
+            if #lines > 0 then
+                jump_to(file.path, lines[#lines])
+                return
+            end
+        end
+    else
+        for i = #review.files, 1, -1 do
+            local file = review.files[i]
+            local lines = collect_comment_lines(file.path, file.hunks)
+            if #lines > 0 then
+                jump_to(file.path, lines[#lines])
+                return
+            end
+        end
+    end
+
+    if wrap then
+        for i = #review.files, 1, -1 do
+            local file = review.files[i]
+            local lines = collect_comment_lines(file.path, file.hunks)
+            if #lines > 0 then
+                jump_to(file.path, lines[#lines])
+                vim.notify("Wrapped to last comment", vim.log.levels.INFO)
+                return
+            end
+        end
+    end
+
+    vim.notify("No more comments", vim.log.levels.INFO)
 end
 
 return M

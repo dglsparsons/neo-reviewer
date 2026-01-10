@@ -351,6 +351,18 @@ function M.prev_hunk()
     nav.prev_hunk(config.values.wrap_navigation)
 end
 
+function M.next_comment()
+    local nav = require("greviewer.ui.nav")
+    local config = require("greviewer.config")
+    nav.next_comment(config.values.wrap_navigation)
+end
+
+function M.prev_comment()
+    local nav = require("greviewer.ui.nav")
+    local config = require("greviewer.config")
+    nav.prev_comment(config.values.wrap_navigation)
+end
+
 function M.toggle_inline()
     local virtual = require("greviewer.ui.virtual")
     virtual.toggle_at_cursor()

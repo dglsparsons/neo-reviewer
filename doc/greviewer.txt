@@ -153,6 +153,16 @@ require("greviewer").next_hunk()                         *greviewer.next_hunk()*
 require("greviewer").prev_hunk()                         *greviewer.prev_hunk()*
     Jump to the previous change in the file.
 
+require("greviewer").next_comment()                   *greviewer.next_comment()*
+    Jump to the next comment in the review. Works in both PR review mode
+    (GitHub comments) and local diff review mode. Navigates across files.
+    Respects |wrap_navigation| config option.
+
+require("greviewer").prev_comment()                   *greviewer.prev_comment()*
+    Jump to the previous comment in the review. Works in both PR review mode
+    (GitHub comments) and local diff review mode. Navigates across files.
+    Respects |wrap_navigation| config option.
+
 require("greviewer").toggle_inline()                 *greviewer.toggle_inline()*
     Toggle inline preview of old code at cursor position.
 
@@ -193,6 +203,14 @@ greviewer does not set any keymaps by default. Add your own: >lua
     vim.keymap.set("n", "[c", function()
         require("greviewer").prev_hunk()
     end, { desc = "Previous change" })
+
+    vim.keymap.set("n", "]C", function()
+        require("greviewer").next_comment()
+    end, { desc = "Next comment" })
+
+    vim.keymap.set("n", "[C", function()
+        require("greviewer").prev_comment()
+    end, { desc = "Previous comment" })
 
     vim.keymap.set("n", "<CR>", function()
         require("greviewer").toggle_inline()

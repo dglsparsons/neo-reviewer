@@ -198,4 +198,120 @@ describe("greviewer.ui.nav", function()
             assert.are.equal(20, cursor[1])
         end)
     end)
+
+    describe("next_comment", function()
+        it("jumps to first comment from before first comment", function()
+            setup_review_buffer(fixtures.comment_navigation_pr)
+            helpers.set_cursor(1)
+
+            nav.next_comment(false)
+
+            local cursor = helpers.get_cursor()
+            assert.are.equal(5, cursor[1])
+        end)
+
+        it("jumps to next comment from first comment", function()
+            setup_review_buffer(fixtures.comment_navigation_pr)
+            helpers.set_cursor(5)
+
+            nav.next_comment(false)
+
+            local cursor = helpers.get_cursor()
+            assert.are.equal(15, cursor[1])
+        end)
+
+        it("jumps to next comment from between comments", function()
+            setup_review_buffer(fixtures.comment_navigation_pr)
+            helpers.set_cursor(10)
+
+            nav.next_comment(false)
+
+            local cursor = helpers.get_cursor()
+            assert.are.equal(15, cursor[1])
+        end)
+
+        it("stays at last comment when no wrap and at end", function()
+            setup_review_buffer(fixtures.comment_navigation_pr)
+            helpers.set_cursor(22)
+
+            nav.next_comment(false)
+
+            local cursor = helpers.get_cursor()
+            assert.are.equal(22, cursor[1])
+        end)
+
+        it("wraps to first comment when wrap=true and at end", function()
+            setup_review_buffer(fixtures.comment_navigation_pr)
+            helpers.set_cursor(24)
+
+            nav.next_comment(true)
+
+            local cursor = helpers.get_cursor()
+            assert.are.equal(5, cursor[1])
+        end)
+
+        it("notifies when no comments exist", function()
+            setup_review_buffer(fixtures.navigation_pr)
+            local notifications = helpers.capture_notifications()
+
+            nav.next_comment(false)
+
+            local msgs = notifications.get()
+            notifications.restore()
+            assert.are.equal(1, #msgs)
+            assert.matches("No more comments", msgs[1].msg)
+        end)
+    end)
+
+    describe("prev_comment", function()
+        it("jumps to last comment from after last comment", function()
+            setup_review_buffer(fixtures.comment_navigation_pr)
+            helpers.set_cursor(25)
+
+            nav.prev_comment(false)
+
+            local cursor = helpers.get_cursor()
+            assert.are.equal(22, cursor[1])
+        end)
+
+        it("jumps to previous comment from current comment", function()
+            setup_review_buffer(fixtures.comment_navigation_pr)
+            helpers.set_cursor(22)
+
+            nav.prev_comment(false)
+
+            local cursor = helpers.get_cursor()
+            assert.are.equal(15, cursor[1])
+        end)
+
+        it("jumps to previous comment from between comments", function()
+            setup_review_buffer(fixtures.comment_navigation_pr)
+            helpers.set_cursor(12)
+
+            nav.prev_comment(false)
+
+            local cursor = helpers.get_cursor()
+            assert.are.equal(5, cursor[1])
+        end)
+
+        it("wraps to last comment when wrap=true and at beginning", function()
+            setup_review_buffer(fixtures.comment_navigation_pr)
+            helpers.set_cursor(1)
+
+            nav.prev_comment(true)
+
+            local cursor = helpers.get_cursor()
+            assert.are.equal(22, cursor[1])
+        end)
+
+        it("does not wrap when wrap=false and at beginning", function()
+            setup_review_buffer(fixtures.comment_navigation_pr)
+            helpers.set_cursor(1)
+
+            nav.prev_comment(false)
+
+            local cursor = helpers.get_cursor()
+            assert.are.equal(1, cursor[1])
+        end)
+    end)
 end)
