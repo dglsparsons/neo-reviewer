@@ -1,7 +1,9 @@
+---@class GReviewerCommentsFileModule
 local M = {}
 
 local COMMENTS_FILE = "REVIEW_COMMENTS.md"
 
+---@return string
 function M.get_path()
     local state = require("greviewer.state")
     local git_root = state.get_git_root()
@@ -20,6 +22,11 @@ function M.clear()
     end
 end
 
+---@param file_path string
+---@param line integer
+---@param end_line integer
+---@param body string
+---@return boolean
 function M.write(file_path, line, end_line, body)
     local path = M.get_path()
     local file = io.open(path, "a")

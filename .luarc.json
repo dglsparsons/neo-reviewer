@@ -5,11 +5,15 @@
   },
   "diagnostics": {
     "globals": ["vim", "describe", "it", "before_each", "after_each"],
-    "disable": ["duplicate-set-field"]
+    "disable": ["duplicate-set-field"],
+    "neededFileStatus": {
+      "type-check": "Any"
+    }
   },
   "workspace": {
     "library": [
       "${3rd}/luv/library",
+      "$VIMRUNTIME",
       "lua/stubs"
     ],
     "checkThirdParty": false,

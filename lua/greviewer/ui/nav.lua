@@ -1,5 +1,9 @@
+---@class GReviewerNavModule
 local M = {}
 
+---@param hunks? GReviewerHunk[]
+---@param old_line integer
+---@return integer?
 local function map_old_line_to_new(hunks, old_line)
     for _, hunk in ipairs(hunks or {}) do
         local deleted_old_lines = hunk.deleted_old_lines or {}
@@ -15,6 +19,9 @@ local function map_old_line_to_new(hunks, old_line)
     return nil
 end
 
+---@param comment GReviewerComment
+---@param hunks? GReviewerHunk[]
+---@return integer?
 local function get_comment_display_line(comment, hunks)
     local line = comment.line
     if type(line) ~= "number" then
@@ -26,10 +33,15 @@ local function get_comment_display_line(comment, hunks)
     return line
 end
 
+---@param file_path string
+---@param hunks? GReviewerHunk[]
+---@return integer[]
 local function collect_comment_lines(file_path, hunks)
     local state = require("greviewer.state")
     local comments = state.get_comments_for_file(file_path)
+    ---@type integer[]
     local lines = {}
+    ---@type table<integer, boolean>
     local seen = {}
 
     for _, comment in ipairs(comments) do
@@ -46,6 +58,8 @@ local function collect_comment_lines(file_path, hunks)
     return lines
 end
 
+---@param hunk GReviewerHunk
+---@return integer?
 local function get_hunk_first_change(hunk)
     local first_add = hunk.added_lines and hunk.added_lines[1]
     local first_del = hunk.deleted_at and hunk.deleted_at[1]
@@ -55,7 +69,10 @@ local function get_hunk_first_change(hunk)
     return first_add or first_del
 end
 
+---@param hunks? GReviewerHunk[]
+---@return integer[]
 local function collect_hunk_starts(hunks)
+    ---@type integer[]
     local starts = {}
     for _, hunk in ipairs(hunks or {}) do
         local first = get_hunk_first_change(hunk)
@@ -67,6 +84,8 @@ local function collect_hunk_starts(hunks)
     return starts
 end
 
+---@param review GReviewerReview
+---@return integer?
 local function get_current_file_index(review)
     local buffer = require("greviewer.ui.buffer")
     local current_file = buffer.get_current_file_from_buffer()
@@ -80,6 +99,8 @@ local function get_current_file_index(review)
     return nil
 end
 
+---@param file_path string
+---@param line integer
 local function jump_to(file_path, line)
     vim.cmd("normal! m'")
 
@@ -103,6 +124,7 @@ local function jump_to(file_path, line)
     end
 end
 
+---@param wrap boolean
 function M.next_hunk(wrap)
     local state = require("greviewer.state")
     local review = state.get_review()
@@ -156,6 +178,7 @@ function M.next_hunk(wrap)
     vim.notify("No more changes", vim.log.levels.INFO)
 end
 
+---@param wrap boolean
 function M.prev_hunk(wrap)
     local state = require("greviewer.state")
     local review = state.get_review()
@@ -246,6 +269,7 @@ function M.last_hunk()
     end
 end
 
+---@param wrap boolean
 function M.next_comment(wrap)
     local state = require("greviewer.state")
     local review = state.get_review()
@@ -299,6 +323,7 @@ function M.next_comment(wrap)
     vim.notify("No more comments", vim.log.levels.INFO)
 end
 
+---@param wrap boolean
 function M.prev_comment(wrap)
     local state = require("greviewer.state")
     local review = state.get_review()

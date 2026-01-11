@@ -1,8 +1,41 @@
 local Job = require("plenary.job")
 local config = require("greviewer.config")
 
+---@class GReviewerPRInfo
+---@field number integer PR number
+---@field title string PR title
+---@field head_ref string Head branch name
+---@field head_sha string Head commit SHA
+---@field base_ref string Base branch name
+---@field owner string Repository owner
+---@field repo string Repository name
+
+---@class GReviewerCheckoutInfo
+---@field stashed boolean Whether changes were stashed
+---@field prev_branch string? Previous branch name
+
+---@class GReviewerCommentData
+---@field path string File path
+---@field line integer Line number
+---@field side string Side of the diff ("LEFT" or "RIGHT")
+---@field body string Comment body
+---@field start_line? integer Start line for multi-line comments
+---@field start_side? string Start side for multi-line comments
+
+---@class GReviewerCommentResponse
+---@field success boolean
+---@field comment_id? integer
+---@field html_url? string
+---@field error? string
+
+---@class GReviewerCommentsResponse
+---@field comments GReviewerComment[]
+
+---@class GReviewerCLIModule
 local M = {}
 
+---@return string? owner
+---@return string? repo
 function M.get_git_remote()
     local result = vim.fn.systemlist("git remote get-url origin 2>/dev/null")
     if vim.v.shell_error ~= 0 or #result == 0 then
@@ -16,6 +49,7 @@ function M.get_git_remote()
     return owner, repo
 end
 
+---@return string?
 function M.get_current_branch()
     local result = vim.fn.systemlist("git branch --show-current 2>/dev/null")
     if vim.v.shell_error ~= 0 or #result == 0 then
@@ -24,6 +58,7 @@ function M.get_current_branch()
     return result[1]
 end
 
+---@param callback fun(pr_info: GReviewerPRInfo?, err: string?)
 function M.get_pr_for_branch(callback)
     local owner, repo = M.get_git_remote()
     if not owner or not repo then
@@ -59,6 +94,8 @@ function M.get_pr_for_branch(callback)
     }):start()
 end
 
+---@param pr_number integer
+---@param callback fun(checkout_info: GReviewerCheckoutInfo?, err: string?)
 function M.checkout_pr(pr_number, callback)
     local stashed = false
     local prev_branch = M.get_current_branch()
@@ -88,6 +125,9 @@ function M.checkout_pr(pr_number, callback)
     }):start()
 end
 
+---@param prev_branch string
+---@param stashed boolean
+---@param callback fun(ok: boolean, err: string?)
 function M.restore_branch(prev_branch, stashed, callback)
     Job:new({
         command = "git",
@@ -106,6 +146,8 @@ function M.restore_branch(prev_branch, stashed, callback)
     }):start()
 end
 
+---@param url string
+---@param callback fun(data: GReviewerReviewData?, err: string?)
 function M.fetch_pr(url, callback)
     Job:new({
         command = config.values.cli_path,
@@ -127,6 +169,9 @@ function M.fetch_pr(url, callback)
     }):start()
 end
 
+---@param url string
+---@param comment GReviewerCommentData
+---@param callback fun(data: GReviewerCommentResponse?, err: string?)
 function M.add_comment(url, comment, callback)
     local args = {
         "comment",
@@ -172,6 +217,8 @@ function M.add_comment(url, comment, callback)
     }):start()
 end
 
+---@param url string
+---@param callback fun(comments: GReviewerComment[]?, err: string?)
 function M.fetch_comments(url, callback)
     Job:new({
         command = config.values.cli_path,
@@ -193,6 +240,10 @@ function M.fetch_comments(url, callback)
     }):start()
 end
 
+---@param url string
+---@param comment_id integer
+---@param body string
+---@param callback fun(data: GReviewerCommentResponse?, err: string?)
 function M.reply_to_comment(url, comment_id, body, callback)
     Job:new({
         command = config.values.cli_path,
@@ -222,6 +273,7 @@ function M.reply_to_comment(url, comment_id, body, callback)
     }):start()
 end
 
+---@param callback fun(ok: boolean, output: string)
 function M.check_auth(callback)
     Job:new({
         command = config.values.cli_path,
@@ -233,6 +285,10 @@ function M.check_auth(callback)
     }):start()
 end
 
+---@param url string
+---@param event string
+---@param body? string
+---@param callback fun(ok: boolean, err: string?)
 function M.submit_review(url, event, body, callback)
     local args = { "submit", "--url", url, "--event", event }
     if body then
@@ -260,6 +316,7 @@ function M.submit_review(url, event, body, callback)
     }):start()
 end
 
+---@param callback fun(data: GReviewerDiffData?, err: string?)
 function M.get_local_diff(callback)
     Job:new({
         command = config.values.cli_path,

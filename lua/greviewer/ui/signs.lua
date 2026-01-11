@@ -1,5 +1,6 @@
 local config = require("greviewer.config")
 
+---@class GReviewerSignsModule
 local M = {}
 
 local ns = vim.api.nvim_create_namespace("greviewer_signs")
@@ -20,6 +21,8 @@ local function define_highlights()
     vim.api.nvim_set_hl(0, "GReviewerChangeLine", { bg = "#3b3b2d", default = true })
 end
 
+---@param bufnr integer
+---@param hunks? GReviewerHunk[]
 function M.place(bufnr, hunks)
     define_highlights()
 
@@ -70,6 +73,17 @@ function M.place(bufnr, hunks)
     end
 end
 
+---@param bufnr integer
+---@param file_path string
+function M.show(bufnr, file_path)
+    local state = require("greviewer.state")
+    local file = state.get_file_by_path(file_path)
+    if file then
+        M.place(bufnr, file.hunks)
+    end
+end
+
+---@param bufnr integer
 function M.clear(bufnr)
     vim.api.nvim_buf_clear_namespace(bufnr, ns, 0, -1)
 end
