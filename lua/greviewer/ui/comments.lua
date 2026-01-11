@@ -5,6 +5,75 @@ local M = {}
 local ns = vim.api.nvim_create_namespace("greviewer_comments")
 local thread_win = nil
 local thread_buf = nil
+local input_win = nil
+local input_buf = nil
+
+local function close_input_window()
+    if input_win and vim.api.nvim_win_is_valid(input_win) then
+        vim.api.nvim_win_close(input_win, true)
+    end
+    if input_buf and vim.api.nvim_buf_is_valid(input_buf) then
+        vim.api.nvim_buf_delete(input_buf, { force = true })
+    end
+    input_win = nil
+    input_buf = nil
+end
+
+function M.open_multiline_input(opts, callback)
+    local config = require("greviewer.config")
+    local keys = config.values.input_window.keys
+
+    close_input_window()
+
+    input_buf = vim.api.nvim_create_buf(false, true)
+    vim.api.nvim_buf_set_option(input_buf, "buftype", "nofile")
+    vim.api.nvim_buf_set_option(input_buf, "filetype", "markdown")
+
+    local width = math.min(80, math.floor(vim.o.columns * 0.8))
+    local height = 10
+    local row = math.floor((vim.o.lines - height) / 2)
+    local col = math.floor((vim.o.columns - width) / 2)
+
+    local title = opts.title or " Input "
+    local submit_key = keys.submit
+    local cancel_key = keys.cancel
+
+    input_win = vim.api.nvim_open_win(input_buf, true, {
+        relative = "editor",
+        width = width,
+        height = height,
+        row = row,
+        col = col,
+        style = "minimal",
+        border = "rounded",
+        title = title,
+        title_pos = "center",
+        footer = string.format(" %s: Submit | %s: Cancel ", submit_key, cancel_key),
+        footer_pos = "center",
+    })
+
+    vim.api.nvim_win_set_option(input_win, "wrap", true)
+
+    local function submit()
+        local lines = vim.api.nvim_buf_get_lines(input_buf, 0, -1, false)
+        local body = table.concat(lines, "\n")
+        body = body:gsub("^%s*(.-)%s*$", "%1")
+        close_input_window()
+        if body ~= "" then
+            callback(body)
+        end
+    end
+
+    local function cancel()
+        close_input_window()
+    end
+
+    vim.keymap.set("n", keys.submit, submit, { buffer = input_buf, nowait = true })
+    vim.keymap.set("i", keys.submit, submit, { buffer = input_buf, nowait = true })
+    vim.keymap.set("n", keys.cancel, cancel, { buffer = input_buf, nowait = true })
+
+    vim.cmd("startinsert")
+end
 
 local function define_highlights()
     vim.api.nvim_set_hl(0, "GReviewerComment", { fg = "#61afef", italic = true, default = true })
@@ -105,13 +174,9 @@ function M.add_at_cursor(opts)
     local end_pos = find_comment_position(file, end_line)
     local start_pos = start_line and find_comment_position(file, start_line) or nil
 
-    local prompt = start_line and string.format("Comment (lines %d-%d): ", start_line, end_line) or "Comment: "
+    local title = start_line and string.format(" Comment (lines %d-%d) ", start_line, end_line) or " Comment "
 
-    vim.ui.input({ prompt = prompt }, function(body)
-        if not body or body == "" then
-            return
-        end
-
+    M.open_multiline_input({ title = title }, function(body)
         if is_local then
             M.add_local_comment(file, start_line, end_line, body)
         else
@@ -590,11 +655,7 @@ end
 local function prompt_reply(comment, pr_url)
     close_thread_window()
 
-    vim.ui.input({ prompt = "Reply: " }, function(body)
-        if not body or body == "" then
-            return
-        end
-
+    M.open_multiline_input({ title = " Reply " }, function(body)
         vim.notify("Submitting reply...", vim.log.levels.INFO)
 
         local cli = require("greviewer.cli")

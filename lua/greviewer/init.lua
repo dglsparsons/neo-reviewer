@@ -381,17 +381,23 @@ function M.request_changes(message)
         return
     end
 
-    local body = message
-    if not body or body == "" then
-        body = "Please see inline comments"
+    local function submit_request(body)
+        vim.notify("Submitting review...", vim.log.levels.INFO)
+        cli.submit_review(review.url, "REQUEST_CHANGES", body, function(ok, err)
+            if ok then
+                vim.notify("Changes requested", vim.log.levels.INFO)
+            else
+                vim.notify("Failed to submit review: " .. (err or "unknown error"), vim.log.levels.ERROR)
+            end
+        end)
     end
-    cli.submit_review(review.url, "REQUEST_CHANGES", body, function(ok, err)
-        if ok then
-            vim.notify("Changes requested", vim.log.levels.INFO)
-        else
-            vim.notify("Failed to submit review: " .. (err or "unknown error"), vim.log.levels.ERROR)
-        end
-    end)
+
+    if message and message ~= "" then
+        submit_request(message)
+    else
+        local comments = require("greviewer.ui.comments")
+        comments.open_multiline_input({ title = " Request Changes " }, submit_request)
+    end
 end
 
 function M.done()
