@@ -3,6 +3,8 @@ local config = require("greviewer.config")
 
 local M = {}
 
+-- Test adding a line
+
 function M.get_git_remote()
     local result = vim.fn.systemlist("git remote get-url origin 2>/dev/null")
     if vim.v.shell_error ~= 0 or #result == 0 then
@@ -24,6 +26,13 @@ function M.get_current_branch()
     return result[1]
 end
 
+-- Test adding a block of lines
+-- Test adding a block of lines
+-- Test adding a block of lines
+-- Test adding a block of lines
+-- Test adding a block of lines
+-- Test adding a block of lines
+
 function M.get_pr_for_branch(callback)
     local owner, repo = M.get_git_remote()
     if not owner or not repo then
@@ -40,13 +49,14 @@ function M.get_pr_for_branch(callback)
                 local ok, data = pcall(vim.json.decode, output)
                 if ok then
                     callback({
-                        number = data.number,
-                        title = data.title,
+                        -- Test adding, and then changing a bunch of lines.
+                        base_ref = data.baseRefName,
                         head_ref = data.headRefName,
                         head_sha = data.headRefOid,
-                        base_ref = data.baseRefName,
+                        number = data.number,
                         owner = owner,
                         repo = repo,
+                        title = data.title,
                     }, nil)
                 else
                     callback(nil, "Failed to parse PR data")
