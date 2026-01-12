@@ -1,9 +1,9 @@
----@class GReviewerBufferModule
+---@class NRBufferModule
 local M = {}
 
----@return GReviewerFile?
+---@return NRFile?
 function M.get_current_file_from_buffer()
-    local ok, file = pcall(vim.api.nvim_buf_get_var, 0, "greviewer_file")
+    local ok, file = pcall(vim.api.nvim_buf_get_var, 0, "nr_file")
     if ok then
         return file
     end
@@ -12,7 +12,7 @@ end
 
 ---@return string?
 function M.get_pr_url_from_buffer()
-    local ok, url = pcall(vim.api.nvim_buf_get_var, 0, "greviewer_pr_url")
+    local ok, url = pcall(vim.api.nvim_buf_get_var, 0, "nr_pr_url")
     if ok then
         return url
     end

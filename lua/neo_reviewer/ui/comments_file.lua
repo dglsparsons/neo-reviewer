@@ -1,11 +1,11 @@
----@class GReviewerCommentsFileModule
+---@class NRCommentsFileModule
 local M = {}
 
 local COMMENTS_FILE = "REVIEW_COMMENTS.md"
 
 ---@return string
 function M.get_path()
-    local state = require("greviewer.state")
+    local state = require("neo_reviewer.state")
     local git_root = state.get_git_root()
     if git_root then
         return git_root .. "/" .. COMMENTS_FILE

@@ -13,8 +13,8 @@ provider "github" {
   owner = "dglsparsons"
 }
 
-resource "github_repository" "greviewer" {
-  name        = "greviewer"
+resource "github_repository" "neo_reviewer" {
+  name        = "neo-reviewer"
   description = "A Neovim plugin for reviewing GitHub pull requests directly in your editor"
 
   visibility = "public"
@@ -48,7 +48,7 @@ resource "github_repository" "greviewer" {
 }
 
 resource "github_branch_protection" "main" {
-  repository_id = github_repository.greviewer.node_id
+  repository_id = github_repository.neo_reviewer.node_id
   pattern       = "main"
 
   required_pull_request_reviews {
@@ -72,8 +72,8 @@ resource "github_branch_protection" "main" {
   enforce_admins          = false
 }
 
-resource "github_actions_repository_permissions" "greviewer" {
-  repository = github_repository.greviewer.name
+resource "github_actions_repository_permissions" "neo_reviewer" {
+  repository = github_repository.neo_reviewer.name
 
   enabled         = true
   allowed_actions = "selected"

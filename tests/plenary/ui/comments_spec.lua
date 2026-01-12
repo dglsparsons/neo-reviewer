@@ -4,19 +4,19 @@ package.path = cwd .. "/tests/?.lua;" .. cwd .. "/tests/?/init.lua;" .. package.
 local fixtures = require("fixtures.mock_pr_data")
 local helpers = require("plenary.helpers")
 
-describe("greviewer.ui.comments", function()
+describe("neo_reviewer.ui.comments", function()
     local comments
     local state
 
     before_each(function()
-        package.loaded["greviewer.ui.comments"] = nil
-        package.loaded["greviewer.ui.buffer"] = nil
-        package.loaded["greviewer.state"] = nil
-        package.loaded["greviewer.config"] = nil
-        package.loaded["greviewer.cli"] = nil
+        package.loaded["neo_reviewer.ui.comments"] = nil
+        package.loaded["neo_reviewer.ui.buffer"] = nil
+        package.loaded["neo_reviewer.state"] = nil
+        package.loaded["neo_reviewer.config"] = nil
+        package.loaded["neo_reviewer.cli"] = nil
 
-        state = require("greviewer.state")
-        comments = require("greviewer.ui.comments")
+        state = require("neo_reviewer.state")
+        comments = require("neo_reviewer.ui.comments")
     end)
 
     after_each(function()
@@ -34,7 +34,7 @@ describe("greviewer.ui.comments", function()
                 author = "user",
             })
 
-            local extmarks = helpers.get_extmarks(bufnr, "greviewer_comments")
+            local extmarks = helpers.get_extmarks(bufnr, "nr_comments")
             assert.is_true(#extmarks > 0)
         end)
 
@@ -48,7 +48,7 @@ describe("greviewer.ui.comments", function()
                 author = "user",
             })
 
-            local extmarks = helpers.get_extmarks(bufnr, "greviewer_comments")
+            local extmarks = helpers.get_extmarks(bufnr, "nr_comments")
             assert.is_true(#extmarks > 0)
         end)
 
@@ -85,7 +85,7 @@ describe("greviewer.ui.comments", function()
 
             comments.show_existing(bufnr, "src/foo.lua")
 
-            local extmarks = helpers.get_extmarks(bufnr, "greviewer_comments")
+            local extmarks = helpers.get_extmarks(bufnr, "nr_comments")
             assert.is_true(#extmarks > 0)
         end)
 
@@ -97,7 +97,7 @@ describe("greviewer.ui.comments", function()
 
             comments.show_existing(bufnr, "src/bar.lua")
 
-            local extmarks = helpers.get_extmarks(bufnr, "greviewer_comments")
+            local extmarks = helpers.get_extmarks(bufnr, "nr_comments")
             assert.are.equal(0, #extmarks)
         end)
 
@@ -125,10 +125,10 @@ describe("greviewer.ui.comments", function()
                 author = "user",
             })
 
-            assert.is_true(#helpers.get_extmarks(bufnr, "greviewer_comments") > 0)
+            assert.is_true(#helpers.get_extmarks(bufnr, "nr_comments") > 0)
 
             comments.clear(bufnr)
-            assert.are.equal(0, #helpers.get_extmarks(bufnr, "greviewer_comments"))
+            assert.are.equal(0, #helpers.get_extmarks(bufnr, "nr_comments"))
         end)
     end)
 
@@ -254,7 +254,7 @@ describe("greviewer.ui.comments", function()
                 author = "user",
             }, hunks)
 
-            local extmarks = helpers.get_extmarks(bufnr, "greviewer_comments")
+            local extmarks = helpers.get_extmarks(bufnr, "nr_comments")
             assert.are.equal(1, #extmarks)
             assert.are.equal(2, extmarks[1][2])
         end)
@@ -276,7 +276,7 @@ describe("greviewer.ui.comments", function()
                 author = "user",
             }, hunks)
 
-            local extmarks = helpers.get_extmarks(bufnr, "greviewer_comments")
+            local extmarks = helpers.get_extmarks(bufnr, "nr_comments")
             assert.are.equal(1, #extmarks)
             assert.are.equal(1, extmarks[1][2])
         end)
@@ -321,7 +321,7 @@ describe("greviewer.ui.comments", function()
 
             comments.show_existing(bufnr, "test.lua")
 
-            local extmarks = helpers.get_extmarks(bufnr, "greviewer_comments")
+            local extmarks = helpers.get_extmarks(bufnr, "nr_comments")
             assert.are.equal(1, #extmarks)
             assert.are.equal(1, extmarks[1][2])
         end)
@@ -343,7 +343,7 @@ describe("greviewer.ui.comments", function()
                 author = "user",
             }, hunks)
 
-            local extmarks = helpers.get_extmarks(bufnr, "greviewer_comments")
+            local extmarks = helpers.get_extmarks(bufnr, "nr_comments")
             assert.are.equal(0, #extmarks)
         end)
     end)

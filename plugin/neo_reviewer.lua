@@ -1,7 +1,7 @@
-if vim.g.loaded_greviewer then
+if vim.g.loaded_neo_reviewer then
     return
 end
-vim.g.loaded_greviewer = 1
+vim.g.loaded_neo_reviewer = 1
 
 vim.api.nvim_create_autocmd("VimEnter", {
     callback = function()
@@ -9,7 +9,7 @@ vim.api.nvim_create_autocmd("VimEnter", {
             local arg = vim.fn.argv(0)
             if type(arg) == "string" and arg:match("github%.com/.+/pull/%d+") then
                 vim.defer_fn(function()
-                    require("greviewer").open_url(arg)
+                    require("neo_reviewer").open_url(arg)
                 end, 100)
             end
         end

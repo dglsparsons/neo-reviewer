@@ -4,18 +4,18 @@ package.path = cwd .. "/tests/?.lua;" .. cwd .. "/tests/?/init.lua;" .. package.
 local fixtures = require("fixtures.mock_pr_data")
 local helpers = require("plenary.helpers")
 
-describe("greviewer.ui.nav", function()
+describe("neo_reviewer.ui.nav", function()
     local nav
     local state
 
     before_each(function()
-        package.loaded["greviewer.ui.nav"] = nil
-        package.loaded["greviewer.ui.buffer"] = nil
-        package.loaded["greviewer.state"] = nil
-        package.loaded["greviewer.config"] = nil
+        package.loaded["neo_reviewer.ui.nav"] = nil
+        package.loaded["neo_reviewer.ui.buffer"] = nil
+        package.loaded["neo_reviewer.state"] = nil
+        package.loaded["neo_reviewer.config"] = nil
 
-        state = require("greviewer.state")
-        nav = require("greviewer.ui.nav")
+        state = require("neo_reviewer.state")
+        nav = require("neo_reviewer.ui.nav")
     end)
 
     after_each(function()
@@ -33,8 +33,8 @@ describe("greviewer.ui.nav", function()
         local lines = vim.split(file.content, "\n")
         local bufnr = helpers.create_test_buffer(lines)
 
-        vim.api.nvim_buf_set_var(bufnr, "greviewer_file", file)
-        vim.api.nvim_buf_set_var(bufnr, "greviewer_pr_url", review.url)
+        vim.api.nvim_buf_set_var(bufnr, "nr_file", file)
+        vim.api.nvim_buf_set_var(bufnr, "nr_pr_url", review.url)
 
         return bufnr, file
     end
@@ -283,8 +283,8 @@ describe("greviewer.ui.nav", function()
             local file = data.files[1]
             local lines = vim.split(file.content, "\n")
             local bufnr = helpers.create_test_buffer(lines)
-            vim.api.nvim_buf_set_var(bufnr, "greviewer_file", file)
-            vim.api.nvim_buf_set_var(bufnr, "greviewer_pr_url", review.url)
+            vim.api.nvim_buf_set_var(bufnr, "nr_file", file)
+            vim.api.nvim_buf_set_var(bufnr, "nr_pr_url", review.url)
 
             helpers.set_cursor(1)
             nav.next_comment(false)

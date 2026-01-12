@@ -1,14 +1,14 @@
-describe("greviewer.config", function()
+describe("neo_reviewer.config", function()
     local config
 
     before_each(function()
-        package.loaded["greviewer.config"] = nil
-        config = require("greviewer.config")
+        package.loaded["neo_reviewer.config"] = nil
+        config = require("neo_reviewer.config")
     end)
 
     describe("default values", function()
         it("has default cli_path", function()
-            assert.are.equal("greviewer", config.values.cli_path)
+            assert.are.equal("neo-reviewer", config.values.cli_path)
         end)
 
         it("has default signs", function()
@@ -63,14 +63,14 @@ describe("greviewer.config", function()
             assert.has_no_errors(function()
                 config.setup(nil)
             end)
-            assert.are.equal("greviewer", config.values.cli_path)
+            assert.are.equal("neo-reviewer", config.values.cli_path)
         end)
 
         it("handles empty opts", function()
             assert.has_no_errors(function()
                 config.setup({})
             end)
-            assert.are.equal("greviewer", config.values.cli_path)
+            assert.are.equal("neo-reviewer", config.values.cli_path)
         end)
 
         it("ignores unknown options", function()

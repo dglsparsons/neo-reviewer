@@ -4,20 +4,20 @@ package.path = cwd .. "/tests/?.lua;" .. cwd .. "/tests/?/init.lua;" .. package.
 local fixtures = require("fixtures.mock_pr_data")
 local helpers = require("plenary.helpers")
 
-describe("greviewer.ui.virtual", function()
+describe("neo_reviewer.ui.virtual", function()
     local virtual
     local state
     local buffer
 
     before_each(function()
-        package.loaded["greviewer.ui.virtual"] = nil
-        package.loaded["greviewer.ui.buffer"] = nil
-        package.loaded["greviewer.state"] = nil
-        package.loaded["greviewer.config"] = nil
+        package.loaded["neo_reviewer.ui.virtual"] = nil
+        package.loaded["neo_reviewer.ui.buffer"] = nil
+        package.loaded["neo_reviewer.state"] = nil
+        package.loaded["neo_reviewer.config"] = nil
 
-        state = require("greviewer.state")
-        buffer = require("greviewer.ui.buffer")
-        virtual = require("greviewer.ui.virtual")
+        state = require("neo_reviewer.state")
+        buffer = require("neo_reviewer.ui.buffer")
+        virtual = require("neo_reviewer.ui.virtual")
     end)
 
     after_each(function()
@@ -35,8 +35,8 @@ describe("greviewer.ui.virtual", function()
         local lines = vim.split(file.content, "\n")
         local bufnr = helpers.create_test_buffer(lines)
 
-        vim.api.nvim_buf_set_var(bufnr, "greviewer_file", file)
-        vim.api.nvim_buf_set_var(bufnr, "greviewer_pr_url", review.url)
+        vim.api.nvim_buf_set_var(bufnr, "nr_file", file)
+        vim.api.nvim_buf_set_var(bufnr, "nr_pr_url", review.url)
         state.mark_buffer_applied(bufnr)
 
         return bufnr, file
@@ -126,7 +126,7 @@ describe("greviewer.ui.virtual", function()
 
             virtual.expand(bufnr, hunk, file.path)
 
-            local extmarks = helpers.get_extmarks(bufnr, "greviewer_virtual")
+            local extmarks = helpers.get_extmarks(bufnr, "nr_virtual")
             assert.is_true(#extmarks > 0)
         end)
 
@@ -146,10 +146,10 @@ describe("greviewer.ui.virtual", function()
             local hunk = file.hunks[1]
 
             virtual.expand(bufnr, hunk, file.path)
-            assert.is_true(#helpers.get_extmarks(bufnr, "greviewer_virtual") > 0)
+            assert.is_true(#helpers.get_extmarks(bufnr, "nr_virtual") > 0)
 
             virtual.collapse(bufnr, hunk, file.path)
-            assert.are.equal(0, #helpers.get_extmarks(bufnr, "greviewer_virtual"))
+            assert.are.equal(0, #helpers.get_extmarks(bufnr, "nr_virtual"))
         end)
 
         it("updates state when collapsing", function()
@@ -181,7 +181,7 @@ describe("greviewer.ui.virtual", function()
             virtual.toggle_at_cursor()
 
             assert.is_true(state.is_hunk_expanded(file.path, file.hunks[1].start))
-            assert.is_true(#helpers.get_extmarks(bufnr, "greviewer_virtual") > 0)
+            assert.is_true(#helpers.get_extmarks(bufnr, "nr_virtual") > 0)
         end)
 
         it("collapses all hunks when toggled off", function()
@@ -191,7 +191,7 @@ describe("greviewer.ui.virtual", function()
             virtual.toggle_at_cursor()
 
             assert.is_false(state.is_hunk_expanded(file.path, file.hunks[1].start))
-            assert.are.equal(0, #helpers.get_extmarks(bufnr, "greviewer_virtual"))
+            assert.are.equal(0, #helpers.get_extmarks(bufnr, "nr_virtual"))
         end)
 
         it("notifies when no active review", function()
@@ -213,10 +213,10 @@ describe("greviewer.ui.virtual", function()
             local hunk = file.hunks[1]
             virtual.expand(bufnr, hunk, file.path)
 
-            assert.is_true(#helpers.get_extmarks(bufnr, "greviewer_virtual") > 0)
+            assert.is_true(#helpers.get_extmarks(bufnr, "nr_virtual") > 0)
 
             virtual.clear(bufnr)
-            assert.are.equal(0, #helpers.get_extmarks(bufnr, "greviewer_virtual"))
+            assert.are.equal(0, #helpers.get_extmarks(bufnr, "nr_virtual"))
         end)
     end)
 
@@ -227,7 +227,7 @@ describe("greviewer.ui.virtual", function()
 
             virtual.expand(bufnr, hunk, file.path)
 
-            local extmarks = helpers.get_extmarks(bufnr, "greviewer_virtual")
+            local extmarks = helpers.get_extmarks(bufnr, "nr_virtual")
             assert.are.equal(2, #extmarks)
         end)
 
@@ -247,10 +247,10 @@ describe("greviewer.ui.virtual", function()
             local hunk = file.hunks[1]
 
             virtual.expand(bufnr, hunk, file.path)
-            assert.are.equal(2, #helpers.get_extmarks(bufnr, "greviewer_virtual"))
+            assert.are.equal(2, #helpers.get_extmarks(bufnr, "nr_virtual"))
 
             virtual.collapse(bufnr, hunk, file.path)
-            assert.are.equal(0, #helpers.get_extmarks(bufnr, "greviewer_virtual"))
+            assert.are.equal(0, #helpers.get_extmarks(bufnr, "nr_virtual"))
         end)
     end)
 end)

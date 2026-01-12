@@ -1,69 +1,69 @@
----@class GReviewerSigns
+---@class NRSigns
 ---@field add string Sign character for additions
 ---@field delete string Sign character for deletions
 ---@field change string Sign character for changes
 
----@class GReviewerThreadWindowKeys
+---@class NRThreadWindowKeys
 ---@field close string|string[] Key(s) to close the thread window
 ---@field reply string Key to reply to a comment
 ---@field toggle_old string Key to toggle old code display
 ---@field apply string Key to apply a suggestion
 
----@class GReviewerThreadWindow
----@field keys GReviewerThreadWindowKeys
+---@class NRThreadWindow
+---@field keys NRThreadWindowKeys
 
----@class GReviewerInputWindowKeys
+---@class NRInputWindowKeys
 ---@field submit string Key to submit input
 ---@field cancel string Key to cancel input
 
----@class GReviewerInputWindow
----@field keys GReviewerInputWindowKeys
+---@class NRInputWindow
+---@field keys NRInputWindowKeys
 
----@class GReviewerConfig
----@field cli_path string Path to the greviewer CLI binary
----@field signs GReviewerSigns
+---@class NRConfig
+---@field cli_path string Path to the neo-reviewer CLI binary
+---@field signs NRSigns
 ---@field wrap_navigation boolean Whether to wrap around when navigating hunks
 ---@field auto_expand_deletes boolean Whether to auto-expand deleted lines
----@field thread_window GReviewerThreadWindow
----@field input_window GReviewerInputWindow
+---@field thread_window NRThreadWindow
+---@field input_window NRInputWindow
 
----@class GReviewerPartialSigns
+---@class NRPartialSigns
 ---@field add? string Sign character for additions
 ---@field delete? string Sign character for deletions
 ---@field change? string Sign character for changes
 
----@class GReviewerPartialThreadWindowKeys
+---@class NRPartialThreadWindowKeys
 ---@field close? string|string[] Key(s) to close the thread window
 ---@field reply? string Key to reply to a comment
 ---@field toggle_old? string Key to toggle old code display
 ---@field apply? string Key to apply a suggestion
 
----@class GReviewerPartialThreadWindow
----@field keys? GReviewerPartialThreadWindowKeys
+---@class NRPartialThreadWindow
+---@field keys? NRPartialThreadWindowKeys
 
----@class GReviewerPartialInputWindowKeys
+---@class NRPartialInputWindowKeys
 ---@field submit? string Key to submit input
 ---@field cancel? string Key to cancel input
 
----@class GReviewerPartialInputWindow
----@field keys? GReviewerPartialInputWindowKeys
+---@class NRPartialInputWindow
+---@field keys? NRPartialInputWindowKeys
 
----@class GReviewerPartialConfig
----@field cli_path? string Path to the greviewer CLI binary
----@field signs? GReviewerPartialSigns
+---@class NRPartialConfig
+---@field cli_path? string Path to the neo-reviewer CLI binary
+---@field signs? NRPartialSigns
 ---@field wrap_navigation? boolean Whether to wrap around when navigating hunks
 ---@field auto_expand_deletes? boolean Whether to auto-expand deleted lines
----@field thread_window? GReviewerPartialThreadWindow
----@field input_window? GReviewerPartialInputWindow
+---@field thread_window? NRPartialThreadWindow
+---@field input_window? NRPartialInputWindow
 
----@class GReviewerConfigModule
----@field values GReviewerConfig
----@field setup fun(opts?: GReviewerPartialConfig)
+---@class NRConfigModule
+---@field values NRConfig
+---@field setup fun(opts?: NRPartialConfig)
 local M = {}
 
----@type GReviewerConfig
+---@type NRConfig
 M.values = {
-    cli_path = "greviewer",
+    cli_path = "neo-reviewer",
     signs = {
         add = "+",
         delete = "-",
@@ -87,7 +87,7 @@ M.values = {
     },
 }
 
----@param opts? GReviewerPartialConfig
+---@param opts? NRPartialConfig
 function M.setup(opts)
     M.values = vim.tbl_deep_extend("force", M.values, opts or {})
 end

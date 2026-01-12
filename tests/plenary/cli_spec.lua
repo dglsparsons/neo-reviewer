@@ -1,17 +1,17 @@
 local stub = require("luassert.stub")
 local spy = require("luassert.spy")
 
-describe("greviewer.cli", function()
+describe("neo_reviewer.cli", function()
     local cli
     local config
     local Job
     local job_instance
 
     before_each(function()
-        package.loaded["greviewer.cli"] = nil
-        package.loaded["greviewer.config"] = nil
+        package.loaded["neo_reviewer.cli"] = nil
+        package.loaded["neo_reviewer.config"] = nil
 
-        config = require("greviewer.config")
+        config = require("neo_reviewer.config")
         config.setup({ cli_path = "test-cli" })
 
         job_instance = {
@@ -30,7 +30,7 @@ describe("greviewer.cli", function()
             return job_instance
         end)
 
-        cli = require("greviewer.cli")
+        cli = require("neo_reviewer.cli")
     end)
 
     after_each(function()

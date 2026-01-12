@@ -1,4 +1,4 @@
-# greviewer
+# neo-reviewer
 
 A Neovim plugin for reviewing GitHub pull requests directly in your editor.
 
@@ -26,10 +26,10 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
 
 ```lua
 {
-    "your-username/greviewer",
+    "your-username/neo-reviewer",
     dependencies = { "nvim-lua/plenary.nvim" },
     config = function()
-        require("greviewer").setup({})
+        require("neo_reviewer").setup({})
     end,
 }
 ```
@@ -37,7 +37,7 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
 ### 2. Install the CLI tool
 
 ```bash
-cd /path/to/greviewer
+cd /path/to/neo-reviewer
 cargo install --path cli
 ```
 
@@ -60,8 +60,8 @@ The plugin uses `gh auth token` to get your GitHub token, which handles SSO and 
 ## Configuration
 
 ```lua
-require("greviewer").setup({
-    cli_path = "greviewer",  -- Path to CLI binary
+require("neo_reviewer").setup({
+    cli_path = "neo-reviewer",  -- Path to CLI binary
     signs = {
         add = "+",
         delete = "-",
@@ -74,31 +74,31 @@ require("greviewer").setup({
 
 ## Keymaps
 
-greviewer doesn't set any keymaps by default. Add your own:
+neo-reviewer doesn't set any keymaps by default. Add your own:
 
 ```lua
 -- Navigation
 vim.keymap.set("n", "]c", function()
-    require("greviewer").next_hunk()
+    require("neo_reviewer").next_hunk()
 end, { desc = "Next change" })
 
 vim.keymap.set("n", "[c", function()
-    require("greviewer").prev_hunk()
+    require("neo_reviewer").prev_hunk()
 end, { desc = "Previous change" })
 
 -- Toggle inline diff preview
 vim.keymap.set("n", "<CR>", function()
-    require("greviewer").toggle_inline()
+    require("neo_reviewer").toggle_inline()
 end, { desc = "Toggle inline diff" })
 
 -- Comments
 vim.keymap.set("n", "<leader>cc", function()
-    require("greviewer").add_comment()
+    require("neo_reviewer").add_comment()
 end, { desc = "Add comment" })
 
 -- File picker
 vim.keymap.set("n", "<leader>cf", function()
-    require("greviewer").show_file_picker()
+    require("neo_reviewer").show_file_picker()
 end, { desc = "Show changed files" })
 ```
 
@@ -106,7 +106,7 @@ end, { desc = "Show changed files" })
 
 1. Open a PR for review:
    ```
-   :GReview https://github.com/owner/repo/pull/123
+   :ReviewPR https://github.com/owner/repo/pull/123
    ```
 
 2. Navigate between changes with `]c` and `[c`
@@ -117,19 +117,17 @@ end, { desc = "Show changed files" })
 
 5. Switch files with `<leader>cf`
 
-6. Close the review:
-   ```
-   :GReviewClose
-   ```
+6. Close the review (via function call or custom command)
 
 ## Commands
 
 | Command | Description |
 |---------|-------------|
-| `:GReview {url}` | Open a PR for review |
-| `:GReviewClose` | Close the review |
-| `:GReviewFiles` | Open file picker |
-| `:GReviewAuth` | Check auth status |
+| `:ReviewPR {url}` | Open a PR for review |
+| `:ReviewDiff` | Review local git diff |
+| `:AddComment` | Add a review comment |
+| `:Approve` | Approve the PR |
+| `:RequestChanges` | Request changes on the PR |
 
 ## How it works
 

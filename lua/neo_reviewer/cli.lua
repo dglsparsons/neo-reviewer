@@ -1,7 +1,7 @@
 local Job = require("plenary.job")
-local config = require("greviewer.config")
+local config = require("neo_reviewer.config")
 
----@class GReviewerPRInfo
+---@class NRPRInfo
 ---@field number integer PR number
 ---@field title string PR title
 ---@field head_ref string Head branch name
@@ -10,11 +10,11 @@ local config = require("greviewer.config")
 ---@field owner string Repository owner
 ---@field repo string Repository name
 
----@class GReviewerCheckoutInfo
+---@class NRCheckoutInfo
 ---@field stashed boolean Whether changes were stashed
 ---@field prev_branch string? Previous branch name
 
----@class GReviewerCommentData
+---@class NRCommentData
 ---@field path string File path
 ---@field line integer Line number
 ---@field side string Side of the diff ("LEFT" or "RIGHT")
@@ -22,16 +22,16 @@ local config = require("greviewer.config")
 ---@field start_line? integer Start line for multi-line comments
 ---@field start_side? string Start side for multi-line comments
 
----@class GReviewerCommentResponse
+---@class NRCommentResponse
 ---@field success boolean
 ---@field comment_id? integer
 ---@field html_url? string
 ---@field error? string
 
----@class GReviewerCommentsResponse
----@field comments GReviewerComment[]
+---@class NRCommentsResponse
+---@field comments NRComment[]
 
----@class GReviewerCLIModule
+---@class NRCLIModule
 local M = {}
 
 ---@return string?
@@ -67,7 +67,7 @@ function M.get_current_branch()
     return result[1]
 end
 
----@param callback fun(pr_info: GReviewerPRInfo?, err: string?)
+---@param callback fun(pr_info: NRPRInfo?, err: string?)
 function M.get_pr_for_branch(callback)
     local owner, repo = M.get_git_remote()
     if not owner or not repo then
@@ -104,14 +104,14 @@ function M.get_pr_for_branch(callback)
 end
 
 ---@param pr_number integer
----@param callback fun(checkout_info: GReviewerCheckoutInfo?, err: string?)
+---@param callback fun(checkout_info: NRCheckoutInfo?, err: string?)
 function M.checkout_pr(pr_number, callback)
     local stashed = false
     local prev_branch = M.get_current_branch()
 
     local status = vim.fn.systemlist("git status --porcelain 2>/dev/null")
     if #status > 0 then
-        vim.fn.system("git stash push -m 'greviewer: auto-stash'")
+        vim.fn.system("git stash push -m 'neo-reviewer: auto-stash'")
         if vim.v.shell_error == 0 then
             stashed = true
         end
@@ -156,7 +156,7 @@ function M.restore_branch(prev_branch, stashed, callback)
 end
 
 ---@param url string
----@param callback fun(data: GReviewerReviewData?, err: string?)
+---@param callback fun(data: NRReviewData?, err: string?)
 function M.fetch_pr(url, callback)
     Job:new({
         command = config.values.cli_path,
@@ -179,8 +179,8 @@ function M.fetch_pr(url, callback)
 end
 
 ---@param url string
----@param comment GReviewerCommentData
----@param callback fun(data: GReviewerCommentResponse?, err: string?)
+---@param comment NRCommentData
+---@param callback fun(data: NRCommentResponse?, err: string?)
 function M.add_comment(url, comment, callback)
     local args = {
         "comment",
@@ -227,7 +227,7 @@ function M.add_comment(url, comment, callback)
 end
 
 ---@param url string
----@param callback fun(comments: GReviewerComment[]?, err: string?)
+---@param callback fun(comments: NRComment[]?, err: string?)
 function M.fetch_comments(url, callback)
     Job:new({
         command = config.values.cli_path,
@@ -252,7 +252,7 @@ end
 ---@param url string
 ---@param comment_id integer
 ---@param body string
----@param callback fun(data: GReviewerCommentResponse?, err: string?)
+---@param callback fun(data: NRCommentResponse?, err: string?)
 function M.reply_to_comment(url, comment_id, body, callback)
     Job:new({
         command = config.values.cli_path,
@@ -325,7 +325,7 @@ function M.submit_review(url, event, body, callback)
     }):start()
 end
 
----@param callback fun(data: GReviewerDiffData?, err: string?)
+---@param callback fun(data: NRDiffData?, err: string?)
 function M.get_local_diff(callback)
     Job:new({
         command = config.values.cli_path,

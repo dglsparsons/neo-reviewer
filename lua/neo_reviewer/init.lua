@@ -1,41 +1,41 @@
----@class GReviewerAddCommentOpts
+---@class NRAddCommentOpts
 ---@field line1? integer Start line from visual selection
 ---@field line2? integer End line from visual selection
 
----@class GReviewerModule
+---@class NRModule
 local M = {}
 
----@param opts? GReviewerPartialConfig
+---@param opts? NRPartialConfig
 function M.setup(opts)
-    local config = require("greviewer.config")
+    local config = require("neo_reviewer.config")
     config.setup(opts)
 
     if vim.fn.executable(config.values.cli_path) == 0 then
-        vim.notify("greviewer CLI not found. Please install it with: cargo install --path cli", vim.log.levels.WARN)
+        vim.notify("neo-reviewer CLI not found. Please install it with: cargo install --path cli", vim.log.levels.WARN)
     end
 
-    vim.api.nvim_create_user_command("GReviewPR", function(ctx)
+    vim.api.nvim_create_user_command("ReviewPR", function(ctx)
         local arg = ctx.args
         if arg and arg ~= "" then
-            M.review(arg)
+            M.review_pr(arg)
         else
-            M.review()
+            M.review_pr()
         end
     end, { nargs = "?", desc = "Open PR review" })
 
-    vim.api.nvim_create_user_command("GReviewDiff", function()
+    vim.api.nvim_create_user_command("ReviewDiff", function()
         M.review_diff()
     end, { desc = "Review local git diff (staged + unstaged changes)" })
 
-    vim.api.nvim_create_user_command("GAddComment", function(ctx)
+    vim.api.nvim_create_user_command("AddComment", function(ctx)
         M.add_comment({ line1 = ctx.line1, line2 = ctx.line2 })
     end, { range = true, desc = "Add comment at cursor or on visual selection" })
 
-    vim.api.nvim_create_user_command("GApprove", function()
+    vim.api.nvim_create_user_command("Approve", function()
         M.approve()
     end, { desc = "Approve the PR" })
 
-    vim.api.nvim_create_user_command("GRequestChanges", function(ctx)
+    vim.api.nvim_create_user_command("RequestChanges", function(ctx)
         M.request_changes(ctx.args ~= "" and ctx.args or nil)
     end, { nargs = "?", desc = "Request changes on the PR" })
 
@@ -45,8 +45,8 @@ function M.setup(opts)
 end
 
 ---@param url_or_number? string|integer
-function M.review(url_or_number)
-    local state = require("greviewer.state")
+function M.review_pr(url_or_number)
+    local state = require("neo_reviewer.state")
 
     if state.get_review() then
         vim.notify(
@@ -68,7 +68,7 @@ function M.review(url_or_number)
 end
 
 function M.open()
-    local cli = require("greviewer.cli")
+    local cli = require("neo_reviewer.cli")
 
     cli.get_pr_for_branch(function(pr_info, err)
         if err then
@@ -85,8 +85,8 @@ end
 
 ---@param pr_number integer
 function M.open_with_checkout(pr_number)
-    local cli = require("greviewer.cli")
-    local state = require("greviewer.state")
+    local cli = require("neo_reviewer.cli")
+    local state = require("neo_reviewer.state")
 
     vim.notify(string.format("Checking out PR #%d...", pr_number), vim.log.levels.INFO)
 
@@ -117,8 +117,8 @@ function M.open_url(url)
 end
 
 function M.review_diff()
-    local cli = require("greviewer.cli")
-    local state = require("greviewer.state")
+    local cli = require("neo_reviewer.cli")
+    local state = require("neo_reviewer.state")
 
     if state.get_review() then
         vim.notify(
@@ -144,14 +144,14 @@ function M.review_diff()
         state.clear_review()
         state.set_local_review(data)
 
-        local comments_file = require("greviewer.ui.comments_file")
+        local comments_file = require("neo_reviewer.ui.comments_file")
         comments_file.clear()
 
         M.enable_overlay()
 
         vim.notify(string.format("Local diff review enabled (%d files changed)", #data.files), vim.log.levels.INFO)
 
-        local nav = require("greviewer.ui.nav")
+        local nav = require("neo_reviewer.ui.nav")
         nav.first_hunk()
     end)
 end
@@ -159,8 +159,8 @@ end
 ---@param url string
 ---@param on_ready? fun()
 function M.fetch_and_enable(url, on_ready)
-    local cli = require("greviewer.cli")
-    local state = require("greviewer.state")
+    local cli = require("neo_reviewer.cli")
+    local state = require("neo_reviewer.state")
 
     vim.notify("Fetching PR data...", vim.log.levels.INFO)
 
@@ -191,13 +191,13 @@ function M.fetch_and_enable(url, on_ready)
             vim.log.levels.INFO
         )
 
-        local nav = require("greviewer.ui.nav")
+        local nav = require("neo_reviewer.ui.nav")
         nav.first_hunk()
     end)
 end
 
 function M.enable_overlay()
-    local state = require("greviewer.state")
+    local state = require("neo_reviewer.state")
     local review = state.get_review()
     if not review then
         return
@@ -219,7 +219,7 @@ end
 
 ---@param bufnr integer
 function M.apply_overlay_to_buffer(bufnr)
-    local state = require("greviewer.state")
+    local state = require("neo_reviewer.state")
     local review = state.get_review()
     if not review then
         return
@@ -247,28 +247,28 @@ function M.apply_overlay_to_buffer(bufnr)
 
     state.mark_buffer_applied(bufnr)
 
-    vim.api.nvim_buf_set_var(bufnr, "greviewer_file", file)
+    vim.api.nvim_buf_set_var(bufnr, "nr_file", file)
     if review.url then
-        vim.api.nvim_buf_set_var(bufnr, "greviewer_pr_url", review.url)
+        vim.api.nvim_buf_set_var(bufnr, "nr_pr_url", review.url)
     end
 
-    local signs = require("greviewer.ui.signs")
+    local signs = require("neo_reviewer.ui.signs")
     signs.place(bufnr, file.hunks)
 
     if not state.is_local_review() then
-        local comments_ui = require("greviewer.ui.comments")
+        local comments_ui = require("neo_reviewer.ui.comments")
         comments_ui.show_existing(bufnr, file.path)
     end
 
-    local config = require("greviewer.config")
-    local virtual = require("greviewer.ui.virtual")
+    local config = require("neo_reviewer.config")
+    local virtual = require("neo_reviewer.ui.virtual")
     if config.values.auto_expand_deletes or state.is_showing_old_code() then
         virtual.apply_mode_to_buffer(bufnr, file)
     end
 end
 
 function M.show_file_picker()
-    local state = require("greviewer.state")
+    local state = require("neo_reviewer.state")
     local review = state.get_review()
 
     if not review then
@@ -330,7 +330,7 @@ function M.show_file_picker()
 end
 
 function M.show_file_picker_fallback()
-    local state = require("greviewer.state")
+    local state = require("neo_reviewer.state")
     local review = state.get_review()
 
     if not review or not review.files then
@@ -352,43 +352,47 @@ function M.show_file_picker_fallback()
 end
 
 function M.next_hunk()
-    local nav = require("greviewer.ui.nav")
-    nav.next_hunk(true)
+    local nav = require("neo_reviewer.ui.nav")
+    local config = require("neo_reviewer.config")
+    nav.next_hunk(config.values.wrap_navigation)
 end
 
 function M.prev_hunk()
-    local nav = require("greviewer.ui.nav")
-    nav.prev_hunk(true)
+    local nav = require("neo_reviewer.ui.nav")
+    local config = require("neo_reviewer.config")
+    nav.prev_hunk(config.values.wrap_navigation)
 end
 
 function M.next_comment()
-    local nav = require("greviewer.ui.nav")
-    nav.next_comment(true)
+    local nav = require("neo_reviewer.ui.nav")
+    local config = require("neo_reviewer.config")
+    nav.next_comment(config.values.wrap_navigation)
 end
 
 function M.prev_comment()
-    local nav = require("greviewer.ui.nav")
-    nav.prev_comment(true)
+    local nav = require("neo_reviewer.ui.nav")
+    local config = require("neo_reviewer.config")
+    nav.prev_comment(config.values.wrap_navigation)
 end
 
 function M.toggle_prev_code()
-    local virtual = require("greviewer.ui.virtual")
+    local virtual = require("neo_reviewer.ui.virtual")
     virtual.toggle_at_cursor()
 end
 
----@param opts? GReviewerAddCommentOpts
+---@param opts? NRAddCommentOpts
 function M.add_comment(opts)
-    local comments = require("greviewer.ui.comments")
+    local comments = require("neo_reviewer.ui.comments")
     comments.add_at_cursor(opts)
 end
 
 function M.show_comment()
-    local comments = require("greviewer.ui.comments")
+    local comments = require("neo_reviewer.ui.comments")
     comments.show_thread()
 end
 
 function M.check_auth()
-    local cli = require("greviewer.cli")
+    local cli = require("neo_reviewer.cli")
     cli.check_auth(function(ok, output)
         if ok then
             vim.notify(output, vim.log.levels.INFO)
@@ -399,8 +403,8 @@ function M.check_auth()
 end
 
 function M.approve()
-    local state = require("greviewer.state")
-    local cli = require("greviewer.cli")
+    local state = require("neo_reviewer.state")
+    local cli = require("neo_reviewer.cli")
     local review = state.get_review()
 
     if not review then
@@ -430,8 +434,8 @@ end
 
 ---@param message? string
 function M.request_changes(message)
-    local state = require("greviewer.state")
-    local cli = require("greviewer.cli")
+    local state = require("neo_reviewer.state")
+    local cli = require("neo_reviewer.cli")
     local review = state.get_review()
 
     if not review then
@@ -464,14 +468,14 @@ function M.request_changes(message)
     if message and message ~= "" then
         submit_request(message)
     else
-        local comments = require("greviewer.ui.comments")
+        local comments = require("neo_reviewer.ui.comments")
         comments.open_multiline_input({ title = " Request Changes " }, submit_request)
     end
 end
 
 function M.done()
-    local state = require("greviewer.state")
-    local cli = require("greviewer.cli")
+    local state = require("neo_reviewer.state")
+    local cli = require("neo_reviewer.cli")
     local review = state.get_review()
 
     if not review then

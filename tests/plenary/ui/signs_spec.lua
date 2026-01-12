@@ -3,17 +3,17 @@ package.path = cwd .. "/tests/?.lua;" .. cwd .. "/tests/?/init.lua;" .. package.
 
 local helpers = require("plenary.helpers")
 
-describe("greviewer.ui.signs", function()
+describe("neo_reviewer.ui.signs", function()
     local signs
     local config
 
     before_each(function()
-        package.loaded["greviewer.ui.signs"] = nil
-        package.loaded["greviewer.config"] = nil
+        package.loaded["neo_reviewer.ui.signs"] = nil
+        package.loaded["neo_reviewer.config"] = nil
 
-        config = require("greviewer.config")
+        config = require("neo_reviewer.config")
         config.setup({})
-        signs = require("greviewer.ui.signs")
+        signs = require("neo_reviewer.ui.signs")
     end)
 
     after_each(function()
@@ -33,7 +33,7 @@ describe("greviewer.ui.signs", function()
                 },
             })
 
-            local extmarks = helpers.get_extmarks(bufnr, "greviewer_signs")
+            local extmarks = helpers.get_extmarks(bufnr, "nr_signs")
             assert.are.equal(2, #extmarks)
 
             local found_add_sign = false
@@ -58,7 +58,7 @@ describe("greviewer.ui.signs", function()
                 },
             })
 
-            local extmarks = helpers.get_extmarks(bufnr, "greviewer_signs")
+            local extmarks = helpers.get_extmarks(bufnr, "nr_signs")
             assert.are.equal(1, #extmarks)
 
             local found_delete_sign = false
@@ -83,7 +83,7 @@ describe("greviewer.ui.signs", function()
                 },
             })
 
-            local extmarks = helpers.get_extmarks(bufnr, "greviewer_signs")
+            local extmarks = helpers.get_extmarks(bufnr, "nr_signs")
             assert.is_true(#extmarks >= 1)
 
             local found_change_sign = false
@@ -131,7 +131,7 @@ describe("greviewer.ui.signs", function()
                 },
             })
 
-            local extmarks = helpers.get_extmarks(bufnr, "greviewer_signs")
+            local extmarks = helpers.get_extmarks(bufnr, "nr_signs")
             assert.is_true(#extmarks >= 4)
         end)
 
@@ -146,7 +146,7 @@ describe("greviewer.ui.signs", function()
                     deleted_at = {},
                 },
             })
-            local first_count = #helpers.get_extmarks(bufnr, "greviewer_signs")
+            local first_count = #helpers.get_extmarks(bufnr, "nr_signs")
 
             signs.place(bufnr, {
                 {
@@ -156,7 +156,7 @@ describe("greviewer.ui.signs", function()
                     deleted_at = {},
                 },
             })
-            local second_count = #helpers.get_extmarks(bufnr, "greviewer_signs")
+            local second_count = #helpers.get_extmarks(bufnr, "nr_signs")
 
             assert.are.equal(first_count, second_count)
         end)
@@ -173,7 +173,7 @@ describe("greviewer.ui.signs", function()
                 },
             })
 
-            local extmarks = helpers.get_extmarks(bufnr, "greviewer_signs")
+            local extmarks = helpers.get_extmarks(bufnr, "nr_signs")
             assert.are.equal(1, #extmarks)
         end)
 
@@ -184,7 +184,7 @@ describe("greviewer.ui.signs", function()
                 signs.place(bufnr, nil)
             end)
 
-            local extmarks = helpers.get_extmarks(bufnr, "greviewer_signs")
+            local extmarks = helpers.get_extmarks(bufnr, "nr_signs")
             assert.are.equal(0, #extmarks)
         end)
 
@@ -195,7 +195,7 @@ describe("greviewer.ui.signs", function()
                 signs.place(bufnr, {})
             end)
 
-            local extmarks = helpers.get_extmarks(bufnr, "greviewer_signs")
+            local extmarks = helpers.get_extmarks(bufnr, "nr_signs")
             assert.are.equal(0, #extmarks)
         end)
 
@@ -213,7 +213,7 @@ describe("greviewer.ui.signs", function()
                 })
             end)
 
-            local extmarks = helpers.get_extmarks(bufnr, "greviewer_signs")
+            local extmarks = helpers.get_extmarks(bufnr, "nr_signs")
             assert.are.equal(0, #extmarks)
         end)
 
@@ -226,8 +226,8 @@ describe("greviewer.ui.signs", function()
                 },
             })
 
-            package.loaded["greviewer.ui.signs"] = nil
-            signs = require("greviewer.ui.signs")
+            package.loaded["neo_reviewer.ui.signs"] = nil
+            signs = require("neo_reviewer.ui.signs")
 
             local bufnr = helpers.create_test_buffer({ "line 1", "line 2", "line 3" })
 
@@ -240,7 +240,7 @@ describe("greviewer.ui.signs", function()
                 },
             })
 
-            local extmarks = helpers.get_extmarks(bufnr, "greviewer_signs")
+            local extmarks = helpers.get_extmarks(bufnr, "nr_signs")
             local found_custom_sign = false
             for _, mark in ipairs(extmarks) do
                 if mark[4].sign_text and vim.trim(mark[4].sign_text) == "A" then
@@ -265,7 +265,7 @@ describe("greviewer.ui.signs", function()
                 })
             end)
 
-            local extmarks = helpers.get_extmarks(bufnr, "greviewer_signs")
+            local extmarks = helpers.get_extmarks(bufnr, "nr_signs")
             assert.are.equal(1, #extmarks)
         end)
     end)
@@ -282,10 +282,10 @@ describe("greviewer.ui.signs", function()
                     deleted_at = {},
                 },
             })
-            assert.is_true(#helpers.get_extmarks(bufnr, "greviewer_signs") > 0)
+            assert.is_true(#helpers.get_extmarks(bufnr, "nr_signs") > 0)
 
             signs.clear(bufnr)
-            assert.are.equal(0, #helpers.get_extmarks(bufnr, "greviewer_signs"))
+            assert.are.equal(0, #helpers.get_extmarks(bufnr, "nr_signs"))
         end)
     end)
 end)

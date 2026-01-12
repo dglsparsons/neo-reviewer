@@ -705,24 +705,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "greviewer"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "base64",
- "clap",
- "octocrab",
- "regex",
- "reqwest",
- "rustls",
- "serde",
- "serde_json",
- "thiserror",
- "tokio",
- "url",
-]
-
-[[package]]
 name = "group"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1201,6 +1183,24 @@ dependencies = [
  "security-framework 2.11.1",
  "security-framework-sys",
  "tempfile",
+]
+
+[[package]]
+name = "neo-reviewer"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "base64",
+ "clap",
+ "octocrab",
+ "regex",
+ "reqwest",
+ "rustls",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tokio",
+ "url",
 ]
 
 [[package]]

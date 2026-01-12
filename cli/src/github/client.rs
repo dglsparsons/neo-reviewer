@@ -163,7 +163,7 @@ impl GitHubClient {
             .get(&url)
             .header("Authorization", format!("Bearer {}", self.token))
             .header("Accept", "application/vnd.github+json")
-            .header("User-Agent", "greviewer")
+            .header("User-Agent", "neo-reviewer")
             .header("X-GitHub-Api-Version", "2022-11-28")
             .send()
             .await?;
@@ -255,7 +255,7 @@ impl GitHubClient {
             .post(&url)
             .header("Authorization", format!("Bearer {}", self.token))
             .header("Accept", "application/vnd.github+json")
-            .header("User-Agent", "greviewer")
+            .header("User-Agent", "neo-reviewer")
             .header("X-GitHub-Api-Version", "2022-11-28")
             .json(&CommentRequest {
                 body: body.to_string(),
@@ -335,7 +335,7 @@ impl GitHubClient {
             .post(&url)
             .header("Authorization", format!("Bearer {}", self.token))
             .header("Accept", "application/vnd.github+json")
-            .header("User-Agent", "greviewer")
+            .header("User-Agent", "neo-reviewer")
             .header("X-GitHub-Api-Version", "2022-11-28")
             .json(&ReplyRequest {
                 body: body.to_string(),
@@ -393,7 +393,7 @@ impl GitHubClient {
             .post(&url)
             .header("Authorization", format!("Bearer {}", self.token))
             .header("Accept", "application/vnd.github+json")
-            .header("User-Agent", "greviewer")
+            .header("User-Agent", "neo-reviewer")
             .header("X-GitHub-Api-Version", "2022-11-28")
             .json(&ReviewRequest {
                 event: event.to_string(),

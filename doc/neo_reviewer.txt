@@ -1,19 +1,20 @@
-*greviewer.txt*  GitHub PR reviewer for Neovim
+*neo_reviewer.txt*  GitHub PR reviewer for Neovim
 
 ==============================================================================
-CONTENTS                                                   *greviewer-contents*
+CONTENTS                                                 *neo_reviewer-contents*
 
-    1. Introduction ............................ |greviewer-introduction|
-    2. Requirements ............................ |greviewer-requirements|
-    3. Installation ............................ |greviewer-installation|
-    4. Configuration ........................... |greviewer-configuration|
-    5. Functions ............................... |greviewer-functions|
-    6. Keymaps ................................. |greviewer-keymaps|
+    1. Introduction .......................... |neo_reviewer-introduction|
+    2. Requirements .......................... |neo_reviewer-requirements|
+    3. Installation .......................... |neo_reviewer-installation|
+    4. Configuration ......................... |neo_reviewer-configuration|
+    5. Commands .............................. |neo_reviewer-commands|
+    6. Functions ............................. |neo_reviewer-functions|
+    7. Keymaps ............................... |neo_reviewer-keymaps|
 
 ==============================================================================
-1. INTRODUCTION                                        *greviewer-introduction*
+1. INTRODUCTION                                      *neo_reviewer-introduction*
 
-greviewer is a Neovim plugin for reviewing GitHub pull requests directly in
+neo-reviewer is a Neovim plugin for reviewing GitHub pull requests directly in
 your editor. It provides:
 
 - Single-buffer inline diff view with gutter indicators
@@ -29,29 +30,29 @@ your editor. It provides:
 - Local git diff review (review uncommitted changes before pushing)
 
 ==============================================================================
-2. REQUIREMENTS                                        *greviewer-requirements*
+2. REQUIREMENTS                                      *neo_reviewer-requirements*
 
 - Neovim >= 0.9.0
 - plenary.nvim (required)
 - telescope.nvim (optional, for file picker)
-- greviewer CLI (Rust CLI tool)
+- neo-reviewer CLI (Rust CLI tool)
 - GitHub authentication via `gh` CLI
 
 ==============================================================================
-3. INSTALLATION                                        *greviewer-installation*
+3. INSTALLATION                                      *neo_reviewer-installation*
 
 Using lazy.nvim: >lua
     {
-        "your-username/greviewer",
+        "your-username/neo-reviewer",
         dependencies = { "nvim-lua/plenary.nvim" },
         config = function()
-            require("greviewer").setup({})
+            require("neo_reviewer").setup({})
         end,
     }
 <
 
 Install the CLI tool: >bash
-    cd /path/to/greviewer
+    cd /path/to/neo-reviewer
     cargo install --path cli
 <
 
@@ -60,11 +61,11 @@ Authenticate with GitHub: >bash
 <
 
 ==============================================================================
-4. CONFIGURATION                                      *greviewer-configuration*
+4. CONFIGURATION                                    *neo_reviewer-configuration*
 
 Call setup() with your options: >lua
-    require("greviewer").setup({
-        cli_path = "greviewer",  -- Path to CLI binary
+    require("neo_reviewer").setup({
+        cli_path = "neo-reviewer",  -- Path to CLI binary
         signs = {
             add = "+",
             delete = "-",
@@ -89,7 +90,7 @@ Call setup() with your options: >lua
     })
 <
 
-                                                  *greviewer-config-thread_window*
+                                                *neo_reviewer-config-thread_window*
 thread_window.keys ~
     Configure keybindings for the comment thread floating window.
     - `close`: Key(s) to close the window. String or table of strings.
@@ -97,7 +98,7 @@ thread_window.keys ~
     - `toggle_old`: Key(s) to toggle display of current code in suggestions.
     - `apply`: Key(s) to apply a suggestion to the buffer.
 
-                                                   *greviewer-config-input_window*
+                                                 *neo_reviewer-config-input_window*
 input_window.keys ~
     Configure keybindings for the comment/reply input floating window.
     This window allows multi-line input for comments, replies, and review
@@ -106,15 +107,42 @@ input_window.keys ~
     - `cancel`: Key to cancel and close the input window (default: "<Esc>").
 
 ==============================================================================
-5. FUNCTIONS                                              *greviewer-functions*
+5. COMMANDS                                              *neo_reviewer-commands*
 
-require("greviewer").review({url_or_number})               *greviewer.review()*
+These user commands are created when you call `setup()`.
+
+:ReviewPR [url_or_number]                                            *:ReviewPR*
+    Open a PR for review. Accepts an optional argument:
+    - No argument: detects PR for current branch
+    - A PR number: checks out the PR branch and opens review
+    - A GitHub PR URL: https://github.com/owner/repo/pull/123
+
+:ReviewDiff                                                        *:ReviewDiff*
+    Review local git diff (both staged and unstaged changes). Comments are
+    written to `REVIEW_COMMENTS.md` in the project root.
+
+:AddComment                                                        *:AddComment*
+    Add a review comment at cursor position. Supports visual range selection
+    for multi-line comments. In visual mode, the selected lines become the
+    comment range.
+
+:Approve                                                              *:Approve*
+    Submit an approval for the current PR review.
+
+:RequestChanges [message]                                      *:RequestChanges*
+    Submit a "request changes" review for the current PR. The message is
+    optional; if not provided, opens a multi-line input window.
+
+==============================================================================
+6. FUNCTIONS                                            *neo_reviewer-functions*
+
+require("neo_reviewer").review_pr({url_or_number})        *neo_reviewer.review_pr()*
     Open a PR for review. Accepts either:
     - No argument: detects PR for current branch
     - A PR number: checks out the PR branch and opens review
     - A GitHub PR URL: https://github.com/owner/repo/pull/123
 
-require("greviewer").review_diff()                     *greviewer.review_diff()*
+require("neo_reviewer").review_diff()                     *neo_reviewer.review_diff()*
     Review local git diff (both staged and unstaged changes). This allows
     you to review code changes before committing. Comments are written to
     `REVIEW_COMMENTS.md` in the project root with the format:
@@ -130,26 +158,26 @@ require("greviewer").review_diff()                     *greviewer.review_diff()*
     This file can be fed to an AI agent or used as a review checklist.
     The file is cleared each time you start a new local diff review.
 
-require("greviewer").next_hunk()                         *greviewer.next_hunk()*
+require("neo_reviewer").next_hunk()                         *neo_reviewer.next_hunk()*
     Jump to the next change in the file.
 
-require("greviewer").prev_hunk()                         *greviewer.prev_hunk()*
+require("neo_reviewer").prev_hunk()                         *neo_reviewer.prev_hunk()*
     Jump to the previous change in the file.
 
-require("greviewer").next_comment()                   *greviewer.next_comment()*
+require("neo_reviewer").next_comment()                   *neo_reviewer.next_comment()*
     Jump to the next comment in the review. Works in both PR review mode
     (GitHub comments) and local diff review mode. Navigates across files.
     Respects |wrap_navigation| config option.
 
-require("greviewer").prev_comment()                   *greviewer.prev_comment()*
+require("neo_reviewer").prev_comment()                   *neo_reviewer.prev_comment()*
     Jump to the previous comment in the review. Works in both PR review mode
     (GitHub comments) and local diff review mode. Navigates across files.
     Respects |wrap_navigation| config option.
 
-require("greviewer").toggle_prev_code()           *greviewer.toggle_prev_code()*
+require("neo_reviewer").toggle_prev_code()           *neo_reviewer.toggle_prev_code()*
     Toggle inline preview of old code at cursor position.
 
-require("greviewer").add_comment({opts})               *greviewer.add_comment()*
+require("neo_reviewer").add_comment({opts})               *neo_reviewer.add_comment()*
     Add a review comment. When called with {line1} and {line2} in opts,
     creates a multi-line comment spanning those lines. Otherwise comments
     on the current cursor line.
@@ -161,10 +189,10 @@ require("greviewer").add_comment({opts})               *greviewer.add_comment()*
         11 | ~  code line 2                              |
         12 | +  code line 3  @reviewer: comment          ]
 <
-    Opening the thread window (|greviewer.show_comment()|) works from any
+    Opening the thread window (|neo_reviewer.show_comment()|) works from any
     line within the comment range.
 
-require("greviewer").show_comment()                   *greviewer.show_comment()*
+require("neo_reviewer").show_comment()                   *neo_reviewer.show_comment()*
     Show the comment thread for the current line in a floating window.
     If there are comments on the line, opens an interactive window where
     you can view the full thread and reply to any comment.
@@ -189,75 +217,75 @@ require("greviewer").show_comment()                   *greviewer.show_comment()*
     the suggestion. This modifies the buffer locally (not committed).
     Multi-line suggestions are fully supported.
 
-require("greviewer").show_file_picker()           *greviewer.show_file_picker()*
+require("neo_reviewer").show_file_picker()           *neo_reviewer.show_file_picker()*
     Show the file picker (Telescope or fallback) to switch between changed
     files in the PR.
 
-require("greviewer").check_auth()                       *greviewer.check_auth()*
+require("neo_reviewer").check_auth()                       *neo_reviewer.check_auth()*
     Check GitHub authentication status and notify the result.
 
-require("greviewer").approve()                             *greviewer.approve()*
+require("neo_reviewer").approve()                             *neo_reviewer.approve()*
     Submit an approval for the current PR review.
 
-require("greviewer").request_changes({message})   *greviewer.request_changes()*
+require("neo_reviewer").request_changes({message})   *neo_reviewer.request_changes()*
     Submit a "request changes" review for the current PR. The {message}
     parameter is optional; if not provided or empty, opens a multi-line
     input window for entering the review message.
 
-require("greviewer").done()                                   *greviewer.done()*
+require("neo_reviewer").done()                                   *neo_reviewer.done()*
     Close the current review and restore previous state. If the review was
     opened with a PR number (which checks out the PR branch), this restores
     the previous branch and pops any stashed changes.
 
 ==============================================================================
-6. KEYMAPS                                                  *greviewer-keymaps*
+7. KEYMAPS                                                *neo_reviewer-keymaps*
 
-greviewer does not set any keymaps by default. Add your own: >lua
+neo-reviewer does not set any keymaps by default. Add your own: >lua
     vim.keymap.set("n", "]c", function()
-        require("greviewer").next_hunk()
+        require("neo_reviewer").next_hunk()
     end, { desc = "Next change" })
 
     vim.keymap.set("n", "[c", function()
-        require("greviewer").prev_hunk()
+        require("neo_reviewer").prev_hunk()
     end, { desc = "Previous change" })
 
     vim.keymap.set("n", "]C", function()
-        require("greviewer").next_comment()
+        require("neo_reviewer").next_comment()
     end, { desc = "Next comment" })
 
     vim.keymap.set("n", "[C", function()
-        require("greviewer").prev_comment()
+        require("neo_reviewer").prev_comment()
     end, { desc = "Previous comment" })
 
     vim.keymap.set("n", "<CR>", function()
-        require("greviewer").toggle_prev_code()
+        require("neo_reviewer").toggle_prev_code()
     end, { desc = "Toggle old code preview" })
 
     vim.keymap.set("n", "<leader>cc", function()
-        require("greviewer").add_comment()
+        require("neo_reviewer").add_comment()
     end, { desc = "Add comment" })
 
-    vim.keymap.set("v", "<leader>cc", ":GAddComment<CR>",
+    vim.keymap.set("v", "<leader>cc", ":AddComment<CR>",
         { desc = "Add comment on selection" })
 
     vim.keymap.set("n", "<leader>cv", function()
-        require("greviewer").show_comment()
+        require("neo_reviewer").show_comment()
     end, { desc = "View comment thread" })
 
     vim.keymap.set("n", "<leader>cf", function()
-        require("greviewer").show_file_picker()
+        require("neo_reviewer").show_file_picker()
     end, { desc = "Show files" })
 
     vim.keymap.set("n", "<leader>ca", function()
-        require("greviewer").approve()
+        require("neo_reviewer").approve()
     end, { desc = "Approve PR" })
 
     vim.keymap.set("n", "<leader>cr", function()
-        require("greviewer").request_changes()
+        require("neo_reviewer").request_changes()
     end, { desc = "Request changes" })
 
     vim.keymap.set("n", "<leader>cq", function()
-        require("greviewer").done()
+        require("neo_reviewer").done()
     end, { desc = "Close review" })
 <
 

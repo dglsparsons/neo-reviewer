@@ -17,7 +17,7 @@
 
         commonArgs = {
           src = rustSrc;
-          pname = "greviewer";
+          pname = "neo-reviewer";
           version = "0.1.0";
 
           nativeBuildInputs = with pkgs; [ pkg-config ];
@@ -30,36 +30,36 @@
 
         cargoArtifacts = craneLib.buildDepsOnly commonArgs;
 
-        greviewer = craneLib.buildPackage (commonArgs // {
+        neo-reviewer = craneLib.buildPackage (commonArgs // {
           inherit cargoArtifacts;
-          cargoExtraArgs = "-p greviewer";
+          cargoExtraArgs = "-p neo-reviewer";
         });
       in
       {
         packages = {
-          inherit greviewer;
+          inherit neo-reviewer;
 
-          greviewer-nvim = pkgs.vimUtils.buildVimPlugin {
-            pname = "greviewer";
+          neo-reviewer-nvim = pkgs.vimUtils.buildVimPlugin {
+            pname = "neo-reviewer";
             version = "0.1.0";
             src = ./.;
             doCheck = false;
           };
 
-          default = greviewer;
+          default = neo-reviewer;
         };
 
         checks = {
-          inherit greviewer;
+          inherit neo-reviewer;
 
           clippy = craneLib.cargoClippy (commonArgs // {
             inherit cargoArtifacts;
-            cargoClippyExtraArgs = "-p greviewer -- -D warnings";
+            cargoClippyExtraArgs = "-p neo-reviewer -- -D warnings";
           });
 
           fmt = craneLib.cargoFmt {
             src = rustSrc;
-            pname = "greviewer";
+            pname = "neo-reviewer";
             version = "0.1.0";
           };
 
@@ -82,9 +82,9 @@
       }
     ) // {
       overlays.default = final: prev: {
-        greviewer = self.packages.${prev.system}.greviewer;
+        neo-reviewer = self.packages.${prev.system}.neo-reviewer;
         vimPlugins = prev.vimPlugins // {
-          greviewer-nvim = self.packages.${prev.system}.greviewer-nvim;
+          neo-reviewer-nvim = self.packages.${prev.system}.neo-reviewer-nvim;
         };
       };
     };

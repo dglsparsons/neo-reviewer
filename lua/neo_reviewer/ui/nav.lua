@@ -1,7 +1,7 @@
----@class GReviewerNavModule
+---@class NRNavModule
 local M = {}
 
----@param hunks? GReviewerHunk[]
+---@param hunks? NRHunk[]
 ---@param old_line integer
 ---@return integer?
 local function map_old_line_to_new(hunks, old_line)
@@ -19,8 +19,8 @@ local function map_old_line_to_new(hunks, old_line)
     return nil
 end
 
----@param comment GReviewerComment
----@param hunks? GReviewerHunk[]
+---@param comment NRComment
+---@param hunks? NRHunk[]
 ---@return integer?
 local function get_comment_display_line(comment, hunks)
     local line = comment.line
@@ -34,10 +34,10 @@ local function get_comment_display_line(comment, hunks)
 end
 
 ---@param file_path string
----@param hunks? GReviewerHunk[]
+---@param hunks? NRHunk[]
 ---@return integer[]
 local function collect_comment_lines(file_path, hunks)
-    local state = require("greviewer.state")
+    local state = require("neo_reviewer.state")
     local comments = state.get_comments_for_file(file_path)
     ---@type integer[]
     local lines = {}
@@ -58,7 +58,7 @@ local function collect_comment_lines(file_path, hunks)
     return lines
 end
 
----@param hunk GReviewerHunk
+---@param hunk NRHunk
 ---@return integer?
 local function get_hunk_first_change(hunk)
     local first_add = hunk.added_lines and hunk.added_lines[1]
@@ -69,7 +69,7 @@ local function get_hunk_first_change(hunk)
     return first_add or first_del
 end
 
----@param hunks? GReviewerHunk[]
+---@param hunks? NRHunk[]
 ---@return integer[]
 local function collect_hunk_starts(hunks)
     ---@type integer[]
@@ -84,10 +84,10 @@ local function collect_hunk_starts(hunks)
     return starts
 end
 
----@param review GReviewerReview
+---@param review NRReview
 ---@return integer?
 local function get_current_file_index(review)
-    local buffer = require("greviewer.ui.buffer")
+    local buffer = require("neo_reviewer.ui.buffer")
     local current_file = buffer.get_current_file_from_buffer()
     if current_file then
         for i, file in ipairs(review.files) do
@@ -104,7 +104,7 @@ end
 local function jump_to(file_path, line)
     vim.cmd("normal! m'")
 
-    local buffer = require("greviewer.ui.buffer")
+    local buffer = require("neo_reviewer.ui.buffer")
     local current_file = buffer.get_current_file_from_buffer()
     local is_same_file = current_file and current_file.path == file_path
 
@@ -113,7 +113,7 @@ local function jump_to(file_path, line)
         is_same_file = current_name:match(vim.pesc(file_path) .. "$")
 
         if not is_same_file then
-            local state = require("greviewer.state")
+            local state = require("neo_reviewer.state")
             local git_root = state.get_git_root()
             local full_path = git_root and (git_root .. "/" .. file_path) or file_path
             vim.cmd("edit " .. vim.fn.fnameescape(full_path))
@@ -129,7 +129,7 @@ end
 
 ---@param wrap boolean
 function M.next_hunk(wrap)
-    local state = require("greviewer.state")
+    local state = require("neo_reviewer.state")
     local review = state.get_review()
     if not review then
         vim.notify("No active review", vim.log.levels.WARN)
@@ -183,7 +183,7 @@ end
 
 ---@param wrap boolean
 function M.prev_hunk(wrap)
-    local state = require("greviewer.state")
+    local state = require("neo_reviewer.state")
     local review = state.get_review()
     if not review then
         vim.notify("No active review", vim.log.levels.WARN)
@@ -238,7 +238,7 @@ function M.prev_hunk(wrap)
 end
 
 function M.first_hunk()
-    local state = require("greviewer.state")
+    local state = require("neo_reviewer.state")
     local review = state.get_review()
     if not review then
         vim.notify("No active review", vim.log.levels.WARN)
@@ -255,7 +255,7 @@ function M.first_hunk()
 end
 
 function M.last_hunk()
-    local state = require("greviewer.state")
+    local state = require("neo_reviewer.state")
     local review = state.get_review()
     if not review then
         vim.notify("No active review", vim.log.levels.WARN)
@@ -274,7 +274,7 @@ end
 
 ---@param wrap boolean
 function M.next_comment(wrap)
-    local state = require("greviewer.state")
+    local state = require("neo_reviewer.state")
     local review = state.get_review()
     if not review then
         vim.notify("No active review", vim.log.levels.WARN)
@@ -328,7 +328,7 @@ end
 
 ---@param wrap boolean
 function M.prev_comment(wrap)
-    local state = require("greviewer.state")
+    local state = require("neo_reviewer.state")
     local review = state.get_review()
     if not review then
         vim.notify("No active review", vim.log.levels.WARN)

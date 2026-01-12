@@ -4,15 +4,15 @@ package.path = cwd .. "/tests/?.lua;" .. cwd .. "/tests/?/init.lua;" .. package.
 local fixtures = require("fixtures.mock_pr_data")
 local helpers = require("plenary.helpers")
 
-describe("greviewer.state", function()
+describe("neo_reviewer.state", function()
     local state
 
     before_each(function()
-        package.loaded["greviewer.state"] = nil
-        package.loaded["greviewer.ui.signs"] = nil
-        package.loaded["greviewer.ui.virtual"] = nil
-        package.loaded["greviewer.ui.comments"] = nil
-        state = require("greviewer.state")
+        package.loaded["neo_reviewer.state"] = nil
+        package.loaded["neo_reviewer.ui.signs"] = nil
+        package.loaded["neo_reviewer.ui.virtual"] = nil
+        package.loaded["neo_reviewer.ui.comments"] = nil
+        state = require("neo_reviewer.state")
     end)
 
     after_each(function()

@@ -4,20 +4,20 @@ package.path = cwd .. "/tests/?.lua;" .. cwd .. "/tests/?/init.lua;" .. package.
 local fixtures = require("fixtures.mock_pr_data")
 local helpers = require("plenary.helpers")
 
-describe("greviewer.ui.buffer", function()
+describe("neo_reviewer.ui.buffer", function()
     local buffer
 
     before_each(function()
-        package.loaded["greviewer.ui.buffer"] = nil
+        package.loaded["neo_reviewer.ui.buffer"] = nil
 
-        buffer = require("greviewer.ui.buffer")
+        buffer = require("neo_reviewer.ui.buffer")
     end)
 
     after_each(function()
         helpers.clear_all_buffers()
     end)
 
-    -- Helper to set up a buffer with greviewer variables (simulates what init.apply_overlay_to_buffer does)
+    -- Helper to set up a buffer with neo_reviewer variables (simulates what init.apply_overlay_to_buffer does)
     local function setup_review_buffer(file, pr_url)
         local lines = {}
         if file.content then
@@ -27,8 +27,8 @@ describe("greviewer.ui.buffer", function()
         end
 
         local bufnr = helpers.create_test_buffer(lines)
-        vim.api.nvim_buf_set_var(bufnr, "greviewer_file", file)
-        vim.api.nvim_buf_set_var(bufnr, "greviewer_pr_url", pr_url)
+        vim.api.nvim_buf_set_var(bufnr, "nr_file", file)
+        vim.api.nvim_buf_set_var(bufnr, "nr_pr_url", pr_url)
         return bufnr
     end
 
@@ -59,9 +59,9 @@ describe("greviewer.ui.buffer", function()
             assert.is_nil(file)
         end)
 
-        it("returns nil for buffer without greviewer_file var", function()
+        it("returns nil for buffer without nr_file var", function()
             local bufnr = helpers.create_test_buffer({ "some", "content" })
-            vim.api.nvim_buf_set_var(bufnr, "greviewer_pr_url", "https://example.com")
+            vim.api.nvim_buf_set_var(bufnr, "nr_pr_url", "https://example.com")
 
             local file = buffer.get_current_file_from_buffer()
             assert.is_nil(file)
@@ -84,9 +84,9 @@ describe("greviewer.ui.buffer", function()
             assert.is_nil(url)
         end)
 
-        it("returns nil for buffer without greviewer_pr_url var", function()
+        it("returns nil for buffer without nr_pr_url var", function()
             local bufnr = helpers.create_test_buffer({ "some", "content" })
-            vim.api.nvim_buf_set_var(bufnr, "greviewer_file", { path = "test.lua" })
+            vim.api.nvim_buf_set_var(bufnr, "nr_file", { path = "test.lua" })
 
             local url = buffer.get_pr_url_from_buffer()
             assert.is_nil(url)

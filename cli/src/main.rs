@@ -6,7 +6,7 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
-#[command(name = "greviewer")]
+#[command(name = "neo-reviewer")]
 #[command(about = "CLI tool for reviewing GitHub pull requests in Neovim")]
 #[command(version)]
 struct Cli {

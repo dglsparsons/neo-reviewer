@@ -1,7 +1,7 @@
 use std::process::Command;
 
 fn cli_path() -> &'static str {
-    env!("CARGO_BIN_EXE_greviewer")
+    env!("CARGO_BIN_EXE_neo-reviewer")
 }
 
 mod tls {
@@ -12,7 +12,10 @@ mod tls {
         let cli = cli_path();
 
         let output = Command::new(cli)
-            .args(["fetch", "https://github.com/dgls/greviewer/pull/1"])
+            .args([
+                "fetch",
+                "https://github.com/dglsparsons/neo-reviewer/pull/1",
+            ])
             .output()
             .expect("Failed to execute CLI");
 
