@@ -21,6 +21,7 @@
 ---@class GReviewerPR
 ---@field number integer PR number
 ---@field title string PR title
+---@field author? string PR author username
 
 ---@alias GReviewerCommentSide "LEFT"|"RIGHT"
 
@@ -43,6 +44,7 @@
 ---@field review_type GReviewerReviewType Type of review session
 ---@field pr? GReviewerPR PR metadata (for PR reviews)
 ---@field url? string PR URL (for PR reviews)
+---@field viewer? string Current authenticated user
 ---@field git_root? string Git root directory (for local reviews)
 ---@field files GReviewerFile[] Changed files
 ---@field files_by_path table<string, GReviewerFile> Files indexed by path
@@ -55,11 +57,13 @@
 ---@field applied_buffers table<integer, boolean> Buffers that have overlays applied
 ---@field autocmd_id? integer Autocmd ID for buffer events
 ---@field overlays_visible boolean Whether overlays are currently shown
+---@field show_old_code? boolean Whether to show old code in virtual lines
 
 ---@class GReviewerReviewData
 ---@field pr GReviewerPR PR metadata
 ---@field files GReviewerFile[] Changed files
 ---@field comments? GReviewerComment[] Existing comments
+---@field viewer? string Current authenticated user
 
 ---@class GReviewerDiffData
 ---@field git_root string Git root directory

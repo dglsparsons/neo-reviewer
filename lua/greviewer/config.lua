@@ -69,6 +69,7 @@ M.values = {
         delete = "-",
         change = "~",
     },
+    wrap_navigation = true,
     auto_expand_deletes = false,
     thread_window = {
         keys = {
