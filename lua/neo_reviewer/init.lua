@@ -42,6 +42,10 @@ function M.setup(opts)
     vim.api.nvim_create_user_command("ReviewDone", function()
         M.done()
     end, { desc = "End review session without submitting" })
+
+    vim.api.nvim_create_user_command("ReviewSync", function()
+        M.sync()
+    end, { desc = "Sync PR review with GitHub" })
 end
 
 ---@param url_or_number? string|integer
@@ -501,6 +505,78 @@ function M.done()
     else
         vim.notify("Review closed", vim.log.levels.INFO)
     end
+end
+
+function M.sync()
+    local state = require("neo_reviewer.state")
+    local cli = require("neo_reviewer.cli")
+    local signs = require("neo_reviewer.ui.signs")
+    local virtual = require("neo_reviewer.ui.virtual")
+    local comments_ui = require("neo_reviewer.ui.comments")
+
+    local review = state.get_review()
+    if not review then
+        vim.notify("No active review to sync", vim.log.levels.WARN)
+        return
+    end
+
+    if review.review_type ~= "pr" or not review.url then
+        vim.notify("Sync only works for PR reviews", vim.log.levels.WARN)
+        return
+    end
+
+    local preserved = {
+        url = review.url,
+        git_root = review.git_root,
+        expanded_hunks = review.expanded_hunks,
+        did_checkout = review.did_checkout,
+        prev_branch = review.prev_branch,
+        did_stash = review.did_stash,
+    }
+    local old_comment_count = #review.comments
+    local cursor_pos = vim.api.nvim_win_get_cursor(0)
+
+    vim.notify("Syncing PR data...", vim.log.levels.INFO)
+
+    cli.fetch_pr(preserved.url, function(data, err)
+        if err then
+            vim.notify("Failed to sync PR: " .. err, vim.log.levels.ERROR)
+            return
+        end
+
+        for bufnr, _ in pairs(review.applied_buffers) do
+            if vim.api.nvim_buf_is_valid(bufnr) then
+                signs.clear(bufnr)
+                virtual.clear(bufnr)
+                comments_ui.clear(bufnr)
+            end
+        end
+
+        if review.autocmd_id then
+            vim.api.nvim_del_autocmd(review.autocmd_id)
+        end
+
+        state.set_review(data, preserved.git_root)
+        local new_review = state.get_review()
+
+        new_review.url = preserved.url
+        new_review.expanded_hunks = preserved.expanded_hunks
+        new_review.did_checkout = preserved.did_checkout
+        new_review.prev_branch = preserved.prev_branch
+        new_review.did_stash = preserved.did_stash
+
+        M.enable_overlay()
+
+        pcall(vim.api.nvim_win_set_cursor, 0, cursor_pos)
+
+        local new_comment_count = #new_review.comments
+        local diff = new_comment_count - old_comment_count
+        if diff > 0 then
+            vim.notify(string.format("Synced: %d new comment%s", diff, diff == 1 and "" or "s"), vim.log.levels.INFO)
+        else
+            vim.notify("Synced: no new comments", vim.log.levels.INFO)
+        end
+    end)
 end
 
 return M

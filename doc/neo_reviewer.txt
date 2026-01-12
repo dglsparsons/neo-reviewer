@@ -138,6 +138,11 @@ These user commands are created when you call `setup()`.
     was opened with a PR number (which checks out the PR branch), this restores
     the previous branch and pops any stashed changes.
 
+:ReviewSync                                                        *:ReviewSync*
+    Sync the current PR review with GitHub. Fetches the latest comments
+    and diff changes. Preserves cursor position and expanded hunk state.
+    Only works during an active PR review (not local diff reviews).
+
 ==============================================================================
 6. FUNCTIONS                                            *neo_reviewer-functions*
 
@@ -242,6 +247,12 @@ require("neo_reviewer").done()                                   *neo_reviewer.d
     opened with a PR number (which checks out the PR branch), this restores
     the previous branch and pops any stashed changes.
 
+require("neo_reviewer").sync()                                   *neo_reviewer.sync()*
+    Sync the current PR review with GitHub. Re-fetches PR data including
+    comments and diff changes. Preserves cursor position, expanded hunk
+    state, and checkout state. Only works during an active PR review.
+    See |:ReviewSync|.
+
 ==============================================================================
 7. KEYMAPS                                                *neo_reviewer-keymaps*
 
@@ -292,6 +303,10 @@ neo-reviewer does not set any keymaps by default. Add your own: >lua
     vim.keymap.set("n", "<leader>cq", function()
         require("neo_reviewer").done()
     end, { desc = "Close review" })
+
+    vim.keymap.set("n", "<leader>cs", function()
+        require("neo_reviewer").sync()
+    end, { desc = "Sync PR review" })
 <
 
 ==============================================================================
