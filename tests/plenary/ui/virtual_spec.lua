@@ -37,6 +37,7 @@ describe("greviewer.ui.virtual", function()
 
         vim.api.nvim_buf_set_var(bufnr, "greviewer_file", file)
         vim.api.nvim_buf_set_var(bufnr, "greviewer_pr_url", review.url)
+        state.mark_buffer_applied(bufnr)
 
         return bufnr, file
     end
@@ -164,9 +165,18 @@ describe("greviewer.ui.virtual", function()
     end)
 
     describe("toggle_at_cursor", function()
-        it("expands when not expanded", function()
+        it("sets global show_old_code state", function()
+            setup_review_buffer(fixtures.simple_pr)
+
+            assert.is_false(state.is_showing_old_code())
+            virtual.toggle_at_cursor()
+            assert.is_true(state.is_showing_old_code())
+            virtual.toggle_at_cursor()
+            assert.is_false(state.is_showing_old_code())
+        end)
+
+        it("expands all hunks in all applied buffers", function()
             local bufnr, file = setup_review_buffer(fixtures.simple_pr)
-            helpers.set_cursor(2)
 
             virtual.toggle_at_cursor()
 
@@ -174,9 +184,8 @@ describe("greviewer.ui.virtual", function()
             assert.is_true(#helpers.get_extmarks(bufnr, "greviewer_virtual") > 0)
         end)
 
-        it("collapses when already expanded", function()
+        it("collapses all hunks when toggled off", function()
             local bufnr, file = setup_review_buffer(fixtures.simple_pr)
-            helpers.set_cursor(2)
 
             virtual.toggle_at_cursor()
             virtual.toggle_at_cursor()
@@ -185,7 +194,7 @@ describe("greviewer.ui.virtual", function()
             assert.are.equal(0, #helpers.get_extmarks(bufnr, "greviewer_virtual"))
         end)
 
-        it("notifies when not in review buffer", function()
+        it("notifies when no active review", function()
             helpers.create_test_buffer({ "not", "a", "review" })
             local notifications = helpers.capture_notifications()
 
@@ -194,19 +203,7 @@ describe("greviewer.ui.virtual", function()
             local msgs = notifications.get()
             notifications.restore()
             assert.are.equal(1, #msgs)
-            assert.matches("Not in a review buffer", msgs[1].msg)
-        end)
-
-        it("notifies when no hunk at cursor", function()
-            local _, file = setup_review_buffer(fixtures.simple_pr)
-            helpers.set_cursor(5)
-            local notifications = helpers.capture_notifications()
-
-            virtual.toggle_at_cursor()
-
-            local msgs = notifications.get()
-            notifications.restore()
-            assert.is_true(#msgs > 0)
+            assert.matches("No active review", msgs[1].msg)
         end)
     end)
 

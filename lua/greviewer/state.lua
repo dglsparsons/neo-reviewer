@@ -21,6 +21,7 @@
 ---@class GReviewerPR
 ---@field number integer PR number
 ---@field title string PR title
+---@field author? string PR author username
 
 ---@alias GReviewerCommentSide "LEFT"|"RIGHT"
 
@@ -43,6 +44,7 @@
 ---@field review_type GReviewerReviewType Type of review session
 ---@field pr? GReviewerPR PR metadata (for PR reviews)
 ---@field url? string PR URL (for PR reviews)
+---@field viewer? string Current authenticated user
 ---@field git_root? string Git root directory (for local reviews)
 ---@field files GReviewerFile[] Changed files
 ---@field files_by_path table<string, GReviewerFile> Files indexed by path
@@ -55,11 +57,13 @@
 ---@field applied_buffers table<integer, boolean> Buffers that have overlays applied
 ---@field autocmd_id? integer Autocmd ID for buffer events
 ---@field overlays_visible boolean Whether overlays are currently shown
+---@field show_old_code? boolean Whether to show old code in virtual lines
 
 ---@class GReviewerReviewData
 ---@field pr GReviewerPR PR metadata
 ---@field files GReviewerFile[] Changed files
 ---@field comments? GReviewerComment[] Existing comments
+---@field viewer? string Current authenticated user
 
 ---@class GReviewerDiffData
 ---@field git_root string Git root directory
@@ -77,8 +81,9 @@ local state = {
 }
 
 ---@param review_data GReviewerReviewData
+---@param git_root string?
 ---@return GReviewerReview
-function M.set_review(review_data)
+function M.set_review(review_data, git_root)
     local files_by_path = {}
     for _, file in ipairs(review_data.files) do
         files_by_path[file.path] = file
@@ -87,6 +92,8 @@ function M.set_review(review_data)
     state.active_review = {
         review_type = "pr",
         pr = review_data.pr,
+        viewer = review_data.viewer,
+        git_root = git_root,
         files = review_data.files,
         files_by_path = files_by_path,
         comments = review_data.comments or {},
@@ -98,6 +105,7 @@ function M.set_review(review_data)
         applied_buffers = {},
         autocmd_id = nil,
         overlays_visible = true,
+        show_old_code = false,
     }
     return state.active_review
 end
@@ -121,6 +129,7 @@ function M.set_local_review(diff_data)
         applied_buffers = {},
         autocmd_id = nil,
         overlays_visible = true,
+        show_old_code = false,
     }
     return state.active_review
 end
@@ -325,6 +334,19 @@ function M.get_applied_buffers()
         return state.active_review.applied_buffers
     end
     return {}
+end
+
+function M.is_showing_old_code()
+    if state.active_review then
+        return state.active_review.show_old_code
+    end
+    return false
+end
+
+function M.set_show_old_code(show)
+    if state.active_review then
+        state.active_review.show_old_code = show
+    end
 end
 
 return M

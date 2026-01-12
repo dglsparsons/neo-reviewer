@@ -38,10 +38,24 @@ function M.setup(opts)
     vim.api.nvim_create_user_command("GRequestChanges", function(ctx)
         M.request_changes(ctx.args ~= "" and ctx.args or nil)
     end, { nargs = "?", desc = "Request changes on the PR" })
+
+    vim.api.nvim_create_user_command("GReviewDone", function()
+        M.done()
+    end, { desc = "End review session without submitting" })
 end
 
 ---@param url_or_number? string|integer
 function M.review(url_or_number)
+    local state = require("greviewer.state")
+
+    if state.get_review() then
+        vim.notify(
+            "A review is already active. Use :GReviewDone, :GApprove, or :GRequestChanges to end it first.",
+            vim.log.levels.WARN
+        )
+        return
+    end
+
     if url_or_number == nil then
         M.open()
     elseif type(url_or_number) == "number" or tonumber(url_or_number) then
@@ -106,6 +120,14 @@ function M.review_diff()
     local cli = require("greviewer.cli")
     local state = require("greviewer.state")
 
+    if state.get_review() then
+        vim.notify(
+            "A review is already active. Use :GReviewDone, :GApprove, or :GRequestChanges to end it first.",
+            vim.log.levels.WARN
+        )
+        return
+    end
+
     vim.notify("Getting local diff...", vim.log.levels.INFO)
 
     cli.get_local_diff(function(data, err)
@@ -128,6 +150,9 @@ function M.review_diff()
         M.enable_overlay()
 
         vim.notify(string.format("Local diff review enabled (%d files changed)", #data.files), vim.log.levels.INFO)
+
+        local nav = require("greviewer.ui.nav")
+        nav.first_hunk()
     end)
 end
 
@@ -146,7 +171,8 @@ function M.fetch_and_enable(url, on_ready)
         end
 
         state.clear_review()
-        local review = state.set_review(data)
+        local git_root = cli.get_git_root()
+        local review = state.set_review(data, git_root)
         review.url = url
 
         if on_ready then
@@ -164,6 +190,9 @@ function M.fetch_and_enable(url, on_ready)
             ),
             vim.log.levels.INFO
         )
+
+        local nav = require("greviewer.ui.nav")
+        nav.first_hunk()
     end)
 end
 
@@ -205,10 +234,10 @@ function M.apply_overlay_to_buffer(bufnr)
         return
     end
 
-    local cwd = vim.fn.getcwd()
+    local git_root = state.get_git_root()
     local relative_path = bufname
-    if bufname:sub(1, #cwd) == cwd then
-        relative_path = bufname:sub(#cwd + 2)
+    if git_root and bufname:sub(1, #git_root) == git_root then
+        relative_path = bufname:sub(#git_root + 2)
     end
 
     local file = state.get_file_by_path(relative_path)
@@ -229,6 +258,12 @@ function M.apply_overlay_to_buffer(bufnr)
     if not state.is_local_review() then
         local comments_ui = require("greviewer.ui.comments")
         comments_ui.show_existing(bufnr, file.path)
+    end
+
+    local config = require("greviewer.config")
+    local virtual = require("greviewer.ui.virtual")
+    if config.values.auto_expand_deletes or state.is_showing_old_code() then
+        virtual.apply_mode_to_buffer(bufnr, file)
     end
 end
 
@@ -318,26 +353,22 @@ end
 
 function M.next_hunk()
     local nav = require("greviewer.ui.nav")
-    local config = require("greviewer.config")
-    nav.next_hunk(config.values.wrap_navigation)
+    nav.next_hunk(true)
 end
 
 function M.prev_hunk()
     local nav = require("greviewer.ui.nav")
-    local config = require("greviewer.config")
-    nav.prev_hunk(config.values.wrap_navigation)
+    nav.prev_hunk(true)
 end
 
 function M.next_comment()
     local nav = require("greviewer.ui.nav")
-    local config = require("greviewer.config")
-    nav.next_comment(config.values.wrap_navigation)
+    nav.next_comment(true)
 end
 
 function M.prev_comment()
     local nav = require("greviewer.ui.nav")
-    local config = require("greviewer.config")
-    nav.prev_comment(config.values.wrap_navigation)
+    nav.prev_comment(true)
 end
 
 function M.toggle_prev_code()
@@ -377,8 +408,19 @@ function M.approve()
         return
     end
 
+    if state.is_local_review() then
+        vim.notify("Cannot approve a local diff review", vim.log.levels.WARN)
+        return
+    end
+
+    if review.viewer and review.pr and review.viewer == review.pr.author then
+        vim.notify("Cannot approve your own pull request", vim.log.levels.WARN)
+        return
+    end
+
     cli.submit_review(review.url, "APPROVE", nil, function(ok, err)
         if ok then
+            state.clear_review()
             vim.notify("Review approved", vim.log.levels.INFO)
         else
             vim.notify("Failed to submit review: " .. (err or "unknown error"), vim.log.levels.ERROR)
@@ -397,10 +439,21 @@ function M.request_changes(message)
         return
     end
 
+    if state.is_local_review() then
+        vim.notify("Cannot request changes on a local diff review", vim.log.levels.WARN)
+        return
+    end
+
+    if review.viewer and review.pr and review.viewer == review.pr.author then
+        vim.notify("Cannot request changes on your own pull request", vim.log.levels.WARN)
+        return
+    end
+
     local function submit_request(body)
         vim.notify("Submitting review...", vim.log.levels.INFO)
         cli.submit_review(review.url, "REQUEST_CHANGES", body, function(ok, err)
             if ok then
+                state.clear_review()
                 vim.notify("Changes requested", vim.log.levels.INFO)
             else
                 vim.notify("Failed to submit review: " .. (err or "unknown error"), vim.log.levels.ERROR)

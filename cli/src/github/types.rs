@@ -86,6 +86,7 @@ pub struct FetchResponse {
     pub pr: PullRequest,
     pub files: Vec<ReviewFile>,
     pub comments: Vec<ReviewComment>,
+    pub viewer: String,
 }
 
 /// Response from the comment command

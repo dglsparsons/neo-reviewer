@@ -453,7 +453,14 @@ describe("greviewer.state", function()
             assert.are.equal("/tmp/test-repo", state.get_git_root())
         end)
 
-        it("returns nil for PR review", function()
+        it("returns git root for PR review when provided", function()
+            local data = helpers.deep_copy(fixtures.simple_pr)
+            state.set_review(data, "/tmp/pr-repo")
+
+            assert.are.equal("/tmp/pr-repo", state.get_git_root())
+        end)
+
+        it("returns nil for PR review when not provided", function()
             local data = helpers.deep_copy(fixtures.simple_pr)
             state.set_review(data)
 

@@ -34,6 +34,12 @@ impl GitHubClient {
         })
     }
 
+    /// Get the authenticated user's login
+    pub async fn get_viewer(&self) -> Result<String> {
+        let user = self.octocrab.current().user().await?;
+        Ok(user.login)
+    }
+
     /// Fetch PR metadata
     pub async fn get_pr(&self, pr_ref: &PrRef) -> Result<PullRequest> {
         let pr = self
@@ -399,11 +405,19 @@ impl GitHubClient {
         if !response.status().is_success() {
             let status = response.status();
             let error_body = response.text().await.unwrap_or_default();
-            return Err(anyhow!(
-                "Failed to submit review: {} - {}",
-                status,
-                error_body
-            ));
+
+            #[derive(serde::Deserialize)]
+            struct GitHubError {
+                #[serde(default)]
+                errors: Vec<String>,
+            }
+
+            let friendly_msg = serde_json::from_str::<GitHubError>(&error_body)
+                .ok()
+                .and_then(|e| e.errors.into_iter().next())
+                .unwrap_or_else(|| format!("{} - {}", status, error_body));
+
+            return Err(anyhow!("Failed to submit review: {}", friendly_msg));
         }
 
         Ok(())

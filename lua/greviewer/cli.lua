@@ -34,6 +34,15 @@ local config = require("greviewer.config")
 ---@class GReviewerCLIModule
 local M = {}
 
+---@return string?
+function M.get_git_root()
+    local result = vim.fn.systemlist("git rev-parse --show-toplevel 2>/dev/null")
+    if vim.v.shell_error ~= 0 or #result == 0 then
+        return nil
+    end
+    return result[1]
+end
+
 ---@return string? owner
 ---@return string? repo
 function M.get_git_remote()

@@ -15,11 +15,22 @@ end
 
 function M.clear()
     local path = M.get_path()
-    local file = io.open(path, "w")
+    os.remove(path)
+end
+
+local function ensure_file_exists(path)
+    local file = io.open(path, "r")
+    if file then
+        file:close()
+        return true
+    end
+    file = io.open(path, "w")
     if file then
         file:write("# Review Comments\n\n")
         file:close()
+        return true
     end
+    return false
 end
 
 ---@param file_path string
@@ -29,6 +40,12 @@ end
 ---@return boolean
 function M.write(file_path, line, end_line, body)
     local path = M.get_path()
+
+    if not ensure_file_exists(path) then
+        vim.notify("Failed to open " .. COMMENTS_FILE, vim.log.levels.ERROR)
+        return false
+    end
+
     local file = io.open(path, "a")
     if not file then
         vim.notify("Failed to open " .. COMMENTS_FILE, vim.log.levels.ERROR)
