@@ -4,6 +4,10 @@ version = "0.1.0"
 edition = "2024"
 description = "CLI tool for reviewing GitHub pull requests in Neovim"
 license = "MIT"
+repository = "https://github.com/dglsparsons/neo-reviewer"
+readme = "../README.md"
+keywords = ["neovim", "github", "pull-request", "code-review"]
+categories = ["command-line-utilities", "development-tools"]
 
 [[bin]]
 name = "neo-reviewer"

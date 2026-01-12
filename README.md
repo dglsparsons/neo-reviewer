@@ -36,17 +36,21 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
 
 ### 2. Install the CLI tool
 
+**Using Cargo (from git):**
 ```bash
-cd /path/to/neo-reviewer
-cargo install --path cli
+cargo install --git https://github.com/dglsparsons/neo-reviewer neo-reviewer
 ```
 
-Or build manually:
-
+**Using Nix:**
 ```bash
-cd cli
-cargo build --release
-# Add target/release to your PATH, or copy the binary somewhere in PATH
+nix profile install github:dglsparsons/neo-reviewer
+```
+
+**From source:**
+```bash
+git clone https://github.com/dglsparsons/neo-reviewer
+cd neo-reviewer
+cargo install --path cli
 ```
 
 ### 3. Authenticate with GitHub
