@@ -101,6 +101,7 @@ function M.set_review(review_data, git_root)
         applied_buffers = {},
         autocmd_id = nil,
         overlays_visible = true,
+        show_old_code = false,
     }
     return state.active_review
 end
@@ -124,6 +125,7 @@ function M.set_local_review(diff_data)
         applied_buffers = {},
         autocmd_id = nil,
         overlays_visible = true,
+        show_old_code = false,
     }
     return state.active_review
 end
@@ -328,6 +330,19 @@ function M.get_applied_buffers()
         return state.active_review.applied_buffers
     end
     return {}
+end
+
+function M.is_showing_old_code()
+    if state.active_review then
+        return state.active_review.show_old_code
+    end
+    return false
+end
+
+function M.set_show_old_code(show)
+    if state.active_review then
+        state.active_review.show_old_code = show
+    end
 end
 
 return M

@@ -39,36 +39,62 @@ local function group_deletions_by_position(hunk)
     return groups
 end
 
+local function expand_all_in_buffer(bufnr, file)
+    if not file.hunks then
+        return
+    end
+    for _, hunk in ipairs(file.hunks) do
+        if hunk.old_lines and #hunk.old_lines > 0 then
+            if not state.is_hunk_expanded(file.path, hunk.start) then
+                M.expand(bufnr, hunk, file.path)
+            end
+        end
+    end
+end
+
+local function collapse_all_in_buffer(bufnr, file)
+    if not file.hunks then
+        return
+    end
+    for _, hunk in ipairs(file.hunks) do
+        if hunk.old_lines and #hunk.old_lines > 0 then
+            if state.is_hunk_expanded(file.path, hunk.start) then
+                M.collapse(bufnr, hunk, file.path)
+            end
+        end
+    end
+end
+
+function M.apply_mode_to_buffer(bufnr, file)
+    define_highlights()
+    if state.is_showing_old_code() then
+        expand_all_in_buffer(bufnr, file)
+    end
+end
+
 function M.toggle_at_cursor()
     define_highlights()
 
-    local buffer = require("greviewer.ui.buffer")
-    local file = buffer.get_current_file_from_buffer()
-    if not file then
-        vim.notify("Not in a review buffer", vim.log.levels.WARN)
+    local review = state.get_review()
+    if not review then
+        vim.notify("No active review", vim.log.levels.WARN)
         return
     end
 
-    local line = vim.api.nvim_win_get_cursor(0)[1]
-    local hunk = M.find_hunk_at_line(file.hunks, line)
+    local new_mode = not state.is_showing_old_code()
+    state.set_show_old_code(new_mode)
 
-    if not hunk then
-        vim.notify("No changes at cursor position", vim.log.levels.INFO)
-        return
-    end
-
-    if #hunk.old_lines == 0 then
-        vim.notify("No old content to show (pure addition)", vim.log.levels.INFO)
-        return
-    end
-
-    local bufnr = vim.api.nvim_get_current_buf()
-    local is_expanded = state.is_hunk_expanded(file.path, hunk.start)
-
-    if is_expanded then
-        M.collapse(bufnr, hunk, file.path)
-    else
-        M.expand(bufnr, hunk, file.path)
+    for bufnr, _ in pairs(state.get_applied_buffers()) do
+        if vim.api.nvim_buf_is_valid(bufnr) then
+            local ok, file = pcall(vim.api.nvim_buf_get_var, bufnr, "greviewer_file")
+            if ok and file then
+                if new_mode then
+                    expand_all_in_buffer(bufnr, file)
+                else
+                    collapse_all_in_buffer(bufnr, file)
+                end
+            end
+        end
     end
 end
 

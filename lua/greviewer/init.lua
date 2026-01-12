@@ -261,15 +261,9 @@ function M.apply_overlay_to_buffer(bufnr)
     end
 
     local config = require("greviewer.config")
-    if config.values.auto_expand_deletes then
-        local virtual = require("greviewer.ui.virtual")
-        for _, hunk in ipairs(file.hunks or {}) do
-            if hunk.old_lines and #hunk.old_lines > 0 then
-                if not state.is_hunk_expanded(file.path, hunk.start) then
-                    virtual.expand(bufnr, hunk, file.path)
-                end
-            end
-        end
+    local virtual = require("greviewer.ui.virtual")
+    if config.values.auto_expand_deletes or state.is_showing_old_code() then
+        virtual.apply_mode_to_buffer(bufnr, file)
     end
 end
 

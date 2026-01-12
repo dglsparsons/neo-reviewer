@@ -113,7 +113,10 @@ local function jump_to(file_path, line)
         is_same_file = current_name:match(vim.pesc(file_path) .. "$")
 
         if not is_same_file then
-            vim.cmd("edit " .. vim.fn.fnameescape(file_path))
+            local state = require("greviewer.state")
+            local git_root = state.get_git_root()
+            local full_path = git_root and (git_root .. "/" .. file_path) or file_path
+            vim.cmd("edit " .. vim.fn.fnameescape(full_path))
         end
     end
 
