@@ -340,4 +340,63 @@ describe("neo_reviewer.ui.virtual", function()
             assert.are.equal(3, row)
         end)
     end)
+
+    describe("EOF deletion handling", function()
+        it("places EOF deletions below the last line", function()
+            local bufnr, file = setup_review_buffer(fixtures.eof_deletion_pr)
+            local hunk = file.hunks[1]
+
+            virtual.expand(bufnr, hunk, file.path)
+
+            local extmarks = helpers.get_extmarks(bufnr, "nr_virtual")
+            assert.are.equal(1, #extmarks)
+            -- File has 3 lines (0-2 rows), anchor_line=4 exceeds line_count
+            -- Should clamp to row 2 (last line) with virt_lines_above=false
+            local row = extmarks[1][2]
+            local details = extmarks[1][4]
+            assert.are.equal(2, row)
+            assert.is_false(details.virt_lines_above)
+        end)
+
+        it("handles empty buffer without crashing", function()
+            local data = helpers.deep_copy(fixtures.eof_deletion_pr)
+            data.files[1].content = ""
+            state.set_review(data)
+            local review = state.get_review()
+            review.url = "https://github.com/owner/repo/pull/123"
+
+            local file = data.files[1]
+            local bufnr = helpers.create_test_buffer({})
+
+            vim.api.nvim_buf_set_var(bufnr, "nr_file", file)
+            vim.api.nvim_buf_set_var(bufnr, "nr_pr_url", review.url)
+            state.mark_buffer_applied(bufnr)
+
+            local hunk = file.hunks[1]
+
+            -- Should not error
+            virtual.expand(bufnr, hunk, file.path)
+
+            local extmarks = helpers.get_extmarks(bufnr, "nr_virtual")
+            assert.are.equal(1, #extmarks)
+            -- Row should be 0 (clamped from -1), displayed below
+            local row = extmarks[1][2]
+            local details = extmarks[1][4]
+            assert.are.equal(0, row)
+            assert.is_false(details.virt_lines_above)
+        end)
+
+        it("normal deletions still use virt_lines_above=true", function()
+            local bufnr, file = setup_review_buffer(fixtures.delete_only_pr)
+            local hunk = file.hunks[1]
+
+            virtual.expand(bufnr, hunk, file.path)
+
+            local extmarks = helpers.get_extmarks(bufnr, "nr_virtual")
+            assert.are.equal(1, #extmarks)
+            -- Deletion at line 3 in a 5-line file should use virt_lines_above=true
+            local details = extmarks[1][4]
+            assert.is_true(details.virt_lines_above)
+        end)
+    end)
 end)

@@ -615,4 +615,40 @@ M.change_hunk_pr = {
     comments = {},
 }
 
+M.eof_deletion_pr = {
+    pr = {
+        number = 1102,
+        title = "EOF deletion PR",
+        body = "PR with deletions at end of file",
+        state = "open",
+        author = "testuser",
+    },
+    files = {
+        {
+            path = "eof_deleted.lua",
+            status = "modified",
+            additions = 0,
+            deletions = 3,
+            -- File now has 3 lines; lines 4-6 were deleted
+            content = table.concat({
+                "line 1",
+                "line 2",
+                "line 3",
+            }, "\n"),
+            hunks = {
+                {
+                    start = 4,
+                    count = 0,
+                    hunk_type = "delete",
+                    old_lines = { "deleted line 4", "deleted line 5", "deleted line 6" },
+                    added_lines = {},
+                    deleted_at = { 4, 4, 4 },
+                    deleted_old_lines = { 4, 5, 6 },
+                },
+            },
+        },
+    },
+    comments = {},
+}
+
 return M

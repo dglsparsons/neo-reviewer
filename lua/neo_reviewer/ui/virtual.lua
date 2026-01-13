@@ -132,17 +132,19 @@ function M.expand(bufnr, hunk, file_path)
             })
         end
 
-        -- Use anchor_line for positioning:
-        -- - CHANGE hunks: first added line (stable content anchor)
-        -- - DELETE-only hunks: line above deletion (stable neighbor anchor)
+        -- Each deletion group anchors to its deleted_at position directly.
+        -- With virt_lines_above=true, virtual lines appear exactly where deleted content was.
         local row = math.max(group.anchor_line - 1, 0)
+        local above = true
+
         if row >= line_count then
-            row = line_count - 1
+            row = math.max(line_count - 1, 0)
+            above = false -- EOF deletions: show after last line, not above it
         end
 
         local extmark_id = vim.api.nvim_buf_set_extmark(bufnr, ns, row, 0, {
             virt_lines = virt_lines,
-            virt_lines_above = true,
+            virt_lines_above = above,
         })
 
         table.insert(extmark_ids, extmark_id)
