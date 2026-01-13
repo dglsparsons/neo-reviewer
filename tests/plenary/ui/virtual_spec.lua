@@ -231,6 +231,29 @@ describe("neo_reviewer.ui.virtual", function()
             assert.are.equal(2, #extmarks)
         end)
 
+        it("anchors scattered deletions to their respective positions", function()
+            local bufnr, file = setup_review_buffer(fixtures.mixed_changes_pr)
+            local hunk = file.hunks[1]
+            -- deleted_at = { 1, 1, 5 } means:
+            --   Group 1: deletions at position 1 -> anchor=1, row=0
+            --   Group 2: deletion at position 5 -> anchor=5, row=4
+
+            virtual.expand(bufnr, hunk, file.path)
+
+            local extmarks = helpers.get_extmarks(bufnr, "nr_virtual")
+            assert.are.equal(2, #extmarks)
+
+            -- Sort by row to have predictable order
+            table.sort(extmarks, function(a, b)
+                return a[2] < b[2]
+            end)
+
+            -- First group at position 1 (row 0)
+            assert.are.equal(0, extmarks[1][2])
+            -- Second group at position 5 (row 4)
+            assert.are.equal(4, extmarks[2][2])
+        end)
+
         it("stores multiple extmark IDs in state", function()
             local bufnr, file = setup_review_buffer(fixtures.mixed_changes_pr)
             local hunk = file.hunks[1]
@@ -286,7 +309,7 @@ describe("neo_reviewer.ui.virtual", function()
             assert.are.equal(3, row)
         end)
 
-        it("anchors DELETE-only hunk virtual lines to line above deletion", function()
+        it("anchors DELETE-only hunk virtual lines to deletion position", function()
             local bufnr, file = setup_review_buffer(fixtures.delete_only_pr)
             local hunk = file.hunks[1]
 
@@ -294,9 +317,10 @@ describe("neo_reviewer.ui.virtual", function()
 
             local extmarks = helpers.get_extmarks(bufnr, "nr_virtual")
             assert.are.equal(1, #extmarks)
-            -- Extmark should be at row 1 (deleted_at[1]=3, anchor=3-1=2, row=2-1=1)
+            -- Extmark should be at row 2 (deleted_at[1]=3, anchor=3, row=3-1=2)
+            -- Virtual lines appear above line 3, showing where deleted content was
             local row = extmarks[1][2]
-            assert.are.equal(1, row)
+            assert.are.equal(2, row)
         end)
 
         it("DELETE-only hunk extmarks survive line insertions above anchor", function()
@@ -311,9 +335,9 @@ describe("neo_reviewer.ui.virtual", function()
             -- Extmark should still exist (extmarks move with text)
             local extmarks = helpers.get_extmarks(bufnr, "nr_virtual")
             assert.are.equal(1, #extmarks)
-            -- Row should now be 2 (was 1, moved down by 1)
+            -- Row should now be 3 (was 2, moved down by 1)
             local row = extmarks[1][2]
-            assert.are.equal(2, row)
+            assert.are.equal(3, row)
         end)
     end)
 end)

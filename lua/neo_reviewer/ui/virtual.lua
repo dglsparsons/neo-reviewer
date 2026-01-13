@@ -14,19 +14,17 @@ local function define_highlights()
     vim.api.nvim_set_hl(0, "NRVirtualDelete", { fg = "#e06c75", bg = "#3b2d2d", default = true })
 end
 
----Groups deleted lines by their position and determines the best anchor point.
+---Groups deleted lines by their position and determines the anchor point.
 ---
----For CHANGE hunks: anchors to the first added line (stable content anchor)
----For DELETE-only hunks: anchors to the line above the deletion (stable neighbor anchor)
+---Each deletion group anchors to its own position (deleted_at value). With
+---virt_lines_above=true, this places the virtual lines immediately above
+---the line at that position - exactly where the deleted content was.
 ---@param hunk NRHunk
 ---@return NRDeletionGroup[]
 local function group_deletions_with_anchors(hunk)
     if not hunk.deleted_at or #hunk.deleted_at == 0 then
         return {}
     end
-
-    local is_delete_only = hunk.hunk_type == "delete"
-    local first_added = hunk.added_lines and hunk.added_lines[1]
 
     ---@type NRDeletionGroup[]
     local groups = {}
@@ -39,19 +37,9 @@ local function group_deletions_with_anchors(hunk)
         if current_group and current_group.position == pos then
             table.insert(current_group.lines, old_line)
         else
-            local anchor
-            if is_delete_only then
-                -- Anchor to the line above the deletion for stability
-                -- (the line above is existing content less likely to be deleted)
-                anchor = math.max(pos - 1, 1)
-            else
-                -- For CHANGE hunks, anchor to the first added line
-                anchor = first_added or pos
-            end
-
             current_group = {
                 position = pos,
-                anchor_line = anchor,
+                anchor_line = pos,
                 lines = { old_line },
             }
             table.insert(groups, current_group)

@@ -60,7 +60,7 @@ describe("neo_reviewer review opening", function()
 
             local notifs = notifications.get()
             for _, n in ipairs(notifs) do
-                assert.is_not.matches("Uncommitted changes detected", n.msg)
+                assert.is_nil(n.msg:match("Uncommitted changes detected"))
             end
         end)
 
