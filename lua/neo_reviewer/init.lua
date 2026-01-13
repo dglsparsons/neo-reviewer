@@ -74,6 +74,13 @@ end
 function M.open()
     local cli = require("neo_reviewer.cli")
 
+    if cli.is_worktree_dirty() then
+        vim.notify(
+            "Warning: Uncommitted changes detected. Line numbers in the review may not match your local files.",
+            vim.log.levels.WARN
+        )
+    end
+
     cli.get_pr_for_branch(function(pr_info, err)
         if err then
             vim.notify(err, vim.log.levels.ERROR)
@@ -92,6 +99,14 @@ function M.open_with_checkout(pr_number)
     local cli = require("neo_reviewer.cli")
     local state = require("neo_reviewer.state")
 
+    if cli.is_worktree_dirty() then
+        vim.notify(
+            "Cannot checkout PR: uncommitted changes in worktree. Commit or stash them first.",
+            vim.log.levels.ERROR
+        )
+        return
+    end
+
     vim.notify(string.format("Checking out PR #%d...", pr_number), vim.log.levels.INFO)
 
     cli.checkout_pr(pr_number, function(checkout_info, err)
@@ -109,7 +124,7 @@ function M.open_with_checkout(pr_number)
             local url = string.format("https://github.com/%s/%s/pull/%d", pr_info.owner, pr_info.repo, pr_info.number)
 
             M.fetch_and_enable(url, function()
-                state.set_checkout_state(checkout_info.prev_branch, checkout_info.stashed)
+                state.set_checkout_state(checkout_info.prev_branch)
             end)
         end)
     end)
@@ -117,7 +132,29 @@ end
 
 ---@param url string
 function M.open_url(url)
-    M.fetch_and_enable(url)
+    local cli = require("neo_reviewer.cli")
+    local state = require("neo_reviewer.state")
+
+    if cli.is_worktree_dirty() then
+        vim.notify(
+            "Cannot checkout PR: uncommitted changes in worktree. Commit or stash them first.",
+            vim.log.levels.ERROR
+        )
+        return
+    end
+
+    vim.notify("Checking out PR...", vim.log.levels.INFO)
+
+    cli.checkout_pr(url, function(checkout_info, err)
+        if err then
+            vim.notify(err, vim.log.levels.ERROR)
+            return
+        end
+
+        M.fetch_and_enable(url, function()
+            state.set_checkout_state(checkout_info.prev_branch)
+        end)
+    end)
 end
 
 function M.review_diff()
@@ -489,13 +526,12 @@ function M.done()
 
     local did_checkout = review.did_checkout
     local prev_branch = review.prev_branch
-    local did_stash = review.did_stash
 
     state.clear_review()
 
     if did_checkout and prev_branch then
         vim.notify("Restoring previous branch...", vim.log.levels.INFO)
-        cli.restore_branch(prev_branch, did_stash or false, function(ok, err)
+        cli.restore_branch(prev_branch, function(ok, err)
             if ok then
                 vim.notify(string.format("Restored to branch: %s", prev_branch), vim.log.levels.INFO)
             else
@@ -531,7 +567,6 @@ function M.sync()
         expanded_hunks = review.expanded_hunks,
         did_checkout = review.did_checkout,
         prev_branch = review.prev_branch,
-        did_stash = review.did_stash,
     }
     local old_comment_count = #review.comments
     local cursor_pos = vim.api.nvim_win_get_cursor(0)
@@ -567,7 +602,6 @@ function M.sync()
         new_review.expanded_hunks = preserved.expanded_hunks
         new_review.did_checkout = preserved.did_checkout
         new_review.prev_branch = preserved.prev_branch
-        new_review.did_stash = preserved.did_stash
 
         M.enable_overlay()
 

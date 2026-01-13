@@ -11,7 +11,6 @@ local config = require("neo_reviewer.config")
 ---@field repo string Repository name
 
 ---@class NRCheckoutInfo
----@field stashed boolean Whether changes were stashed
 ---@field prev_branch string? Previous branch name
 
 ---@class NRCommentData
@@ -67,6 +66,12 @@ function M.get_current_branch()
     return result[1]
 end
 
+---@return boolean
+function M.is_worktree_dirty()
+    local status = vim.fn.systemlist("git status --porcelain 2>/dev/null")
+    return #status > 0
+end
+
 ---@param callback fun(pr_info: NRPRInfo?, err: string?)
 function M.get_pr_for_branch(callback)
     local owner, repo = M.get_git_remote()
@@ -103,30 +108,18 @@ function M.get_pr_for_branch(callback)
     }):start()
 end
 
----@param pr_number integer
+---@param pr_ref integer|string PR number or URL
 ---@param callback fun(checkout_info: NRCheckoutInfo?, err: string?)
-function M.checkout_pr(pr_number, callback)
-    local stashed = false
+function M.checkout_pr(pr_ref, callback)
     local prev_branch = M.get_current_branch()
-
-    local status = vim.fn.systemlist("git status --porcelain 2>/dev/null")
-    if #status > 0 then
-        vim.fn.system("git stash push -m 'neo-reviewer: auto-stash'")
-        if vim.v.shell_error == 0 then
-            stashed = true
-        end
-    end
 
     Job:new({
         command = "gh",
-        args = { "pr", "checkout", tostring(pr_number) },
+        args = { "pr", "checkout", tostring(pr_ref) },
         on_exit = vim.schedule_wrap(function(j, code)
             if code == 0 then
-                callback({ stashed = stashed, prev_branch = prev_branch }, nil)
+                callback({ prev_branch = prev_branch }, nil)
             else
-                if stashed then
-                    vim.fn.system("git stash pop")
-                end
                 local stderr = table.concat(j:stderr_result(), "\n")
                 callback(nil, "Failed to checkout PR: " .. stderr)
             end
@@ -135,17 +128,13 @@ function M.checkout_pr(pr_number, callback)
 end
 
 ---@param prev_branch string
----@param stashed boolean
 ---@param callback fun(ok: boolean, err: string?)
-function M.restore_branch(prev_branch, stashed, callback)
+function M.restore_branch(prev_branch, callback)
     Job:new({
         command = "git",
         args = { "checkout", prev_branch },
         on_exit = vim.schedule_wrap(function(j, code)
             if code == 0 then
-                if stashed then
-                    vim.fn.system("git stash pop")
-                end
                 callback(true, nil)
             else
                 local stderr = table.concat(j:stderr_result(), "\n")

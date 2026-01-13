@@ -37,10 +37,68 @@ describe("neo_reviewer.cli", function()
         Job.new:revert()
     end)
 
+    describe("is_worktree_dirty", function()
+        it("returns true when there are uncommitted changes", function()
+            stub(vim.fn, "systemlist", function()
+                return { "M modified.lua", "?? untracked.lua" }
+            end)
+
+            local result = cli.is_worktree_dirty()
+
+            assert.is_true(result)
+            vim.fn.systemlist:revert()
+        end)
+
+        it("returns false when worktree is clean", function()
+            stub(vim.fn, "systemlist", function()
+                return {}
+            end)
+
+            local result = cli.is_worktree_dirty()
+
+            assert.is_false(result)
+            vim.fn.systemlist:revert()
+        end)
+    end)
+
+    describe("checkout_pr", function()
+        it("accepts PR number", function()
+            stub(vim.fn, "systemlist", function()
+                return {}
+            end)
+
+            local callback = spy.new(function() end)
+            cli.checkout_pr(123, callback)
+
+            assert.stub(Job.new).was_called(1)
+            local opts = job_instance._opts
+            assert.are.equal("gh", opts.command)
+            assert.are.same({ "pr", "checkout", "123" }, opts.args)
+
+            vim.fn.systemlist:revert()
+        end)
+
+        it("accepts PR URL", function()
+            stub(vim.fn, "systemlist", function()
+                return {}
+            end)
+
+            local callback = spy.new(function() end)
+            cli.checkout_pr("https://github.com/owner/repo/pull/456", callback)
+
+            assert.stub(Job.new).was_called(1)
+            local opts = job_instance._opts
+            assert.are.equal("gh", opts.command)
+            assert.are.same({ "pr", "checkout", "https://github.com/owner/repo/pull/456" }, opts.args)
+
+            vim.fn.systemlist:revert()
+        end)
+    end)
+
     describe("restore_branch", function()
         it("calls git checkout with correct args", function()
             local callback = spy.new(function() end)
-            cli.restore_branch("main", false, callback)
+            cli.restore_branch("main", callback)
 
             assert.stub(Job.new).was_called(1)
             local opts = job_instance._opts
@@ -50,7 +108,7 @@ describe("neo_reviewer.cli", function()
 
         it("returns success on checkout success", function()
             local received_ok, received_err
-            cli.restore_branch("main", false, function(ok, err)
+            cli.restore_branch("main", function(ok, err)
                 received_ok = ok
                 received_err = err
             end)
@@ -70,7 +128,7 @@ describe("neo_reviewer.cli", function()
 
         it("returns error on checkout failure", function()
             local received_ok, received_err
-            cli.restore_branch("main", false, function(ok, err)
+            cli.restore_branch("main", function(ok, err)
                 received_ok = ok
                 received_err = err
             end)

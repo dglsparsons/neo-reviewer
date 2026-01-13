@@ -53,7 +53,6 @@
 ---@field expanded_hunks table<string, integer[]> Map of file:hunk to extmark IDs
 ---@field did_checkout? boolean Whether we checked out a branch
 ---@field prev_branch? string Previous branch name
----@field did_stash? boolean Whether we stashed changes
 ---@field applied_buffers table<integer, boolean> Buffers that have overlays applied
 ---@field autocmd_id? integer Autocmd ID for buffer events
 ---@field overlays_visible boolean Whether overlays are currently shown
@@ -101,7 +100,6 @@ function M.set_review(review_data, git_root)
         expanded_hunks = {},
         did_checkout = false,
         prev_branch = nil,
-        did_stash = false,
         applied_buffers = {},
         autocmd_id = nil,
         overlays_visible = true,
@@ -151,12 +149,10 @@ function M.get_git_root()
 end
 
 ---@param prev_branch string
----@param stashed boolean
-function M.set_checkout_state(prev_branch, stashed)
+function M.set_checkout_state(prev_branch)
     if state.active_review then
         state.active_review.did_checkout = true
         state.active_review.prev_branch = prev_branch
-        state.active_review.did_stash = stashed
     end
 end
 
