@@ -5,6 +5,12 @@
 ---@class NRModule
 local M = {}
 
+---@param input string
+---@return boolean
+local function is_github_url(input)
+    return input:match("github%.com") ~= nil or input:match("^https?://") ~= nil
+end
+
 ---@param opts? NRPartialConfig
 function M.setup(opts)
     local config = require("neo_reviewer.config")
@@ -67,7 +73,11 @@ function M.review_pr(url_or_number)
         M.open_with_checkout(pr_number)
     else
         ---@cast url_or_number string
-        M.open_url(url_or_number)
+        if is_github_url(url_or_number) then
+            M.open_url(url_or_number)
+        else
+            M.open_with_branch(url_or_number)
+        end
     end
 end
 
@@ -153,6 +163,42 @@ function M.open_url(url)
 
         M.fetch_and_enable(url, function()
             state.set_checkout_state(checkout_info.prev_branch)
+        end)
+    end)
+end
+
+---@param branch_name string
+function M.open_with_branch(branch_name)
+    local cli = require("neo_reviewer.cli")
+    local state = require("neo_reviewer.state")
+
+    if cli.is_worktree_dirty() then
+        vim.notify(
+            "Cannot checkout PR: uncommitted changes in worktree. Commit or stash them first.",
+            vim.log.levels.ERROR
+        )
+        return
+    end
+
+    vim.notify(string.format("Checking out PR for branch '%s'...", branch_name), vim.log.levels.INFO)
+
+    cli.checkout_pr(branch_name, function(checkout_info, err)
+        if err then
+            vim.notify(err, vim.log.levels.ERROR)
+            return
+        end
+
+        cli.get_pr_for_branch(function(pr_info, pr_err)
+            if pr_err then
+                vim.notify(pr_err, vim.log.levels.ERROR)
+                return
+            end
+
+            local url = string.format("https://github.com/%s/%s/pull/%d", pr_info.owner, pr_info.repo, pr_info.number)
+
+            M.fetch_and_enable(url, function()
+                state.set_checkout_state(checkout_info.prev_branch)
+            end)
         end)
     end)
 end

@@ -198,4 +198,161 @@ describe("neo_reviewer review opening", function()
             assert.stub(cli.checkout_pr).was_called_with(123, match._)
         end)
     end)
+
+    describe("open_with_branch", function()
+        it("errors when worktree is dirty", function()
+            cli.is_worktree_dirty.returns(true)
+
+            neo_reviewer.open_with_branch("feature/my-branch")
+
+            assert.stub(cli.checkout_pr).was_not_called()
+            local notifs = notifications.get()
+            local found = false
+            for _, n in ipairs(notifs) do
+                if n.msg:match("Cannot checkout PR") and n.level == vim.log.levels.ERROR then
+                    found = true
+                    break
+                end
+            end
+            assert.is_true(found, "Expected error about uncommitted changes")
+        end)
+
+        it("calls checkout_pr with branch name when clean", function()
+            cli.is_worktree_dirty.returns(false)
+
+            neo_reviewer.open_with_branch("feature/my-branch")
+
+            assert.stub(cli.checkout_pr).was_called(1)
+            assert.stub(cli.checkout_pr).was_called_with("feature/my-branch", match._)
+        end)
+
+        it("notifies user about checkout with branch name", function()
+            cli.is_worktree_dirty.returns(false)
+
+            neo_reviewer.open_with_branch("feature/my-branch")
+
+            local notifs = notifications.get()
+            local found = false
+            for _, n in ipairs(notifs) do
+                if n.msg:match("Checking out PR for branch 'feature/my%-branch'") then
+                    found = true
+                    break
+                end
+            end
+            assert.is_true(found, "Expected notification with branch name")
+        end)
+
+        it("calls get_pr_for_branch after successful checkout", function()
+            cli.is_worktree_dirty.returns(false)
+            cli.checkout_pr.invokes(function(_, callback)
+                callback({ prev_branch = "main" }, nil)
+            end)
+
+            neo_reviewer.open_with_branch("feature/my-branch")
+
+            assert.stub(cli.get_pr_for_branch).was_called(1)
+        end)
+
+        it("fetches PR after getting branch info", function()
+            cli.is_worktree_dirty.returns(false)
+            cli.checkout_pr.invokes(function(_, callback)
+                callback({ prev_branch = "main" }, nil)
+            end)
+            cli.get_pr_for_branch.invokes(function(callback)
+                callback({
+                    number = 456,
+                    title = "Test PR",
+                    owner = "owner",
+                    repo = "repo",
+                }, nil)
+            end)
+
+            neo_reviewer.open_with_branch("feature/my-branch")
+
+            assert.stub(cli.fetch_pr).was_called(1)
+            assert.stub(cli.fetch_pr).was_called_with("https://github.com/owner/repo/pull/456", match._)
+        end)
+
+        it("does not fetch on checkout failure", function()
+            cli.is_worktree_dirty.returns(false)
+            cli.checkout_pr.invokes(function(_, callback)
+                callback(nil, "Failed to checkout")
+            end)
+
+            neo_reviewer.open_with_branch("feature/my-branch")
+
+            assert.stub(cli.get_pr_for_branch).was_not_called()
+            assert.stub(cli.fetch_pr).was_not_called()
+        end)
+
+        it("does not fetch on get_pr_for_branch failure", function()
+            cli.is_worktree_dirty.returns(false)
+            cli.checkout_pr.invokes(function(_, callback)
+                callback({ prev_branch = "main" }, nil)
+            end)
+            cli.get_pr_for_branch.invokes(function(callback)
+                callback(nil, "No PR found for branch")
+            end)
+
+            neo_reviewer.open_with_branch("feature/my-branch")
+
+            assert.stub(cli.fetch_pr).was_not_called()
+        end)
+    end)
+
+    describe("review_pr routing", function()
+        it("routes to open when no argument", function()
+            cli.is_worktree_dirty.returns(false)
+
+            neo_reviewer.review_pr(nil)
+
+            assert.stub(cli.get_pr_for_branch).was_called(1)
+            assert.stub(cli.checkout_pr).was_not_called()
+        end)
+
+        it("routes to open_with_checkout for numeric string", function()
+            cli.is_worktree_dirty.returns(false)
+
+            neo_reviewer.review_pr("123")
+
+            assert.stub(cli.checkout_pr).was_called(1)
+            assert.stub(cli.checkout_pr).was_called_with(123, match._)
+        end)
+
+        it("routes to open_url for github URL", function()
+            cli.is_worktree_dirty.returns(false)
+
+            neo_reviewer.review_pr("https://github.com/owner/repo/pull/123")
+
+            assert.stub(cli.checkout_pr).was_called(1)
+            assert.stub(cli.checkout_pr).was_called_with("https://github.com/owner/repo/pull/123", match._)
+        end)
+
+        it("routes to open_with_branch for non-URL string", function()
+            cli.is_worktree_dirty.returns(false)
+
+            neo_reviewer.review_pr("feature/my-branch")
+
+            assert.stub(cli.checkout_pr).was_called(1)
+            assert.stub(cli.checkout_pr).was_called_with("feature/my-branch", match._)
+        end)
+
+        it("routes to open_with_branch for branch names with slashes", function()
+            cli.is_worktree_dirty.returns(false)
+
+            neo_reviewer.review_pr("user/feature/add-tests")
+
+            assert.stub(cli.checkout_pr).was_called(1)
+            assert.stub(cli.checkout_pr).was_called_with("user/feature/add-tests", match._)
+        end)
+
+        it("routes to open_url for URL starting with http", function()
+            cli.is_worktree_dirty.returns(false)
+
+            neo_reviewer.review_pr("http://github.com/owner/repo/pull/123")
+
+            assert.stub(cli.checkout_pr).was_called(1)
+            assert.stub(cli.checkout_pr).was_called_with("http://github.com/owner/repo/pull/123", match._)
+        end)
+    end)
 end)

@@ -111,11 +111,12 @@ input_window.keys ~
 
 These user commands are created when you call `setup()`.
 
-:ReviewPR [url_or_number]                                            *:ReviewPR*
+:ReviewPR [arg]                                                      *:ReviewPR*
     Open a PR for review. Accepts an optional argument:
     - No argument: detects PR for current branch
     - A PR number: checks out the PR branch and opens review
     - A GitHub PR URL: https://github.com/owner/repo/pull/123
+    - A branch name: checks out the PR for that branch and opens review
 
 :ReviewDiff                                                        *:ReviewDiff*
     Review local git diff (both staged and unstaged changes). Comments are
@@ -146,11 +147,12 @@ These user commands are created when you call `setup()`.
 ==============================================================================
 6. FUNCTIONS                                            *neo_reviewer-functions*
 
-require("neo_reviewer").review_pr({url_or_number})        *neo_reviewer.review_pr()*
-    Open a PR for review. Accepts either:
+require("neo_reviewer").review_pr({arg})                   *neo_reviewer.review_pr()*
+    Open a PR for review. Accepts:
     - No argument: detects PR for current branch
     - A PR number: checks out the PR branch and opens review
     - A GitHub PR URL: https://github.com/owner/repo/pull/123
+    - A branch name: checks out the PR for that branch and opens review
 
 require("neo_reviewer").review_diff()                     *neo_reviewer.review_diff()*
     Review local git diff (both staged and unstaged changes). This allows
