@@ -2,6 +2,9 @@
 ---@field line1? integer Start line from visual selection
 ---@field line2? integer End line from visual selection
 
+---@class NRReviewOpts
+---@field analyze? boolean Whether to run AI analysis (nil = use config default)
+
 ---@class NRModule
 local M = {}
 
@@ -21,17 +24,37 @@ function M.setup(opts)
     end
 
     vim.api.nvim_create_user_command("ReviewPR", function(ctx)
-        local arg = ctx.args
-        if arg and arg ~= "" then
-            M.review_pr(arg)
-        else
-            M.review_pr()
+        local args = ctx.args or ""
+        local analyze = nil
+        local url_or_number = nil
+
+        for part in args:gmatch("%S+") do
+            if part == "--analyze" then
+                analyze = true
+            elseif part == "--no-analyze" then
+                analyze = false
+            else
+                url_or_number = part
+            end
         end
+
+        M.review_pr(url_or_number, { analyze = analyze })
     end, { nargs = "?", desc = "Open PR review" })
 
-    vim.api.nvim_create_user_command("ReviewDiff", function()
-        M.review_diff()
-    end, { desc = "Review local git diff (staged + unstaged changes)" })
+    vim.api.nvim_create_user_command("ReviewDiff", function(ctx)
+        local args = ctx.args or ""
+        local analyze = nil
+
+        for part in args:gmatch("%S+") do
+            if part == "--analyze" then
+                analyze = true
+            elseif part == "--no-analyze" then
+                analyze = false
+            end
+        end
+
+        M.review_diff({ analyze = analyze })
+    end, { nargs = "?", desc = "Review local git diff (staged + unstaged changes)" })
 
     vim.api.nvim_create_user_command("AddComment", function(ctx)
         M.add_comment({ line1 = ctx.line1, line2 = ctx.line2 })
@@ -52,10 +75,15 @@ function M.setup(opts)
     vim.api.nvim_create_user_command("ReviewSync", function()
         M.sync()
     end, { desc = "Sync PR review with GitHub" })
+
+    vim.api.nvim_create_user_command("ReviewAI", function()
+        M.show_ai_details()
+    end, { desc = "Show AI analysis details for current hunk" })
 end
 
 ---@param url_or_number? string|integer
-function M.review_pr(url_or_number)
+---@param opts? NRReviewOpts
+function M.review_pr(url_or_number, opts)
     local state = require("neo_reviewer.state")
 
     if state.get_review() then
@@ -66,22 +94,25 @@ function M.review_pr(url_or_number)
         return
     end
 
+    opts = opts or {}
+
     if url_or_number == nil then
-        M.open()
+        M.open(opts)
     elseif type(url_or_number) == "number" or tonumber(url_or_number) then
         local pr_number = tonumber(url_or_number) --[[@as integer]]
-        M.open_with_checkout(pr_number)
+        M.open_with_checkout(pr_number, opts)
     else
         ---@cast url_or_number string
         if is_github_url(url_or_number) then
-            M.open_url(url_or_number)
+            M.open_url(url_or_number, opts)
         else
-            M.open_with_branch(url_or_number)
+            M.open_with_branch(url_or_number, opts)
         end
     end
 end
 
-function M.open()
+---@param opts? NRReviewOpts
+function M.open(opts)
     local cli = require("neo_reviewer.cli")
 
     if cli.is_worktree_dirty() then
@@ -100,12 +131,13 @@ function M.open()
         local url = string.format("https://github.com/%s/%s/pull/%d", pr_info.owner, pr_info.repo, pr_info.number)
         vim.notify(string.format("Found PR #%d: %s", pr_info.number, pr_info.title), vim.log.levels.INFO)
 
-        M.fetch_and_enable(url)
+        M.fetch_and_enable(url, nil, opts)
     end)
 end
 
 ---@param pr_number integer
-function M.open_with_checkout(pr_number)
+---@param opts? NRReviewOpts
+function M.open_with_checkout(pr_number, opts)
     local cli = require("neo_reviewer.cli")
     local state = require("neo_reviewer.state")
 
@@ -135,13 +167,14 @@ function M.open_with_checkout(pr_number)
 
             M.fetch_and_enable(url, function()
                 state.set_checkout_state(checkout_info.prev_branch)
-            end)
+            end, opts)
         end)
     end)
 end
 
 ---@param url string
-function M.open_url(url)
+---@param opts? NRReviewOpts
+function M.open_url(url, opts)
     local cli = require("neo_reviewer.cli")
     local state = require("neo_reviewer.state")
 
@@ -163,12 +196,13 @@ function M.open_url(url)
 
         M.fetch_and_enable(url, function()
             state.set_checkout_state(checkout_info.prev_branch)
-        end)
+        end, opts)
     end)
 end
 
 ---@param branch_name string
-function M.open_with_branch(branch_name)
+---@param opts? NRReviewOpts
+function M.open_with_branch(branch_name, opts)
     local cli = require("neo_reviewer.cli")
     local state = require("neo_reviewer.state")
 
@@ -198,14 +232,16 @@ function M.open_with_branch(branch_name)
 
             M.fetch_and_enable(url, function()
                 state.set_checkout_state(checkout_info.prev_branch)
-            end)
+            end, opts)
         end)
     end)
 end
 
-function M.review_diff()
+---@param opts? NRReviewOpts
+function M.review_diff(opts)
     local cli = require("neo_reviewer.cli")
     local state = require("neo_reviewer.state")
+    local config = require("neo_reviewer.config")
 
     if state.get_review() then
         vim.notify(
@@ -214,6 +250,8 @@ function M.review_diff()
         )
         return
     end
+
+    opts = opts or {}
 
     vim.notify("Getting local diff...", vim.log.levels.INFO)
 
@@ -229,27 +267,68 @@ function M.review_diff()
         end
 
         state.clear_review()
-        state.set_local_review(data)
+        local review = state.set_local_review(data)
 
         local comments_file = require("neo_reviewer.ui.comments_file")
         comments_file.clear()
 
-        M.enable_overlay()
+        local should_analyze = opts.analyze
+        if should_analyze == nil then
+            should_analyze = config.values.ai.enabled
+        end
 
-        vim.notify(string.format("Local diff review enabled (%d files changed)", #data.files), vim.log.levels.INFO)
+        local total_hunks = 0
+        for _, file in ipairs(data.files) do
+            total_hunks = total_hunks + #file.hunks
+        end
 
-        local nav = require("neo_reviewer.ui.nav")
-        nav.first_hunk()
+        local function finish_setup()
+            M.enable_overlay()
+
+            vim.notify(string.format("Local diff review enabled (%d files changed)", #data.files), vim.log.levels.INFO)
+
+            local nav = require("neo_reviewer.ui.nav")
+            nav.first_hunk()
+        end
+
+        if should_analyze then
+            vim.notify(
+                string.format(
+                    "[neo-reviewer] Local diff fetched (%d files, %d hunks). Running AI analysis...",
+                    #data.files,
+                    total_hunks
+                ),
+                vim.log.levels.INFO
+            )
+
+            local ai = require("neo_reviewer.ai")
+            ai.analyze_pr(review, function(analysis, ai_err)
+                if ai_err then
+                    vim.notify("[neo-reviewer] AI analysis failed: " .. ai_err, vim.log.levels.WARN)
+                elseif analysis then
+                    state.set_ai_analysis(analysis)
+                    vim.notify("[neo-reviewer] Analysis complete. Navigate with ]h / [h", vim.log.levels.INFO)
+                end
+
+                finish_setup()
+            end)
+        else
+            finish_setup()
+        end
     end)
 end
 
 ---@param url string
 ---@param on_ready? fun()
-function M.fetch_and_enable(url, on_ready)
+---@param opts? NRReviewOpts
+function M.fetch_and_enable(url, on_ready, opts)
     local cli = require("neo_reviewer.cli")
     local state = require("neo_reviewer.state")
+    local config = require("neo_reviewer.config")
 
-    vim.notify("Fetching PR data...", vim.log.levels.INFO)
+    opts = opts or {}
+
+    vim.notify("[neo-reviewer] Fetching PR...", vim.log.levels.INFO)
 
     cli.fetch_pr(url, function(data, err)
         if err then
@@ -266,20 +345,57 @@ function M.fetch_and_enable(url, on_ready)
             on_ready()
         end
 
-        M.enable_overlay()
+        local should_analyze = opts.analyze
+        if should_analyze == nil then
+            should_analyze = config.values.ai.enabled
+        end
 
-        vim.notify(
-            string.format(
-                "Review mode enabled for PR #%d: %s (%d files changed)",
-                data.pr.number,
-                data.pr.title,
-                #data.files
-            ),
-            vim.log.levels.INFO
-        )
+        local total_hunks = 0
+        for _, file in ipairs(data.files) do
+            total_hunks = total_hunks + #file.hunks
+        end
 
-        local nav = require("neo_reviewer.ui.nav")
-        nav.first_hunk()
+        local function finish_setup()
+            M.enable_overlay()
+
+            local nav = require("neo_reviewer.ui.nav")
+            nav.first_hunk()
+        end
+
+        if should_analyze then
+            vim.notify(
+                string.format(
+                    "[neo-reviewer] PR fetched (%d files, %d hunks). Running AI analysis...",
+                    #data.files,
+                    total_hunks
+                ),
+                vim.log.levels.INFO
+            )
+
+            local ai = require("neo_reviewer.ai")
+            ai.analyze_pr(review, function(analysis, ai_err)
+                if ai_err then
+                    vim.notify("[neo-reviewer] AI analysis failed: " .. ai_err, vim.log.levels.WARN)
+                elseif analysis then
+                    state.set_ai_analysis(analysis)
+                    vim.notify("[neo-reviewer] Analysis complete. Navigate with ]h / [h", vim.log.levels.INFO)
+                end
+
+                finish_setup()
+            end)
+        else
+            vim.notify(
+                string.format(
+                    "[neo-reviewer] Review enabled for PR #%d: %s (%d files)",
+                    data.pr.number,
+                    data.pr.title,
+                    #data.files
+                ),
+                vim.log.levels.INFO
+            )
+
+            finish_setup()
+        end
     end)
 end
 
@@ -352,6 +468,9 @@ function M.apply_overlay_to_buffer(bufnr)
     if config.values.auto_expand_deletes or state.is_showing_old_code() then
         virtual.apply_mode_to_buffer(bufnr, file)
     end
+
+    local ai_ui = require("neo_reviewer.ui.ai")
+    ai_ui.apply(bufnr, file)
 end
 
 function M.show_file_picker()
@@ -476,6 +595,11 @@ end
 function M.show_comment()
     local comments = require("neo_reviewer.ui.comments")
     comments.show_thread()
+end
+
+function M.show_ai_details()
+    local ai_ui = require("neo_reviewer.ui.ai")
+    ai_ui.show_details()
 end
 
 function M.check_auth()

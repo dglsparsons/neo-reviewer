@@ -28,6 +28,7 @@ your editor. It provides:
 - Submit reviews (approve or request changes)
 - Telescope integration for file picker
 - Local git diff review (review uncommitted changes before pushing)
+- AI-powered review analysis (optional, via opencode)
 
 ==============================================================================
 2. REQUIREMENTS                                      *neo_reviewer-requirements*
@@ -87,6 +88,11 @@ Call setup() with your options: >lua
                 cancel = "<Esc>",   -- Key to cancel input
             },
         },
+        ai = {
+            enabled = false,                      -- Run AI analysis by default
+            model = "anthropic/claude-haiku-4-5", -- Model for opencode
+            command = "opencode",                 -- Command to invoke
+        },
     })
 <
 
@@ -106,21 +112,55 @@ input_window.keys ~
     - `submit`: Key to submit the input (default: "<C-s>").
     - `cancel`: Key to cancel and close the input window (default: "<Esc>").
 
+                                                           *neo_reviewer-config-ai*
+ai ~
+    Configure AI-powered review analysis. Requires `opencode` CLI to be
+    installed and configured.
+    - `enabled`: Run AI analysis by default (default: false).
+    - `model`: Model to use for analysis (default: "anthropic/claude-haiku-4-5").
+    - `command`: Command to invoke opencode (default: "opencode").
+
+    When AI analysis is enabled, hunks are ordered intelligently for review
+    (core implementation first, then integration, tests, peripheral changes).
+    Each hunk is annotated with:
+    - Confidence (1-5): How straightforward the change appears
+    - Category: foundation, core, integration, support, test, peripheral
+    - Summary: Why this change helps achieve the PR's goal
+
+    Virtual text shows annotations at hunk starts. Use |:ReviewAI| to see
+    full analysis details in a floating window.
+
 ==============================================================================
 5. COMMANDS                                              *neo_reviewer-commands*
 
 These user commands are created when you call `setup()`.
 
-:ReviewPR [arg]                                                      *:ReviewPR*
-    Open a PR for review. Accepts an optional argument:
+:ReviewPR [--analyze|--no-analyze] [arg]                             *:ReviewPR*
+    Open a PR for review. Accepts optional arguments:
     - No argument: detects PR for current branch
     - A PR number: checks out the PR branch and opens review
     - A GitHub PR URL: https://github.com/owner/repo/pull/123
     - A branch name: checks out the PR for that branch and opens review
+    - `--analyze`: Force AI analysis on (overrides config)
+    - `--no-analyze`: Force AI analysis off (overrides config)
 
-:ReviewDiff                                                        *:ReviewDiff*
+    Examples: >
+        :ReviewPR                        " Current branch PR
+        :ReviewPR 123                    " Checkout PR #123
+        :ReviewPR --analyze              " Current branch with AI
+        :ReviewPR --analyze https://...  " URL with AI analysis
+<
+
+:ReviewDiff [--analyze|--no-analyze]                               *:ReviewDiff*
     Review local git diff (both staged and unstaged changes). Comments are
     written to `REVIEW_COMMENTS.md` in the project root.
+    - `--analyze`: Force AI analysis on (overrides config)
+    - `--no-analyze`: Force AI analysis off (overrides config)
+
+    Examples: >
+        :ReviewDiff              " Local diff, default AI setting
+        :ReviewDiff --analyze    " Local diff with AI analysis
+<
 
 :AddComment                                                        *:AddComment*
     Add a review comment at cursor position. Supports visual range selection
@@ -144,6 +184,17 @@ These user commands are created when you call `setup()`.
     and diff changes. Preserves cursor position and expanded hunk state.
     Only works during an active PR review (not local diff reviews).
 
+:ReviewAI                                                            *:ReviewAI*
+    Show AI analysis details for the hunk at cursor position in a floating
+    window. Displays:
+    - PR goal (AI's understanding of the PR's purpose)
+    - Category (foundation, core, integration, support, test, peripheral)
+    - Confidence level with visual bar
+    - Summary explaining the change's role in the PR
+    - Current position in AI-ordered hunk navigation
+
+    Only available when AI analysis has been run (see |:ReviewPR|).
+
 ==============================================================================
 6. FUNCTIONS                                            *neo_reviewer-functions*
 
@@ -154,10 +205,13 @@ require("neo_reviewer").review_pr({arg})                   *neo_reviewer.review_
     - A GitHub PR URL: https://github.com/owner/repo/pull/123
     - A branch name: checks out the PR for that branch and opens review
 
-require("neo_reviewer").review_diff()                     *neo_reviewer.review_diff()*
+require("neo_reviewer").review_diff({opts})               *neo_reviewer.review_diff()*
     Review local git diff (both staged and unstaged changes). This allows
-    you to review code changes before committing. Comments are written to
-    `REVIEW_COMMENTS.md` in the project root with the format:
+    you to review code changes before committing. Accepts optional {opts}:
+    - `analyze`: boolean to force AI analysis on/off (overrides config)
+
+    Comments are written to `REVIEW_COMMENTS.md` in the project root with
+    the format:
 >
         # Review Comments
 
@@ -255,6 +309,11 @@ require("neo_reviewer").sync()                                   *neo_reviewer.s
     state, and checkout state. Only works during an active PR review.
     See |:ReviewSync|.
 
+require("neo_reviewer").show_ai_details()               *neo_reviewer.show_ai_details()*
+    Show AI analysis details for the hunk at cursor position. Opens a
+    floating window with the PR goal, hunk category, confidence level,
+    and summary. See |:ReviewAI|.
+
 ==============================================================================
 7. KEYMAPS                                                *neo_reviewer-keymaps*
 
@@ -309,6 +368,10 @@ neo-reviewer does not set any keymaps by default. Add your own: >lua
     vim.keymap.set("n", "<leader>cs", function()
         require("neo_reviewer").sync()
     end, { desc = "Sync PR review" })
+
+    vim.keymap.set("n", "<leader>ci", function()
+        require("neo_reviewer").show_ai_details()
+    end, { desc = "Show AI analysis" })
 <
 
 ==============================================================================

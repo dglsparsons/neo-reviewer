@@ -1,3 +1,8 @@
+---@class NRAI
+---@field enabled boolean Whether AI analysis is enabled by default
+---@field model string Model for opencode
+---@field command string Command to invoke opencode
+
 ---@class NRSigns
 ---@field add string Sign character for additions
 ---@field delete string Sign character for deletions
@@ -26,6 +31,7 @@
 ---@field auto_expand_deletes boolean Whether to auto-expand deleted lines
 ---@field thread_window NRThreadWindow
 ---@field input_window NRInputWindow
+---@field ai NRAI AI analysis configuration
 
 ---@class NRPartialSigns
 ---@field add? string Sign character for additions
@@ -48,6 +54,11 @@
 ---@class NRPartialInputWindow
 ---@field keys? NRPartialInputWindowKeys
 
+---@class NRPartialAI
+---@field enabled? boolean Whether AI analysis is enabled by default
+---@field model? string Model for opencode
+---@field command? string Command to invoke opencode
+
 ---@class NRPartialConfig
 ---@field cli_path? string Path to the neo-reviewer CLI binary
 ---@field signs? NRPartialSigns
@@ -55,6 +66,7 @@
 ---@field auto_expand_deletes? boolean Whether to auto-expand deleted lines
 ---@field thread_window? NRPartialThreadWindow
 ---@field input_window? NRPartialInputWindow
+---@field ai? NRPartialAI AI analysis configuration
 
 ---@class NRConfigModule
 ---@field values NRConfig
@@ -84,6 +96,11 @@ M.values = {
             submit = "<C-s>",
             cancel = "<Esc>",
         },
+    },
+    ai = {
+        enabled = false,
+        model = "anthropic/claude-haiku-4-5",
+        command = "opencode",
     },
 }
 

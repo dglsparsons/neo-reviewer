@@ -1,5 +1,76 @@
+---@class NRAINavItem
+---@field file string File path
+---@field hunk_index integer 0-based hunk index
+---@field line integer Line number to jump to
+---@field ai_hunk NRAIHunk The AI hunk data
+
 ---@class NRNavModule
 local M = {}
+
+---Build ordered navigation list from AI analysis
+---@param review NRReview
+---@return NRAINavItem[]|nil
+local function build_ai_nav_list(review)
+    if not review.ai_analysis then
+        return nil
+    end
+
+    ---@type NRAINavItem[]
+    local nav_list = {}
+
+    for _, ai_hunk in ipairs(review.ai_analysis.hunk_order) do
+        local file = review.files_by_path[ai_hunk.file]
+        if file then
+            local hunk = file.hunks[ai_hunk.hunk_index + 1]
+            if hunk then
+                local first_add = hunk.added_lines and hunk.added_lines[1]
+                local first_del = hunk.deleted_at and hunk.deleted_at[1]
+                local line = nil
+                if first_add and first_del then
+                    line = math.min(first_add, first_del)
+                else
+                    line = first_add or first_del
+                end
+
+                if line then
+                    table.insert(nav_list, {
+                        file = ai_hunk.file,
+                        hunk_index = ai_hunk.hunk_index,
+                        line = line,
+                        ai_hunk = ai_hunk,
+                    })
+                end
+            end
+        end
+    end
+
+    return #nav_list > 0 and nav_list or nil
+end
+
+---Find current position in AI nav list based on cursor location
+---@param nav_list NRAINavItem[]
+---@param current_file string|nil
+---@param cursor_line integer
+---@return integer|nil Current index (1-based), or nil if not found
+local function find_ai_nav_position(nav_list, current_file, cursor_line)
+    if not current_file then
+        return nil
+    end
+
+    for i, item in ipairs(nav_list) do
+        if item.file == current_file and item.line == cursor_line then
+            return i
+        end
+    end
+
+    for i, item in ipairs(nav_list) do
+        if item.file == current_file and math.abs(item.line - cursor_line) <= 3 then
+            return i
+        end
+    end
+
+    return nil
+end
 
 ---@param hunks? NRHunk[]
 ---@param old_line integer
@@ -121,10 +192,9 @@ local function jump_to(file_path, line)
     end
 
     local line_count = vim.api.nvim_buf_line_count(0)
-    if line <= line_count then
-        vim.api.nvim_win_set_cursor(0, { line, 0 })
-        vim.cmd("normal! zz")
-    end
+    local target_line = math.max(1, math.min(line, line_count))
+    vim.api.nvim_win_set_cursor(0, { target_line, 0 })
+    vim.cmd("normal! zz")
 end
 
 ---@param wrap boolean
@@ -133,6 +203,39 @@ function M.next_hunk(wrap)
     local review = state.get_review()
     if not review then
         vim.notify("No active review", vim.log.levels.WARN)
+        return
+    end
+
+    local ai_nav_list = build_ai_nav_list(review)
+
+    if ai_nav_list then
+        local buffer = require("neo_reviewer.ui.buffer")
+        local current_file = buffer.get_current_file_from_buffer()
+        local cursor_line = vim.api.nvim_win_get_cursor(0)[1]
+        local current_path = current_file and current_file.path
+
+        local current_pos = find_ai_nav_position(ai_nav_list, current_path, cursor_line)
+
+        if current_pos and current_pos < #ai_nav_list then
+            local next_item = ai_nav_list[current_pos + 1]
+            jump_to(next_item.file, next_item.line)
+            return
+        elseif not current_pos then
+            for i, item in ipairs(ai_nav_list) do
+                if not current_path or item.file ~= current_path or item.line > cursor_line then
+                    jump_to(item.file, item.line)
+                    return
+                end
+            end
+        end
+
+        if wrap and #ai_nav_list > 0 then
+            jump_to(ai_nav_list[1].file, ai_nav_list[1].line)
+            vim.notify("Wrapped to first change (AI order)", vim.log.levels.INFO)
+            return
+        end
+
+        vim.notify("No more changes", vim.log.levels.INFO)
         return
     end
 
@@ -187,6 +290,41 @@ function M.prev_hunk(wrap)
     local review = state.get_review()
     if not review then
         vim.notify("No active review", vim.log.levels.WARN)
+        return
+    end
+
+    local ai_nav_list = build_ai_nav_list(review)
+
+    if ai_nav_list then
+        local buffer = require("neo_reviewer.ui.buffer")
+        local current_file = buffer.get_current_file_from_buffer()
+        local cursor_line = vim.api.nvim_win_get_cursor(0)[1]
+        local current_path = current_file and current_file.path
+
+        local current_pos = find_ai_nav_position(ai_nav_list, current_path, cursor_line)
+
+        if current_pos and current_pos > 1 then
+            local prev_item = ai_nav_list[current_pos - 1]
+            jump_to(prev_item.file, prev_item.line)
+            return
+        elseif not current_pos then
+            for i = #ai_nav_list, 1, -1 do
+                local item = ai_nav_list[i]
+                if not current_path or item.file ~= current_path or item.line < cursor_line then
+                    jump_to(item.file, item.line)
+                    return
+                end
+            end
+        end
+
+        if wrap and #ai_nav_list > 0 then
+            local last = ai_nav_list[#ai_nav_list]
+            jump_to(last.file, last.line)
+            vim.notify("Wrapped to last change (AI order)", vim.log.levels.INFO)
+            return
+        end
+
+        vim.notify("No more changes", vim.log.levels.INFO)
         return
     end
 
@@ -245,6 +383,12 @@ function M.first_hunk()
         return
     end
 
+    local ai_nav_list = build_ai_nav_list(review)
+    if ai_nav_list and #ai_nav_list > 0 then
+        jump_to(ai_nav_list[1].file, ai_nav_list[1].line)
+        return
+    end
+
     for _, file in ipairs(review.files) do
         local starts = collect_hunk_starts(file.hunks)
         if #starts > 0 then
@@ -259,6 +403,13 @@ function M.last_hunk()
     local review = state.get_review()
     if not review then
         vim.notify("No active review", vim.log.levels.WARN)
+        return
+    end
+
+    local ai_nav_list = build_ai_nav_list(review)
+    if ai_nav_list and #ai_nav_list > 0 then
+        local last = ai_nav_list[#ai_nav_list]
+        jump_to(last.file, last.line)
         return
     end
 

@@ -51,6 +51,7 @@ impl GitHubClient {
         Ok(PullRequest {
             number: pr.number,
             title: pr.title.unwrap_or_default(),
+            description: pr.body,
             url: pr_ref.url(),
             head_sha: pr.head.sha,
             base_ref: pr.base.ref_field,

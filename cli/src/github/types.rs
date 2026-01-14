@@ -22,6 +22,7 @@ impl PrRef {
 pub struct PullRequest {
     pub number: u64,
     pub title: String,
+    pub description: Option<String>,
     pub url: String,
     pub head_sha: String,
     pub base_ref: String,
