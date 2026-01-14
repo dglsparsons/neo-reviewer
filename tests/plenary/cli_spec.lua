@@ -37,6 +37,50 @@ describe("neo_reviewer.cli", function()
         Job.new:revert()
     end)
 
+    describe("parse_pr_url", function()
+        it("parses valid GitHub PR URL", function()
+            local result, err = cli.parse_pr_url("https://github.com/owner/repo/pull/123")
+
+            assert.is_nil(err)
+            assert.is_not_nil(result)
+            assert.are.equal("owner", result.owner)
+            assert.are.equal("repo", result.repo)
+            assert.are.equal(123, result.number)
+        end)
+
+        it("parses URL with organization owner", function()
+            local result, err = cli.parse_pr_url("https://github.com/my-org/my-repo/pull/456")
+
+            assert.is_nil(err)
+            assert.is_not_nil(result)
+            assert.are.equal("my-org", result.owner)
+            assert.are.equal("my-repo", result.repo)
+            assert.are.equal(456, result.number)
+        end)
+
+        it("returns error for invalid URL", function()
+            local result, err = cli.parse_pr_url("not-a-url")
+
+            assert.is_nil(result)
+            assert.is_not_nil(err)
+            assert.matches("Invalid", err)
+        end)
+
+        it("returns error for non-PR GitHub URL", function()
+            local result, err = cli.parse_pr_url("https://github.com/owner/repo/issues/123")
+
+            assert.is_nil(result)
+            assert.is_not_nil(err)
+        end)
+
+        it("returns error for URL without PR number", function()
+            local result, err = cli.parse_pr_url("https://github.com/owner/repo/pull/")
+
+            assert.is_nil(result)
+            assert.is_not_nil(err)
+        end)
+    end)
+
     describe("is_worktree_dirty", function()
         it("returns true when there are uncommitted changes", function()
             stub(vim.fn, "systemlist", function()

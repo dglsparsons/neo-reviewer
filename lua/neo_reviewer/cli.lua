@@ -72,6 +72,22 @@ function M.is_worktree_dirty()
     return #status > 0
 end
 
+---@class NRParsedPRUrl
+---@field owner string Repository owner
+---@field repo string Repository name
+---@field number integer PR number
+
+---@param url string GitHub PR URL
+---@return NRParsedPRUrl? parsed_url
+---@return string? error
+function M.parse_pr_url(url)
+    local owner, repo, number = url:match("github%.com/([^/]+)/([^/]+)/pull/(%d+)")
+    if not owner or not repo or not number then
+        return nil, "Invalid GitHub PR URL format"
+    end
+    return { owner = owner, repo = repo, number = tonumber(number) }, nil
+end
+
 ---@param callback fun(pr_info: NRPRInfo?, err: string?)
 function M.get_pr_for_branch(callback)
     local owner, repo = M.get_git_remote()

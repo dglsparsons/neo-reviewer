@@ -20,6 +20,7 @@ describe("neo_reviewer review opening", function()
         stub(cli, "checkout_pr")
         stub(cli, "get_pr_for_branch")
         stub(cli, "is_worktree_dirty")
+        stub(cli, "get_git_remote")
 
         neo_reviewer = require("neo_reviewer")
         notifications = helpers.capture_notifications()
@@ -30,6 +31,7 @@ describe("neo_reviewer review opening", function()
         cli.checkout_pr:revert()
         cli.get_pr_for_branch:revert()
         cli.is_worktree_dirty:revert()
+        cli.get_git_remote:revert()
 
         notifications.restore()
         state.clear_review()
@@ -74,8 +76,84 @@ describe("neo_reviewer review opening", function()
     end)
 
     describe("open_url", function()
+        it("errors when repo does not match URL", function()
+            cli.is_worktree_dirty.returns(false)
+            cli.get_git_remote.returns("different-owner", "different-repo")
+
+            neo_reviewer.open_url("https://github.com/owner/repo/pull/123")
+
+            assert.stub(cli.checkout_pr).was_not_called()
+            local notifs = notifications.get()
+            local found = false
+            for _, n in ipairs(notifs) do
+                if n.msg:match("Repository mismatch") and n.level == vim.log.levels.ERROR then
+                    found = true
+                    break
+                end
+            end
+            assert.is_true(found, "Expected error about repository mismatch")
+        end)
+
+        it("includes repo names in mismatch error message", function()
+            cli.is_worktree_dirty.returns(false)
+            cli.get_git_remote.returns("local-owner", "local-repo")
+
+            neo_reviewer.open_url("https://github.com/pr-owner/pr-repo/pull/123")
+
+            local notifs = notifications.get()
+            local found = false
+            for _, n in ipairs(notifs) do
+                if
+                    n.msg:match("pr%-owner/pr%-repo")
+                    and n.msg:match("local%-owner/local%-repo")
+                    and n.level == vim.log.levels.ERROR
+                then
+                    found = true
+                    break
+                end
+            end
+            assert.is_true(found, "Expected error message to include both repo names")
+        end)
+
+        it("errors when not in a git repository", function()
+            cli.is_worktree_dirty.returns(false)
+            cli.get_git_remote.returns(nil, nil)
+
+            neo_reviewer.open_url("https://github.com/owner/repo/pull/123")
+
+            assert.stub(cli.checkout_pr).was_not_called()
+            local notifs = notifications.get()
+            local found = false
+            for _, n in ipairs(notifs) do
+                if n.msg:match("Not in a git repository") and n.level == vim.log.levels.ERROR then
+                    found = true
+                    break
+                end
+            end
+            assert.is_true(found, "Expected error about not being in a git repository")
+        end)
+
+        it("errors when URL is invalid", function()
+            cli.is_worktree_dirty.returns(false)
+            cli.get_git_remote.returns("owner", "repo")
+
+            neo_reviewer.open_url("not-a-valid-url")
+
+            assert.stub(cli.checkout_pr).was_not_called()
+            local notifs = notifications.get()
+            local found = false
+            for _, n in ipairs(notifs) do
+                if n.msg:match("Invalid PR URL") and n.level == vim.log.levels.ERROR then
+                    found = true
+                    break
+                end
+            end
+            assert.is_true(found, "Expected error about invalid PR URL")
+        end)
+
         it("errors when worktree is dirty", function()
             cli.is_worktree_dirty.returns(true)
+            cli.get_git_remote.returns("owner", "repo")
 
             neo_reviewer.open_url("https://github.com/owner/repo/pull/123")
 
@@ -91,8 +169,9 @@ describe("neo_reviewer review opening", function()
             assert.is_true(found, "Expected error about uncommitted changes")
         end)
 
-        it("calls checkout_pr with the URL when clean", function()
+        it("calls checkout_pr with the URL when repo matches", function()
             cli.is_worktree_dirty.returns(false)
+            cli.get_git_remote.returns("owner", "repo")
 
             neo_reviewer.open_url("https://github.com/owner/repo/pull/123")
 
@@ -100,24 +179,26 @@ describe("neo_reviewer review opening", function()
             assert.stub(cli.checkout_pr).was_called_with("https://github.com/owner/repo/pull/123", match._)
         end)
 
-        it("notifies user about checkout in progress", function()
+        it("notifies user about checkout in progress with PR number", function()
             cli.is_worktree_dirty.returns(false)
+            cli.get_git_remote.returns("owner", "repo")
 
             neo_reviewer.open_url("https://github.com/owner/repo/pull/123")
 
             local notifs = notifications.get()
             local found = false
             for _, n in ipairs(notifs) do
-                if n.msg:match("Checking out PR") then
+                if n.msg:match("Checking out PR #123") then
                     found = true
                     break
                 end
             end
-            assert.is_true(found, "Expected 'Checking out PR...' notification")
+            assert.is_true(found, "Expected 'Checking out PR #123...' notification")
         end)
 
         it("calls fetch_and_enable after successful checkout", function()
             cli.is_worktree_dirty.returns(false)
+            cli.get_git_remote.returns("owner", "repo")
             cli.checkout_pr.invokes(function(_, callback)
                 callback({ prev_branch = "main" }, nil)
             end)
@@ -130,6 +211,7 @@ describe("neo_reviewer review opening", function()
 
         it("does not fetch on checkout failure", function()
             cli.is_worktree_dirty.returns(false)
+            cli.get_git_remote.returns("owner", "repo")
             cli.checkout_pr.invokes(function(_, callback)
                 callback(nil, "Failed to checkout")
             end)
@@ -141,6 +223,7 @@ describe("neo_reviewer review opening", function()
 
         it("shows error notification on checkout failure", function()
             cli.is_worktree_dirty.returns(false)
+            cli.get_git_remote.returns("owner", "repo")
             cli.checkout_pr.invokes(function(_, callback)
                 vim.schedule(function()
                     callback(nil, "Failed to checkout PR")
@@ -321,6 +404,7 @@ describe("neo_reviewer review opening", function()
 
         it("routes to open_url for github URL", function()
             cli.is_worktree_dirty.returns(false)
+            cli.get_git_remote.returns("owner", "repo")
 
             neo_reviewer.review_pr("https://github.com/owner/repo/pull/123")
 
@@ -348,6 +432,7 @@ describe("neo_reviewer review opening", function()
 
         it("routes to open_url for URL starting with http", function()
             cli.is_worktree_dirty.returns(false)
+            cli.get_git_remote.returns("owner", "repo")
 
             neo_reviewer.review_pr("http://github.com/owner/repo/pull/123")
 

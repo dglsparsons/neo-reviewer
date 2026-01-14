@@ -174,6 +174,32 @@ function M.open_url(url, opts)
     local cli = require("neo_reviewer.cli")
     local state = require("neo_reviewer.state")
 
+    local parsed, parse_err = cli.parse_pr_url(url)
+    if not parsed then
+        vim.notify("Invalid PR URL: " .. (parse_err or "unknown error"), vim.log.levels.ERROR)
+        return
+    end
+
+    local local_owner, local_repo = cli.get_git_remote()
+    if not local_owner or not local_repo then
+        vim.notify("Not in a git repository with a GitHub remote", vim.log.levels.ERROR)
+        return
+    end
+
+    if local_owner ~= parsed.owner or local_repo ~= parsed.repo then
+        vim.notify(
+            string.format(
+                "Repository mismatch: PR is from %s/%s but you're in %s/%s",
+                parsed.owner,
+                parsed.repo,
+                local_owner,
+                local_repo
+            ),
+            vim.log.levels.ERROR
+        )
+        return
+    end
+
     if cli.is_worktree_dirty() then
         vim.notify(
             "Cannot checkout PR: uncommitted changes in worktree. Commit or stash them first.",
@@ -182,7 +208,7 @@ function M.open_url(url, opts)
         return
     end
 
-    vim.notify("Checking out PR...", vim.log.levels.INFO)
+    vim.notify(string.format("Checking out PR #%d...", parsed.number), vim.log.levels.INFO)
 
     cli.checkout_pr(url, function(checkout_info, err)
         if err then

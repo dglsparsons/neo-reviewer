@@ -47,6 +47,7 @@ local function close_input_window()
     end
     input_win = nil
     input_buf = nil
+    vim.cmd("stopinsert")
 end
 
 ---@param opts NRMultilineInputOpts
