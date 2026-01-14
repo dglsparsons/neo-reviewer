@@ -4,76 +4,106 @@ local Job = require("plenary.job")
 local M = {}
 
 local PROMPT_TEMPLATE = [[
-You are an expert code reviewer helping a developer understand a pull request efficiently.
+You are an expert code reviewer helping a developer review a pull request efficiently.
 
 ## Your Task
 
 Analyze this PR and return a JSON response that:
-1. Orders hunks in a logical sequence for review
-2. Annotates each hunk with confidence and a summary
+1. Summarizes the PR goal and overall risk level
+2. Orders hunks in a logical sequence for review
+3. Provides reviewer context for non-trivial hunks
 
-## Step 1: Understand the Goal
+## Step 1: Assess the PR
 
-First, read the PR title and description to understand what this change is trying to accomplish.
-Identify the core purpose: Is it a bug fix? New feature? Refactor? Performance improvement?
+Read the PR title, description, and diff to understand:
+- What is this PR trying to accomplish?
+- How risky is the overall change? (dead code removal vs. subtle logic changes)
+- What abstractions (types, traits, structs, modules) are being removed, and why?
+- What new abstractions are being introduced, and why?
+
+Provide an overall confidence score (1-5) with brief reasoning:
+- 5: Very safe - pure deletions, formatting, renames, no logic changes
+- 4: Low risk - straightforward changes, clear intent, unlikely to break things
+- 3: Moderate - logic changes that seem correct but warrant verification
+- 2: Needs scrutiny - non-obvious changes, implicit assumptions, edge case potential
+- 1: High risk - complex logic, unclear purpose, touches critical paths
 
 ## Step 2: Order the Hunks
 
 Arrange hunks so a reviewer can build understanding progressively:
-
-1. **Foundation first**: Type definitions, interfaces, structs, constants
-2. **Core logic**: The main implementation that achieves the PR's goal
-3. **Integration**: Where the new code connects to existing code
-4. **Supporting changes**: Error handling, edge cases, utilities
-5. **Tests**: Unit tests, integration tests
-6. **Peripheral**: Config, build files, documentation, formatting-only changes
+1. New abstractions: New types, traits, structs, modules being introduced
+2. Critical changes: Core logic changes that implement the PR's goal
+3. Removed abstractions: Deleted types, traits, structs, modules
+4. Tests: Unit tests, integration tests
+5. Wiring: Module exports, dependency injection, plumbing code
+6. Imports: Import statement changes (always trivial, always last)
 
 Within each category, order by dependency (if A uses B, show B first).
 
-## Step 3: Annotate Each Hunk
+## Step 3: Provide Reviewer Context
 
-For each hunk provide:
+For each hunk, explain WHY the change was made and how it connects to other changes in this PR.
 
-**confidence (1-5):**
-- 5: Trivial - imports, formatting, renames, obvious one-liners
-- 4: Clear - standard patterns, well-understood changes, good error handling
-- 3: Reasonable - logic changes that follow from the PR goal, may need verification
-- 2: Careful - non-obvious logic, potential edge cases, implicit assumptions
-- 1: Risky - complex changes, unclear purpose, touches sensitive areas (auth, payments, data migration)
+**confidence (1-5):** Same scale as PR-level confidence, applied to this specific hunk.
 
-**summary** (optional): One sentence explaining what this change achieves within the PR's goal.
-- Skip for trivial changes where the code is self-explanatory (imports, renames, formatting)
-- Focus on the PURPOSE within the PR, not a description of the code itself
-- Bad: "Adds an if statement that checks if input is null"
-- Bad: "Calls validate() before process()"
-- Good: "Prevents the crash reported in issue #123 by validating before the parser runs"
-- Good: "Enables the new Validator to intercept requests before they reach the handler"
+**category**: One of: new, critical, removed, test, wiring, imports
 
-**category**: One of: foundation, core, integration, support, test, peripheral
+**context** (optional): Explain WHY this change exists and how it connects to the rest of the PR.
+- ALWAYS SKIP for import changes, module exports, and simple wiring - these never need context
+- SKIP for trivial changes (formatting, renames, obvious deletions)
+- DO NOT describe WHAT the code does - the reviewer can read the diff
+- DO explain WHY the change was made and how it relates to other changes in this PR
+- DO cross-reference other hunks when relevant (e.g., "X was removed in file.rs, so Y is added here to compensate")
+- NEVER tell the reviewer to verify something - do the verification yourself using the diff, then state your conclusion
+
+Examples of BAD context (describes WHAT):
+- "Removes the command argument configuration"
+- "Replaced ChildManager construction with direct lambda source handling"
+- "Updates the function signature to take fewer parameters"
+
+Examples of BAD context (punts verification to reviewer):
+- "Verify these fields were only used by the deleted feature"
+- "Check that no other callers depend on this behavior"
+- "Verify the new environment/config construction provides all necessary context"
+
+Examples of GOOD context (explains WHY and cross-references):
+- "uid/gid must be preserved for child process permissions. They were on ChildManager (removed in manager.rs), so they're passed directly here now"
+- "Error handling for child_url moved here because spawn is now synchronous - url errors surface at spawn time, not later"
+- "lang field removed - only used in squashball command building which is deleted in commands.rs"
 
 ## Output Format
 
 Return ONLY valid JSON (no markdown, no explanation):
 {
   "goal": "Brief statement of what this PR accomplishes",
+  "confidence": 4,
+  "confidence_reason": "Mostly dead code removal, but the child spawning logic changes could affect process permissions",
+  "removed_abstractions": ["ChildManager - managed single/multi child processes, no longer needed with single-process model", "BootMode enum - only used for squashball startup which is removed"],
+  "new_abstractions": ["prepare_child_env() - extracted from ChildManager to keep env preparation logic"],
   "hunk_order": [
     {
-      "file": "path/to/file.rs",
+      "file": "path/to/spawn.rs",
       "hunk_index": 0,
-      "confidence": 4,
-      "category": "core",
-      "summary": "Implements the validation logic that prevents invalid states"
+      "confidence": 3,
+      "category": "critical",
+      "context": "uid/gid now passed directly since ChildManager is removed - preserves run-as-user behavior"
     },
     {
-      "file": "path/to/file.rs",
+      "file": "path/to/manager.rs",
+      "hunk_index": 0,
+      "confidence": 5,
+      "category": "removed"
+    },
+    {
+      "file": "path/to/spawn.rs",
       "hunk_index": 1,
       "confidence": 5,
-      "category": "peripheral"
+      "category": "imports"
     }
   ]
 }
 
-Note: `summary` can be omitted for trivial/self-explanatory hunks.
+Note: `context` should be omitted for trivial/self-explanatory hunks (especially imports).
 
 ---
 
@@ -85,7 +115,7 @@ PR Description:
 Files Changed:
 %s
 
-Diff:
+Unified Diff:
 %s
 ]]
 
@@ -96,7 +126,10 @@ local function build_file_list(files)
     local lines = {}
     for _, file in ipairs(files) do
         local icon = ({ added = "+", deleted = "-", modified = "~", renamed = "R" })[file.status] or "?"
-        table.insert(lines, string.format("[%s] %s (+%d/-%d)", icon, file.path, file.additions or 0, file.deletions or 0))
+        table.insert(
+            lines,
+            string.format("[%s] %s (+%d/-%d)", icon, file.path, file.additions or 0, file.deletions or 0)
+        )
     end
     return table.concat(lines, "\n")
 end
@@ -183,6 +216,14 @@ local function parse_response(output)
         return nil, "Missing or invalid 'hunk_order' field"
     end
 
+    -- PR-level confidence is optional but recommended
+    local pr_confidence = nil
+    local pr_confidence_reason = nil
+    if type(data.confidence) == "number" and data.confidence >= 1 and data.confidence <= 5 then
+        pr_confidence = data.confidence
+        pr_confidence_reason = data.confidence_reason
+    end
+
     ---@type NRAIHunk[]
     local hunk_order = {}
     for i, item in ipairs(data.hunk_order) do
@@ -204,13 +245,36 @@ local function parse_response(output)
             hunk_index = item.hunk_index,
             confidence = item.confidence,
             category = item.category,
-            summary = item.summary,
+            -- Support both old "summary" and new "context" field names
+            context = item.context or item.summary,
         })
+    end
+
+    -- Parse abstraction lists (optional)
+    local removed_abstractions = {}
+    local new_abstractions = {}
+    if type(data.removed_abstractions) == "table" then
+        for _, v in ipairs(data.removed_abstractions) do
+            if type(v) == "string" then
+                table.insert(removed_abstractions, v)
+            end
+        end
+    end
+    if type(data.new_abstractions) == "table" then
+        for _, v in ipairs(data.new_abstractions) do
+            if type(v) == "string" then
+                table.insert(new_abstractions, v)
+            end
+        end
     end
 
     ---@type NRAIAnalysis
     local analysis = {
         goal = data.goal,
+        confidence = pr_confidence,
+        confidence_reason = pr_confidence_reason,
+        removed_abstractions = removed_abstractions,
+        new_abstractions = new_abstractions,
         hunk_order = hunk_order,
     }
 
@@ -232,7 +296,8 @@ function M.analyze_pr(review, callback)
 
     Job:new({
         command = cmd,
-        args = { "run", "--model", model, prompt },
+        args = { "run", "--model", model },
+        writer = prompt,
         on_stdout = function(_, line)
             table.insert(stdout_lines, line)
         end,

@@ -41,20 +41,19 @@ end
 ---@param ai_hunk NRAIHunk
 ---@return table[] virt_text chunks
 local function build_virt_text(ai_hunk)
-    local confidence_str = string.format("[%d/5 %s]", ai_hunk.confidence, ai_hunk.category)
     local hl = get_confidence_hl(ai_hunk.confidence)
 
-    if ai_hunk.summary then
-        local summary = truncate(ai_hunk.summary, 60)
+    if ai_hunk.context then
+        local context = truncate(ai_hunk.context, 80)
         return {
             { " ", "Normal" },
-            { confidence_str, hl },
-            { " " .. summary, "NRAIAnnotation" },
+            { string.format("[%d/5]", ai_hunk.confidence), hl },
+            { " " .. context, "NRAIAnnotation" },
         }
     else
         return {
             { " ", "Normal" },
-            { confidence_str, hl },
+            { string.format("[%d/5]", ai_hunk.confidence), hl },
         }
     end
 end
@@ -77,6 +76,11 @@ function M.apply(bufnr, file)
         if ai_hunk.file == file.path then
             local hunk = file.hunks[ai_hunk.hunk_index + 1]
             if hunk then
+                -- Skip annotation for trivial hunks (5/5 with no context)
+                if ai_hunk.confidence == 5 and not ai_hunk.context then
+                    goto continue
+                end
+
                 local first_add = hunk.added_lines and hunk.added_lines[1]
                 local first_del = hunk.deleted_at and hunk.deleted_at[1]
                 local line = nil
@@ -95,6 +99,7 @@ function M.apply(bufnr, file)
                     })
                 end
             end
+            ::continue::
         end
     end
 end
@@ -156,25 +161,6 @@ local function build_confidence_bar(confidence)
     return filled .. empty
 end
 
----Get current hunk position in AI order
----@param ai_hunk NRAIHunk
----@return integer|nil position, integer|nil total
-local function get_hunk_position(ai_hunk)
-    local state = require("neo_reviewer.state")
-    local analysis = state.get_ai_analysis()
-    if not analysis then
-        return nil, nil
-    end
-
-    for i, h in ipairs(analysis.hunk_order) do
-        if h.file == ai_hunk.file and h.hunk_index == ai_hunk.hunk_index then
-            return i, #analysis.hunk_order
-        end
-    end
-
-    return nil, #analysis.hunk_order
-end
-
 ---Show floating window with AI analysis details for hunk at cursor
 function M.show_details()
     define_highlights()
@@ -194,24 +180,44 @@ function M.show_details()
     end
 
     local lines = {}
-    local max_width = 44
+    local max_width = 60
 
     table.insert(lines, "PR Goal: " .. analysis.goal)
     table.insert(lines, "")
-    table.insert(lines, "Category: " .. ai_hunk.category)
-    table.insert(lines, string.format("Confidence: %s (%d/5)", build_confidence_bar(ai_hunk.confidence), ai_hunk.confidence))
 
-    if ai_hunk.summary then
+    if analysis.confidence then
+        local reason = analysis.confidence_reason or ""
+        table.insert(lines, string.format("PR Confidence: %d/5 - %s", analysis.confidence, reason))
         table.insert(lines, "")
-        for line in ai_hunk.summary:gmatch("[^\n]+") do
-            table.insert(lines, line)
+    end
+
+    if analysis.removed_abstractions and #analysis.removed_abstractions > 0 then
+        table.insert(lines, "Removed:")
+        for _, abstraction in ipairs(analysis.removed_abstractions) do
+            table.insert(lines, "  • " .. abstraction)
+        end
+        table.insert(lines, "")
+    end
+
+    if analysis.new_abstractions and #analysis.new_abstractions > 0 then
+        table.insert(lines, "New:")
+        for _, abstraction in ipairs(analysis.new_abstractions) do
+            table.insert(lines, "  • " .. abstraction)
         end
     end
 
-    local pos, total = get_hunk_position(ai_hunk)
-    if pos and total then
+    -- Skip hunk-specific section for trivial hunks (5/5 with no context)
+    if ai_hunk.confidence ~= 5 or ai_hunk.context then
         table.insert(lines, "")
-        table.insert(lines, string.format("[Hunk %d of %d] %s", pos, total, ai_hunk.file))
+        table.insert(lines, "")
+        table.insert(lines, string.format("── This Change: %d/5 ──", ai_hunk.confidence))
+        table.insert(lines, "")
+
+        if ai_hunk.context then
+            for line in ai_hunk.context:gmatch("[^\n]+") do
+                table.insert(lines, line)
+            end
+        end
     end
 
     local wrapped_lines = {}

@@ -181,13 +181,17 @@ describe("neo_reviewer.state AI analysis", function()
         ---@type NRAIAnalysis
         local analysis = {
             goal = "Test goal",
+            confidence = 4,
+            confidence_reason = "Low risk change",
+            removed_abstractions = {},
+            new_abstractions = {},
             hunk_order = {
                 {
                     file = "test.lua",
                     hunk_index = 0,
                     confidence = 4,
                     category = "core",
-                    summary = "Test summary",
+                    context = "Test context for reviewer",
                 },
             },
         }

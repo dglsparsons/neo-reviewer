@@ -12,6 +12,7 @@
 ---@class luassert
 ---@field is_true fun(value: any, message?: string): nil
 ---@field is_false fun(value: any): nil
+---@field is_truthy fun(value: any): nil
 ---@field is_nil fun(value: any): nil
 ---@field is_not_nil fun(value: any): nil
 ---@field is_table fun(value: any): nil

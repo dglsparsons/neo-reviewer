@@ -192,10 +192,9 @@ local function jump_to(file_path, line)
     end
 
     local line_count = vim.api.nvim_buf_line_count(0)
-    if line <= line_count then
-        vim.api.nvim_win_set_cursor(0, { line, 0 })
-        vim.cmd("normal! zz")
-    end
+    local target_line = math.max(1, math.min(line, line_count))
+    vim.api.nvim_win_set_cursor(0, { target_line, 0 })
+    vim.cmd("normal! zz")
 end
 
 ---@param wrap boolean

@@ -41,9 +41,20 @@ function M.setup(opts)
         M.review_pr(url_or_number, { analyze = analyze })
     end, { nargs = "?", desc = "Open PR review" })
 
-    vim.api.nvim_create_user_command("ReviewDiff", function()
-        M.review_diff()
-    end, { desc = "Review local git diff (staged + unstaged changes)" })
+    vim.api.nvim_create_user_command("ReviewDiff", function(ctx)
+        local args = ctx.args or ""
+        local analyze = nil
+
+        for part in args:gmatch("%S+") do
+            if part == "--analyze" then
+                analyze = true
+            elseif part == "--no-analyze" then
+                analyze = false
+            end
+        end
+
+        M.review_diff({ analyze = analyze })
+    end, { nargs = "?", desc = "Review local git diff (staged + unstaged changes)" })
 
     vim.api.nvim_create_user_command("AddComment", function(ctx)
         M.add_comment({ line1 = ctx.line1, line2 = ctx.line2 })
@@ -226,9 +237,11 @@ function M.open_with_branch(branch_name, opts)
     end)
 end
 
-function M.review_diff()
+---@param opts? NRReviewOpts
+function M.review_diff(opts)
     local cli = require("neo_reviewer.cli")
     local state = require("neo_reviewer.state")
+    local config = require("neo_reviewer.config")
 
     if state.get_review() then
         vim.notify(
@@ -237,6 +250,8 @@ function M.review_diff()
         )
         return
     end
+
+    opts = opts or {}
 
     vim.notify("Getting local diff...", vim.log.levels.INFO)
 
@@ -252,17 +267,54 @@ function M.review_diff()
         end
 
         state.clear_review()
-        state.set_local_review(data)
+        local review = state.set_local_review(data)
 
         local comments_file = require("neo_reviewer.ui.comments_file")
         comments_file.clear()
 
-        M.enable_overlay()
+        local should_analyze = opts.analyze
+        if should_analyze == nil then
+            should_analyze = config.values.ai.enabled
+        end
 
-        vim.notify(string.format("Local diff review enabled (%d files changed)", #data.files), vim.log.levels.INFO)
+        local total_hunks = 0
+        for _, file in ipairs(data.files) do
+            total_hunks = total_hunks + #file.hunks
+        end
 
-        local nav = require("neo_reviewer.ui.nav")
-        nav.first_hunk()
+        local function finish_setup()
+            M.enable_overlay()
+
+            vim.notify(string.format("Local diff review enabled (%d files changed)", #data.files), vim.log.levels.INFO)
+
+            local nav = require("neo_reviewer.ui.nav")
+            nav.first_hunk()
+        end
+
+        if should_analyze then
+            vim.notify(
+                string.format(
+                    "[neo-reviewer] Local diff fetched (%d files, %d hunks). Running AI analysis...",
+                    #data.files,
+                    total_hunks
+                ),
+                vim.log.levels.INFO
+            )
+
+            local ai = require("neo_reviewer.ai")
+            ai.analyze_pr(review, function(analysis, ai_err)
+                if ai_err then
+                    vim.notify("[neo-reviewer] AI analysis failed: " .. ai_err, vim.log.levels.WARN)
+                elseif analysis then
+                    state.set_ai_analysis(analysis)
+                    vim.notify("[neo-reviewer] Analysis complete. Navigate with ]h / [h", vim.log.levels.INFO)
+                end
+
+                finish_setup()
+            end)
+        else
+            finish_setup()
+        end
     end)
 end
 
@@ -324,7 +376,7 @@ function M.fetch_and_enable(url, on_ready, opts)
             ai.analyze_pr(review, function(analysis, ai_err)
                 if ai_err then
                     vim.notify("[neo-reviewer] AI analysis failed: " .. ai_err, vim.log.levels.WARN)
-                else
+                elseif analysis then
                     state.set_ai_analysis(analysis)
                     vim.notify("[neo-reviewer] Analysis complete. Navigate with ]h / [h", vim.log.levels.INFO)
                 end

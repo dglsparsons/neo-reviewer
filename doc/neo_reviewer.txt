@@ -151,9 +151,16 @@ These user commands are created when you call `setup()`.
         :ReviewPR --analyze https://...  " URL with AI analysis
 <
 
-:ReviewDiff                                                        *:ReviewDiff*
+:ReviewDiff [--analyze|--no-analyze]                               *:ReviewDiff*
     Review local git diff (both staged and unstaged changes). Comments are
     written to `REVIEW_COMMENTS.md` in the project root.
+    - `--analyze`: Force AI analysis on (overrides config)
+    - `--no-analyze`: Force AI analysis off (overrides config)
+
+    Examples: >
+        :ReviewDiff              " Local diff, default AI setting
+        :ReviewDiff --analyze    " Local diff with AI analysis
+<
 
 :AddComment                                                        *:AddComment*
     Add a review comment at cursor position. Supports visual range selection
@@ -198,10 +205,13 @@ require("neo_reviewer").review_pr({arg})                   *neo_reviewer.review_
     - A GitHub PR URL: https://github.com/owner/repo/pull/123
     - A branch name: checks out the PR for that branch and opens review
 
-require("neo_reviewer").review_diff()                     *neo_reviewer.review_diff()*
+require("neo_reviewer").review_diff({opts})               *neo_reviewer.review_diff()*
     Review local git diff (both staged and unstaged changes). This allows
-    you to review code changes before committing. Comments are written to
-    `REVIEW_COMMENTS.md` in the project root with the format:
+    you to review code changes before committing. Accepts optional {opts}:
+    - `analyze`: boolean to force AI analysis on/off (overrides config)
+
+    Comments are written to `REVIEW_COMMENTS.md` in the project root with
+    the format:
 >
         # Review Comments
 

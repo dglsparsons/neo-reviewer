@@ -5,10 +5,14 @@
 ---@field hunk_index integer 0-based index into the file's hunks array
 ---@field confidence integer Confidence level 1-5
 ---@field category NRAICategory Category of the change
----@field summary string|nil Optional summary, omitted for trivial changes
+---@field context string|nil Reviewer context, omitted for trivial changes
 
 ---@class NRAIAnalysis
 ---@field goal string AI's understanding of PR purpose
+---@field confidence integer|nil PR-level confidence (1-5)
+---@field confidence_reason string|nil Explanation for PR-level confidence
+---@field removed_abstractions string[] Types/structs/modules being removed
+---@field new_abstractions string[] Types/structs/modules being introduced
 ---@field hunk_order NRAIHunk[] Hunks in AI-suggested review order
 
 ---@alias NRHunkType "add"|"delete"|"change"
