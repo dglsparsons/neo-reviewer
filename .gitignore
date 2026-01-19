@@ -6,3 +6,4 @@ repo/.terraform/
 repo/.terraform.lock.hcl
 /repo/terraform.tfstate.backup
 *.backup
+.nvimlog

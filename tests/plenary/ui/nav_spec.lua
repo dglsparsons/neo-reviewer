@@ -60,6 +60,28 @@ describe("neo_reviewer.ui.nav", function()
             assert.are.equal(10, cursor[1])
         end)
 
+        it("skips duplicate AI hunks in order", function()
+            setup_review_buffer(fixtures.navigation_pr)
+            state.set_ai_analysis({
+                goal = "Test",
+                confidence = 5,
+                confidence_reason = "Deterministic test",
+                removed_abstractions = {},
+                new_abstractions = {},
+                hunk_order = {
+                    { file = "test.lua", hunk_index = 0, confidence = 5, category = "core" },
+                    { file = "test.lua", hunk_index = 0, confidence = 5, category = "core" },
+                    { file = "test.lua", hunk_index = 1, confidence = 5, category = "core" },
+                },
+            })
+            helpers.set_cursor(3)
+
+            nav.next_hunk(false)
+
+            local cursor = helpers.get_cursor()
+            assert.are.equal(10, cursor[1])
+        end)
+
         it("jumps to next hunk from between hunks", function()
             setup_review_buffer(fixtures.navigation_pr)
             helpers.set_cursor(5)

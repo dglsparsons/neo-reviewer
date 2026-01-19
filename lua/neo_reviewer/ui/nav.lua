@@ -17,30 +17,44 @@ local function build_ai_nav_list(review)
 
     ---@type NRAINavItem[]
     local nav_list = {}
+    ---@type table<string, boolean>
+    local seen_by_index = {}
+    ---@type table<string, boolean>
+    local seen_by_line = {}
 
     for _, ai_hunk in ipairs(review.ai_analysis.hunk_order) do
-        local file = review.files_by_path[ai_hunk.file]
-        if file then
-            local hunk = file.hunks[ai_hunk.hunk_index + 1]
-            if hunk then
-                local first_add = hunk.added_lines and hunk.added_lines[1]
-                local first_del = hunk.deleted_at and hunk.deleted_at[1]
-                local line = nil
-                if first_add and first_del then
-                    line = math.min(first_add, first_del)
-                else
-                    line = first_add or first_del
-                end
+        local index_key = ai_hunk.file .. ":" .. tostring(ai_hunk.hunk_index)
+        if not seen_by_index[index_key] then
+            local file = review.files_by_path[ai_hunk.file]
+            if file then
+                local hunk = file.hunks[ai_hunk.hunk_index + 1]
+                if hunk then
+                    local first_add = hunk.added_lines and hunk.added_lines[1]
+                    local first_del = hunk.deleted_at and hunk.deleted_at[1]
+                    local line = nil
+                    if first_add and first_del then
+                        line = math.min(first_add, first_del)
+                    else
+                        line = first_add or first_del
+                    end
 
-                if line then
-                    table.insert(nav_list, {
-                        file = ai_hunk.file,
-                        hunk_index = ai_hunk.hunk_index,
-                        line = line,
-                        ai_hunk = ai_hunk,
-                    })
+                    if line then
+                        local line_key = ai_hunk.file .. ":" .. tostring(line)
+                        if not seen_by_line[line_key] then
+                            table.insert(nav_list, {
+                                file = ai_hunk.file,
+                                hunk_index = ai_hunk.hunk_index,
+                                line = line,
+                                ai_hunk = ai_hunk,
+                            })
+                            seen_by_line[line_key] = true
+                        end
+                    end
                 end
             end
+
+            -- Avoid bouncing to the same hunk/line when AI order repeats entries.
+            seen_by_index[index_key] = true
         end
     end
 
@@ -145,10 +159,13 @@ end
 local function collect_hunk_starts(hunks)
     ---@type integer[]
     local starts = {}
+    ---@type table<integer, boolean>
+    local seen = {}
     for _, hunk in ipairs(hunks or {}) do
         local first = get_hunk_first_change(hunk)
-        if first then
+        if first and not seen[first] then
             table.insert(starts, first)
+            seen[first] = true
         end
     end
     table.sort(starts)
