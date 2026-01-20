@@ -25,4 +25,6 @@
 local luassert
 
 ---@type luassert
+-- Tests override the global assert with luassert; keep type info for LuaLS.
+---@diagnostic disable-next-line: assign-type-mismatch
 assert = assert

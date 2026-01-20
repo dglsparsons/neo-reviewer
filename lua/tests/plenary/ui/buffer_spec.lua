@@ -1,5 +1,5 @@
 local cwd = vim.fn.getcwd()
-package.path = cwd .. "/tests/?.lua;" .. cwd .. "/tests/?/init.lua;" .. package.path
+package.path = cwd .. "/lua/tests/?.lua;" .. cwd .. "/lua/tests/?/init.lua;" .. package.path
 
 local fixtures = require("fixtures.mock_pr_data")
 local helpers = require("plenary.helpers")

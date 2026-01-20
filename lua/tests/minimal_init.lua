@@ -1,8 +1,8 @@
 local cwd = vim.fn.getcwd()
 vim.opt.runtimepath:prepend(cwd)
-vim.opt.runtimepath:prepend(cwd .. "/tests")
+vim.opt.runtimepath:prepend(cwd .. "/lua/tests")
 
-package.path = cwd .. "/tests/?.lua;" .. cwd .. "/tests/?/init.lua;" .. package.path
+package.path = cwd .. "/lua/tests/?.lua;" .. cwd .. "/lua/tests/?/init.lua;" .. package.path
 
 local plenary_paths = {
     vim.fn.expand("~/.local/share/nvim/lazy/plenary.nvim"),

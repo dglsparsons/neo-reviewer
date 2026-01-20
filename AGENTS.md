@@ -26,7 +26,7 @@ lua/neo_reviewer/ Neovim plugin
     nav.lua        Cross-file hunk navigation
     buffer.lua     Buffer helper functions
 
-tests/         Plenary test suite
+lua/tests/     Plenary test suite
   plenary/     Test files (*_spec.lua)
   fixtures/    Mock PR data
 ```
@@ -41,7 +41,7 @@ make test
 cargo fmt --all
 
 # Format Lua code (required before committing)
-stylua lua/ plugin/ tests/
+stylua lua/
 
 # Format Terraform (required before committing)
 terraform fmt -recursive repo/
@@ -77,7 +77,7 @@ UI modules use lazy `require()` inside functions to avoid circular dependencies.
 
 ## Testing
 
-Tests use plenary.nvim. Mock data in `tests/fixtures/mock_pr_data.lua`. Helpers in `tests/plenary/helpers.lua`.
+Tests use plenary.nvim. Mock data in `lua/tests/fixtures/mock_pr_data.lua`. Helpers in `lua/tests/plenary/helpers.lua`.
 
 Test buffers don't have real file paths - navigation code checks `nr_file` buffer variable for file matching.
 

@@ -67,7 +67,7 @@
             nativeBuildInputs = [ pkgs.lua-language-server ];
           } ''
             export HOME=$(mktemp -d)
-            lua-language-server --check ${./.} --checklevel=Warning
+            lua-language-server --check ${./.}/lua --checklevel=Warning --configpath ${./.}/.luarc.lint.json
             touch $out
           '';
 
@@ -75,7 +75,7 @@
             nativeBuildInputs = [ pkgs.stylua ];
           } ''
             cd ${./.}
-            stylua --check lua/ plugin/ tests/
+            stylua --check lua/
             touch $out
           '';
         };

@@ -4,11 +4,11 @@ NVIM ?= nvim
 PLENARY_DIR ?= $(HOME)/.local/share/nvim/site/pack/test/start/plenary.nvim
 
 test:
-	@$(NVIM) --headless -u tests/minimal_init.lua \
-		-c "PlenaryBustedDirectory tests/plenary/ {minimal_init = 'tests/minimal_init.lua', sequential = true}"
+	@$(NVIM) --headless -u lua/tests/minimal_init.lua \
+		-c "PlenaryBustedDirectory lua/tests/plenary/ {minimal_init = 'lua/tests/minimal_init.lua', sequential = true}"
 
 test-file:
-	@$(NVIM) --headless -u tests/minimal_init.lua \
+	@$(NVIM) --headless -u lua/tests/minimal_init.lua \
 		-c "PlenaryBustedFile $(FILE)"
 
 install-deps:
