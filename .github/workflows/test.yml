@@ -53,14 +53,8 @@ jobs:
       - name: Build
         run: nix build -L
 
-      - name: Lint & format
+      - name: Lint, format & Test
         run: nix flake check -L
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Run tests
-        run: cargo test -p neo-reviewer --all-targets
 
   terraform:
     name: Terraform

@@ -57,6 +57,11 @@
             cargoClippyExtraArgs = "-p neo-reviewer -- -D warnings";
           });
 
+          rust-tests = craneLib.cargoTest (commonArgs // {
+            inherit cargoArtifacts;
+            cargoTestExtraArgs = "-p neo-reviewer --all-targets";
+          });
+
           fmt = craneLib.cargoFmt {
             src = rustSrc;
             pname = "neo-reviewer";

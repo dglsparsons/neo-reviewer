@@ -44,7 +44,7 @@ your editor. It provides:
 
 Using lazy.nvim: >lua
     {
-        "your-username/neo-reviewer",
+        "dglsparsons/neo-reviewer",
         dependencies = { "nvim-lua/plenary.nvim" },
         config = function()
             require("neo_reviewer").setup({})

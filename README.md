@@ -26,7 +26,7 @@ Using [lazy.nvim](https://github.com/folke/lazy.nvim):
 
 ```lua
 {
-    "your-username/neo-reviewer",
+    "dglsparsons/neo-reviewer",
     dependencies = { "nvim-lua/plenary.nvim" },
     config = function()
         require("neo_reviewer").setup({})
@@ -64,8 +64,10 @@ The plugin uses `gh auth token` to get your GitHub token, which handles SSO and 
 ## Configuration
 
 ```lua
+local cli_path = "neo-reviewer"
+
 require("neo_reviewer").setup({
-    cli_path = "neo-reviewer",  -- Path to CLI binary
+    cli_path = cli_path,  -- Path to CLI binary
     signs = {
         add = "+",
         delete = "-",
@@ -81,29 +83,34 @@ require("neo_reviewer").setup({
 neo-reviewer doesn't set any keymaps by default. Add your own:
 
 ```lua
+local nr = require("neo_reviewer")
+local opts = { silent = true, noremap = true }
+
+-- Review lifecycle
+vim.keymap.set("n", ",dr", ":ReviewPR", vim.tbl_extend("force", opts, { desc = "Review PR" }))
+vim.keymap.set("n", ",dd", nr.review_diff, vim.tbl_extend("force", opts, { desc = "Review local diff" }))
+vim.keymap.set("n", ",dq", nr.done, vim.tbl_extend("force", opts, { desc = "Close review" }))
+vim.keymap.set("n", ",ds", nr.sync, vim.tbl_extend("force", opts, { desc = "Sync review" }))
+
 -- Navigation
-vim.keymap.set("n", "]c", function()
-    require("neo_reviewer").next_hunk()
-end, { desc = "Next change" })
+vim.keymap.set("n", ",dn", nr.next_hunk, vim.tbl_extend("force", opts, { desc = "Next hunk" }))
+vim.keymap.set("n", ",dp", nr.prev_hunk, vim.tbl_extend("force", opts, { desc = "Prev hunk" }))
+vim.keymap.set("n", ",dj", nr.next_comment, vim.tbl_extend("force", opts, { desc = "Next comment" }))
+vim.keymap.set("n", ",dk", nr.prev_comment, vim.tbl_extend("force", opts, { desc = "Prev comment" }))
 
-vim.keymap.set("n", "[c", function()
-    require("neo_reviewer").prev_hunk()
-end, { desc = "Previous change" })
+-- Interaction
+vim.keymap.set("n", ",dc", nr.add_comment, vim.tbl_extend("force", opts, { desc = "Add comment" }))
+vim.keymap.set("v", ",dc", ":AddComment<CR>", vim.tbl_extend("force", opts, { desc = "Add comment on selection" }))
+vim.keymap.set("n", ",dv", nr.show_comment, vim.tbl_extend("force", opts, { desc = "View comment thread" }))
+vim.keymap.set("n", ",do", nr.toggle_prev_code, vim.tbl_extend("force", opts, { desc = "Toggle old code" }))
+vim.keymap.set("n", ",df", nr.show_file_picker, vim.tbl_extend("force", opts, { desc = "File picker" }))
 
--- Toggle inline diff preview
-vim.keymap.set("n", "<CR>", function()
-    require("neo_reviewer").toggle_inline()
-end, { desc = "Toggle inline diff" })
+-- AI
+vim.keymap.set("n", ",di", nr.toggle_ai_feedback, vim.tbl_extend("force", opts, { desc = "Toggle AI summary" }))
 
--- Comments
-vim.keymap.set("n", "<leader>cc", function()
-    require("neo_reviewer").add_comment()
-end, { desc = "Add comment" })
-
--- File picker
-vim.keymap.set("n", "<leader>cf", function()
-    require("neo_reviewer").show_file_picker()
-end, { desc = "Show changed files" })
+-- Submit
+vim.keymap.set("n", ",da", nr.approve, vim.tbl_extend("force", opts, { desc = "Approve PR" }))
+vim.keymap.set("n", ",dx", nr.request_changes, vim.tbl_extend("force", opts, { desc = "Request changes" }))
 ```
 
 ## Usage
@@ -121,7 +128,7 @@ end, { desc = "Show changed files" })
 
 5. Switch files with `<leader>cf`
 
-6. Close the review (via function call or custom command)
+6. Close the review with `:ReviewDone` (or submit with `:Approve`/`:RequestChanges`)
 
 ## Commands
 
@@ -132,6 +139,8 @@ end, { desc = "Show changed files" })
 | `:AddComment` | Add a review comment |
 | `:Approve` | Approve the PR |
 | `:RequestChanges` | Request changes on the PR |
+| `:ReviewDone` | End the review session without submitting |
+| `:ReviewSync` | Sync PR review with GitHub |
 
 ## How it works
 
