@@ -87,7 +87,7 @@ local nr = require("neo_reviewer")
 local opts = { silent = true, noremap = true }
 
 -- Review lifecycle
-vim.keymap.set("n", ",dr", ":ReviewPR", vim.tbl_extend("force", opts, { desc = "Review PR" }))
+vim.keymap.set("n", ",dr", ":ReviewPR<CR>", vim.tbl_extend("force", opts, { desc = "Review PR" }))
 vim.keymap.set("n", ",dd", nr.review_diff, vim.tbl_extend("force", opts, { desc = "Review local diff" }))
 vim.keymap.set("n", ",dq", nr.done, vim.tbl_extend("force", opts, { desc = "Close review" }))
 vim.keymap.set("n", ",ds", nr.sync, vim.tbl_extend("force", opts, { desc = "Sync review" }))
