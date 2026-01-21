@@ -83,7 +83,6 @@ resource "github_actions_repository_permissions" "neo_reviewer" {
     patterns_allowed = [
       "rhysd/action-setup-vim@*",
       "DeterminateSystems/*",
-      "dtolnay/rust-toolchain@*",
       "hashicorp/setup-terraform@*",
     ]
   }
