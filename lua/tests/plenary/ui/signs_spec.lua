@@ -96,6 +96,37 @@ describe("neo_reviewer.ui.signs", function()
             assert.is_true(found_change_sign)
         end)
 
+        it("uses add signs for pure additions within change hunks when changed_lines are provided", function()
+            local bufnr = helpers.create_test_buffer({ "line 1", "line 2", "line 3", "line 4" })
+
+            signs.place(bufnr, {
+                {
+                    hunk_type = "change",
+                    old_lines = { "old line" },
+                    added_lines = { 2, 3, 4 },
+                    changed_lines = { 2 },
+                    deleted_at = { 2 },
+                },
+            })
+
+            local extmarks = helpers.get_extmarks(bufnr, "nr_signs")
+            assert.are.equal(3, #extmarks)
+
+            local change_count = 0
+            local add_count = 0
+            for _, mark in ipairs(extmarks) do
+                local sign = mark[4].sign_text and vim.trim(mark[4].sign_text)
+                if sign == "~" then
+                    change_count = change_count + 1
+                elseif sign == "+" then
+                    add_count = add_count + 1
+                end
+            end
+
+            assert.are.equal(1, change_count)
+            assert.are.equal(2, add_count)
+        end)
+
         it("places signs for multiple hunks", function()
             local bufnr = helpers.create_test_buffer({
                 "line 1",

@@ -31,10 +31,13 @@ pub fn parse_patch(patch: &str) -> Vec<Hunk> {
             let mut added_lines = Vec::new();
             let mut deleted_at = Vec::new();
             let mut deleted_old_lines = Vec::new();
+            let mut changed_lines = Vec::new();
             let mut has_additions = false;
             let mut has_deletions = false;
             let mut new_line_num = new_start;
             let mut old_line_num = old_start;
+            // Treat additions immediately following deletions (no context lines) as replacements.
+            let mut in_change_block = false;
 
             while i < lines.len() {
                 let content_line = lines[i];
@@ -48,12 +51,17 @@ pub fn parse_patch(patch: &str) -> Vec<Hunk> {
                     deleted_at.push(new_line_num);
                     deleted_old_lines.push(old_line_num);
                     has_deletions = true;
+                    in_change_block = true;
                     old_line_num += 1;
                 } else if content_line.strip_prefix('+').is_some() {
                     added_lines.push(new_line_num);
+                    if in_change_block {
+                        changed_lines.push(new_line_num);
+                    }
                     has_additions = true;
                     new_line_num += 1;
                 } else if content_line.starts_with(' ') || content_line.is_empty() {
+                    in_change_block = false;
                     new_line_num += 1;
                     old_line_num += 1;
                 }
@@ -77,6 +85,7 @@ pub fn parse_patch(patch: &str) -> Vec<Hunk> {
                 old_lines,
                 hunk_type,
                 added_lines,
+                changed_lines,
                 deleted_at,
                 deleted_old_lines,
             });
@@ -134,6 +143,7 @@ mod tests {
         assert_eq!(hunks.len(), 1);
         assert_eq!(hunks[0].hunk_type, HunkType::Change);
         assert_eq!(hunks[0].old_lines, vec!["old line"]);
+        assert_eq!(hunks[0].changed_lines, vec![2]);
     }
 
     #[test]
@@ -250,6 +260,22 @@ mod tests {
 
         let hunks = parse_patch(patch);
         assert_eq!(hunks[0].added_lines, vec![2, 4]);
+    }
+
+    #[test]
+    fn test_parse_tracks_changed_lines_in_mixed_hunk() {
+        let patch = r#"@@ -1,5 +1,6 @@
+ line1
+-old line
++new line
+ line2
++added line
+ line3"#;
+
+        let hunks = parse_patch(patch);
+        assert_eq!(hunks.len(), 1);
+        assert_eq!(hunks[0].added_lines, vec![2, 4]);
+        assert_eq!(hunks[0].changed_lines, vec![2]);
     }
 
     #[test]

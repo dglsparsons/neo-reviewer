@@ -22,6 +22,7 @@
 ---@field count? integer Number of lines in the hunk
 ---@field hunk_type NRHunkType Type of change
 ---@field added_lines? integer[] Line numbers of additions
+---@field changed_lines? integer[] Line numbers of additions that replace deletions
 ---@field deleted_at? integer[] Positions where deletions occurred
 ---@field old_lines string[] Content of deleted lines
 ---@field deleted_old_lines? integer[] Original line numbers of deleted lines

@@ -35,11 +35,28 @@ function M.place(bufnr, hunks)
     local line_count = vim.api.nvim_buf_line_count(bufnr)
 
     for _, hunk in ipairs(hunks) do
+        local changed_lookup = nil
+        if hunk.hunk_type == "change" and hunk.changed_lines ~= nil then
+            changed_lookup = {}
+            for _, line_num in ipairs(hunk.changed_lines) do
+                changed_lookup[line_num] = true
+            end
+        end
+
         for _, line_num in ipairs(hunk.added_lines or {}) do
             local row = line_num - 1
             if row >= 0 and row < line_count then
                 local sign_text, sign_hl, line_hl
-                if hunk.hunk_type == "add" then
+                local is_change = false
+                if hunk.hunk_type == "change" then
+                    if changed_lookup then
+                        is_change = changed_lookup[line_num] == true
+                    else
+                        is_change = true
+                    end
+                end
+
+                if hunk.hunk_type == "add" or (hunk.hunk_type == "change" and not is_change) then
                     sign_text = config.values.signs.add
                     sign_hl = "NRAdd"
                     line_hl = "NRAddLine"
