@@ -34,8 +34,8 @@ lua/tests/     Plenary test suite
 ## Commands
 
 ```bash
-# Run all tests
-make test
+# Run all checks (Rust + Lua linting/formatting + tests)
+nix flake check
 
 # Format Rust code (required before committing)
 cargo fmt --all
@@ -45,9 +45,6 @@ stylua lua/
 
 # Format Terraform (required before committing)
 terraform fmt -recursive repo/
-
-# Run all checks (Rust + Lua linting/formatting)
-nix flake check
 
 # Build CLI
 cargo build -p neo-reviewer --release
@@ -92,7 +89,7 @@ Test buffers don't have real file paths - navigation code checks `nr_file` buffe
 - Add tests for any new code paths
 - Update fixtures if data structures changed
 
-Run `make test` before considering any change complete. If tests pass without modification after significant logic changes, that's a red flag - the new code paths likely aren't covered.
+Run `nix flake check` before considering any change complete. If tests pass without modification after significant logic changes, that's a red flag - the new code paths likely aren't covered.
 
 ## Documentation
 
@@ -112,11 +109,13 @@ Keep the docs in sync with `lua/neo_reviewer/init.lua` (commands/functions) and 
 
 ### Checks
 
-`nix flake check` runs all linting/formatting checks:
+`nix flake check` runs all linting/formatting checks and tests:
 - `clippy` - Rust lints
 - `fmt` - Rust formatting
 - `lua-lint` - lua-language-server diagnostics
 - `lua-fmt` - stylua formatting
+- `lua-tests` - Plenary test suite
+- `rust-tests` - Rust test suite
 
 **Run `nix flake check` before considering any change complete.** All checks MUST pass. This includes:
 - Zero Lua diagnostics (warnings are errors)

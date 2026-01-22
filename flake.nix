@@ -83,6 +83,28 @@
             stylua --check lua/
             touch $out
           '';
+
+          lua-tests = pkgs.runCommand "lua-tests" {
+            nativeBuildInputs = [ pkgs.neovim pkgs.vimPlugins.plenary-nvim ];
+          } ''
+            export HOME=$(mktemp -d)
+            mkdir -p "$HOME/.local/share/nvim/site/pack/test/start"
+            # minimal_init.lua searches this path for plenary.nvim.
+            plenary_root="${pkgs.vimPlugins.plenary-nvim}"
+            plenary_path="$plenary_root"
+            if [ -d "$plenary_root/share/vim-plugins/plenary.nvim" ]; then
+              plenary_path="$plenary_root/share/vim-plugins/plenary.nvim"
+            elif [ -d "$plenary_root/share/vim-plugins/plenary-nvim" ]; then
+              plenary_path="$plenary_root/share/vim-plugins/plenary-nvim"
+            fi
+            ln -s "$plenary_path" "$HOME/.local/share/nvim/site/pack/test/start/plenary.nvim"
+
+            cd ${./.}
+            nvim --headless -u lua/tests/minimal_init.lua \
+              -c "PlenaryBustedDirectory lua/tests/plenary/ {minimal_init = 'lua/tests/minimal_init.lua', sequential = true}" \
+              -c "qa"
+            touch $out
+          '';
         };
       }
     ) // {
