@@ -109,6 +109,8 @@ describe("neo_reviewer.ai", function()
             local prompt = ai.build_prompt(review)
 
             assert.is_truthy(prompt:find("Return ONLY valid JSON"))
+            assert.is_truthy(prompt:find('"overview"'))
+            assert.is_truthy(prompt:find('"steps"'))
         end)
     end)
 end)
@@ -131,6 +133,11 @@ describe("neo_reviewer.config AI defaults", function()
 
     it("has default command", function()
         assert.are.equal("opencode", config.values.ai.command)
+    end)
+
+    it("has walkthrough window defaults", function()
+        assert.are.equal(0, config.values.ai.walkthrough_window.height)
+        assert.is_false(config.values.ai.walkthrough_window.focus_on_open)
     end)
 
     it("can override AI settings", function()
@@ -180,18 +187,14 @@ describe("neo_reviewer.state AI analysis", function()
 
         ---@type NRAIAnalysis
         local analysis = {
-            goal = "Test goal",
-            confidence = 4,
-            confidence_reason = "Low risk change",
-            removed_abstractions = {},
-            new_abstractions = {},
-            hunk_order = {
+            overview = "Test overview",
+            steps = {
                 {
-                    file = "test.lua",
-                    hunk_index = 0,
-                    confidence = 4,
-                    category = "core",
-                    context = "Test context for reviewer",
+                    title = "Step 1",
+                    explanation = "Test context for reviewer",
+                    hunks = {
+                        { file = "test.lua", hunk_index = 0 },
+                    },
                 },
             },
         }
@@ -200,9 +203,9 @@ describe("neo_reviewer.state AI analysis", function()
 
         local retrieved = state.get_ai_analysis()
         assert.is_not_nil(retrieved)
-        assert.are.equal("Test goal", retrieved.goal)
-        assert.are.equal(1, #retrieved.hunk_order)
-        assert.are.equal("test.lua", retrieved.hunk_order[1].file)
+        assert.are.equal("Test overview", retrieved.overview)
+        assert.are.equal(1, #retrieved.steps)
+        assert.are.equal("Step 1", retrieved.steps[1].title)
     end)
 
     it("clears AI analysis when review is cleared", function()
@@ -212,8 +215,8 @@ describe("neo_reviewer.state AI analysis", function()
         })
 
         state.set_ai_analysis({
-            goal = "Test goal",
-            hunk_order = {},
+            overview = "Test overview",
+            steps = {},
         })
 
         state.clear_review()

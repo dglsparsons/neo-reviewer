@@ -23,13 +23,14 @@ describe("neo_reviewer.ui.nav", function()
         helpers.clear_all_buffers()
     end)
 
-    local function setup_review_buffer(pr_data)
+    local function setup_review_buffer(pr_data, file_idx)
         local data = helpers.deep_copy(pr_data)
         state.set_review(data)
         local review = state.get_review()
         review.url = "https://github.com/owner/repo/pull/789"
 
-        local file = data.files[1]
+        local idx = file_idx or 1
+        local file = data.files[idx]
         local lines = vim.split(file.content, "\n")
         local bufnr = helpers.create_test_buffer(lines)
 
@@ -63,15 +64,23 @@ describe("neo_reviewer.ui.nav", function()
         it("skips duplicate AI hunks in order", function()
             setup_review_buffer(fixtures.navigation_pr)
             state.set_ai_analysis({
-                goal = "Test",
-                confidence = 5,
-                confidence_reason = "Deterministic test",
-                removed_abstractions = {},
-                new_abstractions = {},
-                hunk_order = {
-                    { file = "test.lua", hunk_index = 0, confidence = 5, category = "core" },
-                    { file = "test.lua", hunk_index = 0, confidence = 5, category = "core" },
-                    { file = "test.lua", hunk_index = 1, confidence = 5, category = "core" },
+                overview = "Test overview",
+                steps = {
+                    {
+                        title = "Step 1",
+                        explanation = "First change",
+                        hunks = {
+                            { file = "test.lua", hunk_index = 0 },
+                            { file = "test.lua", hunk_index = 0 },
+                        },
+                    },
+                    {
+                        title = "Step 2",
+                        explanation = "Second change",
+                        hunks = {
+                            { file = "test.lua", hunk_index = 1 },
+                        },
+                    },
                 },
             })
             helpers.set_cursor(3)
@@ -80,6 +89,165 @@ describe("neo_reviewer.ui.nav", function()
 
             local cursor = helpers.get_cursor()
             assert.are.equal(10, cursor[1])
+        end)
+
+        it("keeps AI order when cursor is inside a hunk", function()
+            local pr_data = {
+                pr = {
+                    number = 321,
+                    title = "AI nav mixed files",
+                    body = "AI nav mixed files",
+                    state = "open",
+                    author = "testuser",
+                },
+                files = {
+                    {
+                        path = "file_a.lua",
+                        status = "modified",
+                        additions = 1,
+                        deletions = 0,
+                        content = table.concat({
+                            "a1",
+                            "a2",
+                            "a3",
+                            "a4",
+                            "a5",
+                        }, "\n"),
+                        hunks = {
+                            {
+                                start = 3,
+                                count = 1,
+                                hunk_type = "add",
+                                old_lines = {},
+                                added_lines = { 3 },
+                                deleted_at = {},
+                                deleted_old_lines = {},
+                            },
+                        },
+                    },
+                    {
+                        path = "file_b.lua",
+                        status = "modified",
+                        additions = 9,
+                        deletions = 0,
+                        content = table.concat({
+                            "b1",
+                            "b2",
+                            "b3",
+                            "b4",
+                            "b5",
+                            "b6",
+                            "b7",
+                            "b8",
+                            "b9",
+                            "b10",
+                            "b11",
+                            "b12",
+                            "b13",
+                            "b14",
+                            "b15",
+                            "b16",
+                            "b17",
+                            "b18",
+                            "b19",
+                            "b20",
+                            "b21",
+                            "b22",
+                            "b23",
+                            "b24",
+                            "b25",
+                            "b26",
+                            "b27",
+                            "b28",
+                            "b29",
+                            "b30",
+                        }, "\n"),
+                        hunks = {
+                            {
+                                start = 10,
+                                count = 8,
+                                hunk_type = "add",
+                                old_lines = {},
+                                added_lines = { 10, 11, 12, 13, 14, 15, 16, 17 },
+                                deleted_at = {},
+                                deleted_old_lines = {},
+                            },
+                            {
+                                start = 25,
+                                count = 1,
+                                hunk_type = "add",
+                                old_lines = {},
+                                added_lines = { 25 },
+                                deleted_at = {},
+                                deleted_old_lines = {},
+                            },
+                        },
+                    },
+                },
+                comments = {},
+            }
+
+            setup_review_buffer(pr_data, 2)
+            state.set_ai_analysis({
+                overview = "Test overview",
+                steps = {
+                    {
+                        title = "Step A",
+                        explanation = "First change",
+                        hunks = { { file = "file_a.lua", hunk_index = 0 } },
+                    },
+                    {
+                        title = "Step B",
+                        explanation = "Second change",
+                        hunks = { { file = "file_b.lua", hunk_index = 0 } },
+                    },
+                    {
+                        title = "Step C",
+                        explanation = "Third change",
+                        hunks = { { file = "file_b.lua", hunk_index = 1 } },
+                    },
+                },
+            })
+
+            helpers.set_cursor(16)
+
+            nav.next_hunk(true)
+
+            local cursor = helpers.get_cursor()
+            assert.are.equal(25, cursor[1])
+        end)
+
+        it("continues AI order when cursor leaves the hunk", function()
+            setup_review_buffer(fixtures.navigation_pr)
+            state.set_ai_analysis({
+                overview = "Test overview",
+                steps = {
+                    {
+                        title = "Step 1",
+                        explanation = "First change",
+                        hunks = { { file = "test.lua", hunk_index = 0 } },
+                    },
+                    {
+                        title = "Step 2",
+                        explanation = "Second change",
+                        hunks = { { file = "test.lua", hunk_index = 1 } },
+                    },
+                    {
+                        title = "Step 3",
+                        explanation = "Third change",
+                        hunks = { { file = "test.lua", hunk_index = 2 } },
+                    },
+                },
+            })
+
+            helpers.set_cursor(3)
+            nav.next_hunk(false)
+
+            helpers.set_cursor(1)
+            nav.next_hunk(false)
+
+            local cursor = helpers.get_cursor()
+            assert.are.equal(20, cursor[1])
         end)
 
         it("jumps to next hunk from between hunks", function()
@@ -194,6 +362,39 @@ describe("neo_reviewer.ui.nav", function()
 
             local cursor = helpers.get_cursor()
             assert.are.equal(1, cursor[1])
+        end)
+
+        it("continues AI order when cursor leaves the hunk", function()
+            setup_review_buffer(fixtures.navigation_pr)
+            state.set_ai_analysis({
+                overview = "Test overview",
+                steps = {
+                    {
+                        title = "Step 1",
+                        explanation = "First change",
+                        hunks = { { file = "test.lua", hunk_index = 0 } },
+                    },
+                    {
+                        title = "Step 2",
+                        explanation = "Second change",
+                        hunks = { { file = "test.lua", hunk_index = 1 } },
+                    },
+                    {
+                        title = "Step 3",
+                        explanation = "Third change",
+                        hunks = { { file = "test.lua", hunk_index = 2 } },
+                    },
+                },
+            })
+
+            helpers.set_cursor(3)
+            nav.next_hunk(false)
+
+            helpers.set_cursor(25)
+            nav.prev_hunk(false)
+
+            local cursor = helpers.get_cursor()
+            assert.are.equal(3, cursor[1])
         end)
     end)
 

@@ -4,112 +4,32 @@ local Job = require("plenary.job")
 local M = {}
 
 local PROMPT_TEMPLATE = [[
-You are an expert code reviewer helping a developer review a pull request efficiently.
+Here is the contents of a pull-requests diff. I want you to break this down and explain it to a human in the simplest, most concise (but still comprehensive) way possible. Your goal is to walk them through the changes so they are able to comment on the PR, and understand its implications. They may not have existing knowledge of this codebase.
 
-## Why This Matters
+Read all relevant files and code to help yourself understand the changes before attempting to walk them through this.
 
-A reviewer reading a diff sees changes in file order, which often obscures the logical flow. Your job is to help them build a mental model of the change before they read individual hunks - understanding the "shape" of the PR so each hunk makes sense in context. By ordering hunks logically rather than by file, the reviewer can follow the author's train of thought.
-
-## Your Task
-
-Analyze this PR and return a JSON response that:
-1. Summarizes the PR goal and overall risk level
-2. Orders hunks in a logical sequence for review
-3. Provides reviewer context for non-trivial hunks
-
-## Step 1: Assess the PR
-
-Read the PR title, description, and diff to understand:
-- What is this PR trying to accomplish?
-- How risky is the overall change? (dead code removal vs. subtle logic changes)
-- What abstractions (types, traits, structs, modules) are being removed, and why?
-- What new abstractions are being introduced, and why?
-
-Provide an overall confidence score (1-5) with brief reasoning:
-- 5: Very safe - pure deletions, formatting, renames, no logic changes
-- 4: Low risk - straightforward changes, clear intent, unlikely to break things
-- 3: Moderate - logic changes that seem correct but warrant verification
-- 2: Needs scrutiny - non-obvious changes, implicit assumptions, edge case potential
-- 1: High risk - complex logic, unclear purpose, touches critical paths
-
-## Step 2: Order the Hunks
-
-Arrange hunks so a reviewer can build understanding progressively:
-1. New abstractions: New types, traits, structs, modules being introduced
-2. Critical changes: Core logic changes that implement the PR's goal
-3. Removed abstractions: Deleted types, traits, structs, modules
-4. Tests: Unit tests, integration tests
-5. Wiring: Module exports, dependency injection, plumbing code
-6. Imports: Import statement changes (always trivial, always last)
-
-Within each category, order by dependency (if A uses B, show B first).
-
-## Step 3: Provide Reviewer Context
-
-For each hunk, explain WHY the change was made and how it connects to other changes in this PR.
-
-**confidence (1-5):** Same scale as PR-level confidence, applied to this specific hunk.
-
-**category**: One of: new, critical, removed, test, wiring, imports
-
-**context** (optional): Explain WHY this change exists and how it connects to the rest of the PR.
-- ALWAYS SKIP for import changes, module exports, and simple wiring - these never need context
-- SKIP for trivial changes (formatting, renames, obvious deletions)
-- DO NOT describe WHAT the code does - the reviewer can read the diff
-- DO explain WHY the change was made and how it relates to other changes in this PR
-- DO cross-reference other hunks when relevant (e.g., "X was removed in file.rs, so Y is added here to compensate")
-- NEVER tell the reviewer to verify something - do the verification yourself using the diff, then state your conclusion
-
-Examples of BAD context (describes WHAT):
-- "Removes the command argument configuration"
-- "Replaced ChildManager construction with direct lambda source handling"
-- "Updates the function signature to take fewer parameters"
-
-Examples of BAD context (punts verification to reviewer):
-- "Verify these fields were only used by the deleted feature"
-- "Check that no other callers depend on this behavior"
-- "Verify the new environment/config construction provides all necessary context"
-
-Examples of GOOD context (explains WHY and cross-references):
-- "uid/gid must be preserved for child process permissions. They were on ChildManager (removed in manager.rs), so they're passed directly here now"
-- "Error handling for child_url moved here because spawn is now synchronous - url errors surface at spawn time, not later"
-- "lang field removed - only used in squashball command building which is deleted in commands.rs"
-
-**Flagging uncertainty:** If the purpose of a change is unclear from the diff and PR description, say so explicitly (e.g., "Purpose unclear - this field is removed but I can't trace where it was used"). This signals the reviewer should pay closer attention.
-
-## Output Format
+Use only the PR title/description, file list, and diff provided below. Do not invent files, APIs, or behavior that are not present.
 
 Return ONLY valid JSON (no markdown, no explanation):
 {
-  "goal": "Brief statement of what this PR accomplishes",
-  "confidence": 4,
-  "confidence_reason": "Mostly dead code removal, but the child spawning logic changes could affect process permissions",
-  "removed_abstractions": ["ChildManager - managed single/multi child processes, no longer needed with single-process model", "BootMode enum - only used for squashball startup which is removed"],
-  "new_abstractions": ["prepare_child_env() - extracted from ChildManager to keep env preparation logic"],
-  "hunk_order": [
+  "overview": "Concise explanation of the PR in plain language. 1-3 short paragraphs.",
+  "steps": [
     {
-      "file": "path/to/spawn.rs",
-      "hunk_index": 0,
-      "confidence": 3,
-      "category": "critical",
-      "context": "uid/gid now passed directly since ChildManager is removed - preserves run-as-user behavior"
-    },
-    {
-      "file": "path/to/manager.rs",
-      "hunk_index": 0,
-      "confidence": 5,
-      "category": "removed"
-    },
-    {
-      "file": "path/to/spawn.rs",
-      "hunk_index": 1,
-      "confidence": 5,
-      "category": "imports"
+      "title": "Short step title",
+      "explanation": "1-4 sentences explaining why this change exists and its implications.",
+      "hunks": [
+        { "file": "path/to/file", "hunk_index": 0 }
+      ]
     }
   ]
 }
 
-Note: `context` should be omitted for trivial/self-explanatory hunks (especially imports).
+Guidelines:
+- overview: 1-3 short paragraphs, plain language
+- steps: ordered walkthrough; keep each step concise
+- When a step refers to code changes, include the hunks that support it
+- hunks can be empty when a step is high-level or cross-cutting
+- hunk_index must match the @@ hunk N @@ markers in the diff below
 
 ---
 
@@ -214,74 +134,54 @@ local function parse_response(output)
         return nil, "Failed to parse JSON: " .. tostring(data)
     end
 
-    if type(data.goal) ~= "string" then
-        return nil, "Missing or invalid 'goal' field"
+    if type(data.overview) ~= "string" then
+        return nil, "Missing or invalid 'overview' field"
     end
 
-    if type(data.hunk_order) ~= "table" then
-        return nil, "Missing or invalid 'hunk_order' field"
+    if type(data.steps) ~= "table" then
+        return nil, "Missing or invalid 'steps' field"
     end
 
-    -- PR-level confidence is optional but recommended
-    local pr_confidence = nil
-    local pr_confidence_reason = nil
-    if type(data.confidence) == "number" and data.confidence >= 1 and data.confidence <= 5 then
-        pr_confidence = data.confidence
-        pr_confidence_reason = data.confidence_reason
-    end
-
-    ---@type NRAIHunk[]
-    local hunk_order = {}
-    for i, item in ipairs(data.hunk_order) do
-        if type(item.file) ~= "string" then
-            return nil, string.format("hunk_order[%d]: missing 'file'", i)
+    ---@type NRAIWalkthroughStep[]
+    local steps = {}
+    for i, step in ipairs(data.steps) do
+        if type(step.title) ~= "string" then
+            return nil, string.format("steps[%d]: missing 'title'", i)
         end
-        if type(item.hunk_index) ~= "number" then
-            return nil, string.format("hunk_order[%d]: missing 'hunk_index'", i)
+        if type(step.explanation) ~= "string" then
+            return nil, string.format("steps[%d]: missing 'explanation'", i)
         end
-        if type(item.confidence) ~= "number" or item.confidence < 1 or item.confidence > 5 then
-            return nil, string.format("hunk_order[%d]: invalid 'confidence' (must be 1-5)", i)
-        end
-        if type(item.category) ~= "string" then
-            return nil, string.format("hunk_order[%d]: missing 'category'", i)
+        if type(step.hunks) ~= "table" then
+            return nil, string.format("steps[%d]: missing 'hunks'", i)
         end
 
-        table.insert(hunk_order, {
-            file = item.file,
-            hunk_index = item.hunk_index,
-            confidence = item.confidence,
-            category = item.category,
-            -- Support both old "summary" and new "context" field names
-            context = item.context or item.summary,
+        ---@type NRAIWalkthroughHunkRef[]
+        local hunks = {}
+        for j, hunk in ipairs(step.hunks) do
+            if type(hunk.file) ~= "string" then
+                return nil, string.format("steps[%d].hunks[%d]: missing 'file'", i, j)
+            end
+            if type(hunk.hunk_index) ~= "number" then
+                return nil, string.format("steps[%d].hunks[%d]: missing 'hunk_index'", i, j)
+            end
+
+            table.insert(hunks, {
+                file = hunk.file,
+                hunk_index = hunk.hunk_index,
+            })
+        end
+
+        table.insert(steps, {
+            title = step.title,
+            explanation = step.explanation,
+            hunks = hunks,
         })
-    end
-
-    -- Parse abstraction lists (optional)
-    local removed_abstractions = {}
-    local new_abstractions = {}
-    if type(data.removed_abstractions) == "table" then
-        for _, v in ipairs(data.removed_abstractions) do
-            if type(v) == "string" then
-                table.insert(removed_abstractions, v)
-            end
-        end
-    end
-    if type(data.new_abstractions) == "table" then
-        for _, v in ipairs(data.new_abstractions) do
-            if type(v) == "string" then
-                table.insert(new_abstractions, v)
-            end
-        end
     end
 
     ---@type NRAIAnalysis
     local analysis = {
-        goal = data.goal,
-        confidence = pr_confidence,
-        confidence_reason = pr_confidence_reason,
-        removed_abstractions = removed_abstractions,
-        new_abstractions = new_abstractions,
-        hunk_order = hunk_order,
+        overview = data.overview,
+        steps = steps,
     }
 
     return analysis, nil

@@ -92,6 +92,10 @@ Call setup() with your options: >lua
             enabled = false,                      -- Run AI analysis by default
             model = "anthropic/claude-haiku-4-5", -- Model for opencode
             command = "opencode",                 -- Command to invoke
+            walkthrough_window = {
+                height = 0,                 -- Auto size to content (min height)
+                focus_on_open = false,      -- Keep focus on diff window
+            },
         },
     })
 <
@@ -119,17 +123,15 @@ ai ~
     - `enabled`: Run AI analysis by default (default: false).
     - `model`: Model to use for analysis (default: "anthropic/claude-haiku-4-5").
     - `command`: Command to invoke opencode (default: "opencode").
+    - `walkthrough_window.height`: Minimum height of the walkthrough split
+      (default: 0, auto-sized to content).
+    - `walkthrough_window.focus_on_open`: Focus the walkthrough window when it opens (default: false).
 
-    When AI analysis is enabled, hunks are ordered intelligently for review
-    (core implementation first, then integration, tests, peripheral changes).
-    Each hunk is annotated with:
-    - Confidence (1-5): How straightforward the change appears
-    - Category: foundation, core, integration, support, test, peripheral
-    - Summary: Why this change helps achieve the PR's goal
-
-    Virtual text shows annotations at hunk starts. Use
-    |neo_reviewer.toggle_ai_feedback()| to see full analysis details in a
-    floating window.
+    When AI analysis is enabled, neo-reviewer generates a plain-language
+    overview and an ordered walkthrough of the PR with step-by-step
+    explanations. The walkthrough opens automatically and updates as you
+    navigate hunks. Use |neo_reviewer.toggle_ai_feedback()| to open or
+    re-open the walkthrough window.
 
 ==============================================================================
 5. COMMANDS                                              *neo_reviewer-commands*
@@ -300,9 +302,8 @@ require("neo_reviewer").sync()                                   *neo_reviewer.s
     See |:ReviewSync|.
 
 require("neo_reviewer").toggle_ai_feedback()     *neo_reviewer.toggle_ai_feedback()*
-    Show AI analysis details for the hunk at cursor position. Opens a
-    floating window with the PR goal, confidence level, abstraction
-    changes, and commentary on the current hunk.
+    Toggle the AI walkthrough window open/closed. The walkthrough updates
+    as you navigate hunks with next/prev.
 
 ==============================================================================
 7. KEYMAPS                                                *neo_reviewer-keymaps*

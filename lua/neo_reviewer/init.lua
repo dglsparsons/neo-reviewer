@@ -329,6 +329,8 @@ function M.review_diff(opts)
                     vim.notify("[neo-reviewer] AI analysis failed: " .. ai_err, vim.log.levels.WARN)
                 elseif analysis then
                     state.set_ai_analysis(analysis)
+                    local ai_ui = require("neo_reviewer.ui.ai")
+                    ai_ui.open()
                     vim.notify("[neo-reviewer] Analysis complete. Navigate with ]h / [h", vim.log.levels.INFO)
                 end
 
@@ -400,6 +402,8 @@ function M.fetch_and_enable(url, on_ready, opts)
                     vim.notify("[neo-reviewer] AI analysis failed: " .. ai_err, vim.log.levels.WARN)
                 elseif analysis then
                     state.set_ai_analysis(analysis)
+                    local ai_ui = require("neo_reviewer.ui.ai")
+                    ai_ui.open()
                     vim.notify("[neo-reviewer] Analysis complete. Navigate with ]h / [h", vim.log.levels.INFO)
                 end
 

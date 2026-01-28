@@ -2,6 +2,7 @@
 ---@field enabled boolean Whether AI analysis is enabled by default
 ---@field model string Model for opencode
 ---@field command string Command to invoke opencode
+---@field walkthrough_window NRAIWalkthroughWindow Walkthrough window configuration
 
 ---@class NRSigns
 ---@field add string Sign character for additions
@@ -23,6 +24,10 @@
 
 ---@class NRInputWindow
 ---@field keys NRInputWindowKeys
+
+---@class NRAIWalkthroughWindow
+---@field height integer Minimum height of the walkthrough split (0 = auto)
+---@field focus_on_open boolean Whether to focus the walkthrough window on open
 
 ---@class NRConfig
 ---@field cli_path string Path to the neo-reviewer CLI binary
@@ -54,10 +59,15 @@
 ---@class NRPartialInputWindow
 ---@field keys? NRPartialInputWindowKeys
 
+---@class NRPartialAIWalkthroughWindow
+---@field height? integer Minimum height of the walkthrough split (0 = auto)
+---@field focus_on_open? boolean Whether to focus the walkthrough window on open
+
 ---@class NRPartialAI
 ---@field enabled? boolean Whether AI analysis is enabled by default
 ---@field model? string Model for opencode
 ---@field command? string Command to invoke opencode
+---@field walkthrough_window? NRPartialAIWalkthroughWindow Walkthrough window configuration
 
 ---@class NRPartialConfig
 ---@field cli_path? string Path to the neo-reviewer CLI binary
@@ -101,6 +111,10 @@ M.values = {
         enabled = false,
         model = "anthropic/claude-haiku-4-5",
         command = "opencode",
+        walkthrough_window = {
+            height = 0,
+            focus_on_open = false,
+        },
     },
 }
 

@@ -1,19 +1,19 @@
----@alias NRAICategory "foundation"|"core"|"integration"|"support"|"test"|"peripheral"
-
----@class NRAIHunk
+---@class NRAIWalkthroughHunkRef
 ---@field file string File path
 ---@field hunk_index integer 0-based index into the file's hunks array
----@field confidence integer Confidence level 1-5
----@field category NRAICategory Category of the change
----@field context string|nil Reviewer context, omitted for trivial changes
+
+---@class NRAINavAnchor
+---@field file string File path
+---@field hunk_index integer 0-based index into the file's hunks array
+
+---@class NRAIWalkthroughStep
+---@field title string Step title
+---@field explanation string Plain-language explanation of the change
+---@field hunks NRAIWalkthroughHunkRef[] Hunks referenced by this step
 
 ---@class NRAIAnalysis
----@field goal string AI's understanding of PR purpose
----@field confidence integer|nil PR-level confidence (1-5)
----@field confidence_reason string|nil Explanation for PR-level confidence
----@field removed_abstractions string[] Types/structs/modules being removed
----@field new_abstractions string[] Types/structs/modules being introduced
----@field hunk_order NRAIHunk[] Hunks in AI-suggested review order
+---@field overview string Concise walkthrough overview
+---@field steps NRAIWalkthroughStep[] Ordered walkthrough steps
 
 ---@alias NRHunkType "add"|"delete"|"change"
 
@@ -34,6 +34,7 @@
 ---@field status NRFileStatus Status of the file
 ---@field additions? integer Number of additions
 ---@field deletions? integer Number of deletions
+---@field content? string File content for preview/testing
 ---@field hunks NRHunk[] Hunks in this file
 
 ---@class NRPR
@@ -77,6 +78,7 @@
 ---@field overlays_visible boolean Whether overlays are currently shown
 ---@field show_old_code? boolean Whether to show old code in virtual lines
 ---@field ai_analysis? NRAIAnalysis AI analysis results (nil if not run)
+---@field ai_nav_anchor? NRAINavAnchor Last AI navigation anchor (nil if none)
 
 ---@class NRReviewData
 ---@field pr NRPR PR metadata
@@ -124,6 +126,7 @@ function M.set_review(review_data, git_root)
         autocmd_id = nil,
         overlays_visible = true,
         show_old_code = false,
+        ai_nav_anchor = nil,
     }
     return state.active_review
 end
@@ -148,6 +151,7 @@ function M.set_local_review(diff_data)
         autocmd_id = nil,
         overlays_visible = true,
         show_old_code = false,
+        ai_nav_anchor = nil,
     }
     return state.active_review
 end
@@ -381,6 +385,21 @@ end
 function M.set_ai_analysis(analysis)
     if state.active_review then
         state.active_review.ai_analysis = analysis
+    end
+end
+
+---@return NRAINavAnchor|nil
+function M.get_ai_nav_anchor()
+    if state.active_review then
+        return state.active_review.ai_nav_anchor
+    end
+    return nil
+end
+
+---@param anchor NRAINavAnchor|nil
+function M.set_ai_nav_anchor(anchor)
+    if state.active_review then
+        state.active_review.ai_nav_anchor = anchor
     end
 end
 

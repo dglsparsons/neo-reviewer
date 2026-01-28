@@ -3,220 +3,15 @@ local M = {}
 
 local ns = vim.api.nvim_create_namespace("nr_ai")
 
-local hl_groups_defined = false
+local walkthrough_bufnr = nil
+local last_step_index = nil
 
-local function define_highlights()
-    if hl_groups_defined then
-        return
-    end
-    hl_groups_defined = true
-
-    vim.api.nvim_set_hl(0, "NRAIAnnotation", { fg = "#7c8f8f", italic = true, default = true })
-    vim.api.nvim_set_hl(0, "NRAIConfidence5", { fg = "#98c379", italic = true, default = true })
-    vim.api.nvim_set_hl(0, "NRAIConfidence4", { fg = "#61afef", italic = true, default = true })
-    vim.api.nvim_set_hl(0, "NRAIConfidence3", { fg = "#e5c07b", italic = true, default = true })
-    vim.api.nvim_set_hl(0, "NRAIConfidence2", { fg = "#d19a66", italic = true, default = true })
-    vim.api.nvim_set_hl(0, "NRAIConfidence1", { fg = "#e06c75", italic = true, default = true })
-end
-
----Get highlight group for confidence level
----@param confidence integer
----@return string
-local function get_confidence_hl(confidence)
-    return "NRAIConfidence" .. math.max(1, math.min(5, confidence))
-end
-
----Truncate string to max length with ellipsis
----@param str string
----@param max_len integer
----@return string
-local function truncate(str, max_len)
-    if #str <= max_len then
-        return str
-    end
-    return str:sub(1, max_len - 3) .. "..."
-end
-
----Build virtual text for an AI annotation
----@param ai_hunk NRAIHunk
----@return table[] virt_text chunks
-local function build_virt_text(ai_hunk)
-    local hl = get_confidence_hl(ai_hunk.confidence)
-
-    if ai_hunk.context then
-        local context = truncate(ai_hunk.context, 80)
-        return {
-            { " ", "Normal" },
-            { string.format("[%d/5]", ai_hunk.confidence), hl },
-            { " " .. context, "NRAIAnnotation" },
-        }
-    else
-        return {
-            { " ", "Normal" },
-            { string.format("[%d/5]", ai_hunk.confidence), hl },
-        }
-    end
-end
-
----Apply AI annotations as virtual text to a buffer
----@param bufnr integer
----@param file NRFile
-function M.apply(bufnr, file)
-    define_highlights()
-
-    local state = require("neo_reviewer.state")
-    local analysis = state.get_ai_analysis()
-    if not analysis then
-        return
-    end
-
-    local line_count = vim.api.nvim_buf_line_count(bufnr)
-
-    for _, ai_hunk in ipairs(analysis.hunk_order) do
-        if ai_hunk.file == file.path then
-            local hunk = file.hunks[ai_hunk.hunk_index + 1]
-            if hunk then
-                -- Skip annotation for trivial hunks (5/5 with no context)
-                if ai_hunk.confidence == 5 and not ai_hunk.context then
-                    goto continue
-                end
-
-                local first_add = hunk.added_lines and hunk.added_lines[1]
-                local first_del = hunk.deleted_at and hunk.deleted_at[1]
-                local line = nil
-                if first_add and first_del then
-                    line = math.min(first_add, first_del)
-                else
-                    line = first_add or first_del
-                end
-
-                if line and line >= 1 and line <= line_count then
-                    local virt_text = build_virt_text(ai_hunk)
-                    vim.api.nvim_buf_set_extmark(bufnr, ns, line - 1, 0, {
-                        virt_text = virt_text,
-                        virt_text_pos = "eol",
-                        priority = 5,
-                    })
-                end
-            end
-            ::continue::
-        end
-    end
-end
-
----Clear AI annotations from a buffer
----@param bufnr integer
-function M.clear(bufnr)
-    vim.api.nvim_buf_clear_namespace(bufnr, ns, 0, -1)
-end
-
----Get AI annotation for the hunk at cursor position
----@param bufnr integer
----@return NRAIHunk|nil
-function M.get_annotation_at_cursor(bufnr)
-    local state = require("neo_reviewer.state")
-    local analysis = state.get_ai_analysis()
-    if not analysis then
-        return nil
-    end
-
-    local ok, file = pcall(vim.api.nvim_buf_get_var, bufnr, "nr_file")
-    if not ok or not file then
-        return nil
-    end
-
-    local cursor_line = vim.api.nvim_win_get_cursor(0)[1]
-
-    for _, ai_hunk in ipairs(analysis.hunk_order) do
-        if ai_hunk.file == file.path then
-            local hunk = file.hunks[ai_hunk.hunk_index + 1]
-            if hunk then
-                local first_add = hunk.added_lines and hunk.added_lines[1]
-                local first_del = hunk.deleted_at and hunk.deleted_at[1]
-                local hunk_start = nil
-                if first_add and first_del then
-                    hunk_start = math.min(first_add, first_del)
-                else
-                    hunk_start = first_add or first_del
-                end
-
-                local hunk_end = hunk.start and (hunk.start + (hunk.count or 1) - 1) or hunk_start
-
-                if hunk_start and hunk_end and cursor_line >= hunk_start and cursor_line <= hunk_end then
-                    return ai_hunk
-                end
-            end
-        end
-    end
-
-    return nil
-end
-
----Build confidence bar visualization
----@param confidence integer
----@return string
-local function build_confidence_bar(confidence)
-    local filled = string.rep("█", confidence)
-    local empty = string.rep("░", 5 - confidence)
-    return filled .. empty
-end
-
----Show floating window with AI analysis details for hunk at cursor
-function M.show_details()
-    define_highlights()
-
-    local state = require("neo_reviewer.state")
-    local analysis = state.get_ai_analysis()
-    if not analysis then
-        vim.notify("No AI analysis available", vim.log.levels.INFO)
-        return
-    end
-
-    local bufnr = vim.api.nvim_get_current_buf()
-    local ai_hunk = M.get_annotation_at_cursor(bufnr)
-
-    local lines = {}
-    local max_width = 60
-
-    table.insert(lines, "PR Goal: " .. analysis.goal)
-    table.insert(lines, "")
-
-    if analysis.confidence then
-        local reason = analysis.confidence_reason or ""
-        table.insert(lines, string.format("PR Confidence: %d/5 - %s", analysis.confidence, reason))
-        table.insert(lines, "")
-    end
-
-    if analysis.removed_abstractions and #analysis.removed_abstractions > 0 then
-        table.insert(lines, "Removed:")
-        for _, abstraction in ipairs(analysis.removed_abstractions) do
-            table.insert(lines, "  • " .. abstraction)
-        end
-        table.insert(lines, "")
-    end
-
-    if analysis.new_abstractions and #analysis.new_abstractions > 0 then
-        table.insert(lines, "New:")
-        for _, abstraction in ipairs(analysis.new_abstractions) do
-            table.insert(lines, "  • " .. abstraction)
-        end
-    end
-
-    -- Show hunk-specific section only when cursor is on a hunk with non-trivial info
-    if ai_hunk and (ai_hunk.confidence ~= 5 or ai_hunk.context) then
-        table.insert(lines, "")
-        table.insert(lines, "")
-        table.insert(lines, string.format("── This Change: %d/5 ──", ai_hunk.confidence))
-        table.insert(lines, "")
-
-        if ai_hunk.context then
-            for line in ai_hunk.context:gmatch("[^\n]+") do
-                table.insert(lines, line)
-            end
-        end
-    end
-
-    local wrapped_lines = {}
+---@param lines string[]
+---@param max_width integer
+---@return string[]
+local function wrap_lines(lines, max_width)
+    ---@type string[]
+    local wrapped = {}
     for _, line in ipairs(lines) do
         if #line > max_width then
             local remaining = line
@@ -226,49 +21,276 @@ function M.show_details()
                 if space_pos and #remaining > max_width then
                     chunk = chunk:sub(1, max_width - space_pos + 1)
                 end
-                table.insert(wrapped_lines, chunk)
+                table.insert(wrapped, chunk)
                 remaining = remaining:sub(#chunk + 1):gsub("^%s+", "")
             end
         else
-            table.insert(wrapped_lines, line)
+            table.insert(wrapped, line)
+        end
+    end
+    return wrapped
+end
+
+---@param text string
+---@return string[]
+local function split_lines(text)
+    return vim.split(text, "\n", { plain = true })
+end
+
+---@param analysis NRAIAnalysis
+---@param step_index integer
+---@return string[]
+local function build_walkthrough_lines(analysis, step_index)
+    ---@type string[]
+    local lines = {}
+
+    table.insert(lines, "Overview:")
+    for _, line in ipairs(split_lines(analysis.overview)) do
+        table.insert(lines, line)
+    end
+
+    if #analysis.steps == 0 then
+        table.insert(lines, "")
+        table.insert(lines, "No walkthrough steps provided.")
+        return lines
+    end
+
+    local clamped_index = math.max(1, math.min(step_index, #analysis.steps))
+    local step = analysis.steps[clamped_index]
+
+    table.insert(lines, "")
+    table.insert(lines, string.format("Step %d/%d: %s", clamped_index, #analysis.steps, step.title))
+    table.insert(lines, "")
+    for _, line in ipairs(split_lines(step.explanation)) do
+        table.insert(lines, line)
+    end
+
+    return lines
+end
+
+---@param review NRReview
+---@param hunk_ref NRAIWalkthroughHunkRef
+---@return integer|nil
+local function get_hunk_line(review, hunk_ref)
+    local file = review.files_by_path[hunk_ref.file]
+    if not file then
+        return nil
+    end
+
+    local hunk = file.hunks[hunk_ref.hunk_index + 1]
+    if not hunk then
+        return nil
+    end
+
+    local first_add = hunk.added_lines and hunk.added_lines[1]
+    local first_del = hunk.deleted_at and hunk.deleted_at[1]
+    if first_add and first_del then
+        return math.min(first_add, first_del)
+    end
+    return first_add or first_del
+end
+
+---@param review NRReview
+---@param file_path string
+---@param line integer
+---@return integer|nil
+local function find_step_for_location(review, file_path, line)
+    if not review.ai_analysis then
+        return nil
+    end
+
+    for step_index, step in ipairs(review.ai_analysis.steps or {}) do
+        for _, hunk_ref in ipairs(step.hunks or {}) do
+            if hunk_ref.file == file_path then
+                local file = review.files_by_path[file_path]
+                if file then
+                    local hunk = file.hunks[hunk_ref.hunk_index + 1]
+                    if hunk then
+                        local start_line = get_hunk_line(review, hunk_ref)
+                        local end_line = hunk.start and (hunk.start + (hunk.count or 1) - 1) or start_line
+                        if start_line and end_line and line >= start_line and line <= end_line then
+                            return step_index
+                        end
+                    end
+                end
+            end
         end
     end
 
-    local width = max_width
-    local height = #wrapped_lines
+    return nil
+end
 
-    local win_width = vim.api.nvim_win_get_width(0)
-    local win_height = vim.api.nvim_win_get_height(0)
-    local row = math.floor((win_height - height) / 2)
-    local col = math.floor((win_width - width) / 2)
+---@param bufnr integer
+---@param lines string[]
+local function set_lines(bufnr, lines)
+    vim.bo[bufnr].modifiable = true
+    vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
+    vim.bo[bufnr].modifiable = false
+end
 
-    local float_buf = vim.api.nvim_create_buf(false, true)
-    vim.api.nvim_buf_set_lines(float_buf, 0, -1, false, wrapped_lines)
-    vim.bo[float_buf].modifiable = false
-    vim.bo[float_buf].bufhidden = "wipe"
+---@param bufnr integer
+---@param analysis NRAIAnalysis
+---@param step_index integer
+---@return string[]
+local function render_walkthrough(bufnr, analysis, step_index)
+    local winid = vim.fn.bufwinid(bufnr)
+    local width = vim.o.columns
+    if winid ~= -1 and vim.api.nvim_win_is_valid(winid) then
+        width = vim.api.nvim_win_get_width(winid)
+    end
+    width = math.max(20, width - 4)
+    local lines = build_walkthrough_lines(analysis, step_index)
+    local wrapped = wrap_lines(lines, width)
+    set_lines(bufnr, wrapped)
+    return wrapped
+end
 
-    local float_win = vim.api.nvim_open_win(float_buf, true, {
-        relative = "win",
-        row = row,
-        col = col,
-        width = width,
-        height = height,
-        style = "minimal",
-        border = "rounded",
-        title = " AI Analysis ",
-        title_pos = "center",
-    })
+---@return integer
+local function ensure_walkthrough_buffer()
+    if walkthrough_bufnr and vim.api.nvim_buf_is_valid(walkthrough_bufnr) then
+        return walkthrough_bufnr
+    end
 
-    vim.wo[float_win].wrap = true
-    vim.wo[float_win].cursorline = false
+    walkthrough_bufnr = vim.api.nvim_create_buf(false, true)
+    vim.bo[walkthrough_bufnr].buftype = "nofile"
+    vim.bo[walkthrough_bufnr].bufhidden = "hide"
+    vim.bo[walkthrough_bufnr].swapfile = false
+    vim.bo[walkthrough_bufnr].modifiable = false
+    vim.bo[walkthrough_bufnr].filetype = "neo-reviewer-ai"
 
-    local close_keys = { "q", "<Esc>" }
-    for _, key in ipairs(close_keys) do
-        vim.keymap.set("n", key, function()
-            if vim.api.nvim_win_is_valid(float_win) then
-                vim.api.nvim_win_close(float_win, true)
-            end
-        end, { buffer = float_buf, nowait = true })
+    return walkthrough_bufnr
+end
+
+---@param height integer
+---@param focus boolean
+---@return integer
+local function open_walkthrough_split(height, focus)
+    local bufnr = ensure_walkthrough_buffer()
+    local winid = vim.fn.bufwinid(bufnr)
+    local current_win = vim.api.nvim_get_current_win()
+    if winid == -1 then
+        vim.cmd("botright " .. tostring(height) .. "split")
+        vim.api.nvim_set_current_buf(bufnr)
+        winid = vim.api.nvim_get_current_win()
+    end
+
+    if not focus then
+        if vim.api.nvim_win_is_valid(current_win) then
+            vim.api.nvim_set_current_win(current_win)
+        end
+    end
+
+    return winid
+end
+
+---Apply AI annotations as virtual text to a buffer (no-op; walkthrough uses a split)
+---@param bufnr integer
+---@param _file NRFile
+function M.apply(bufnr, _file)
+    M.clear(bufnr)
+end
+
+---Clear AI annotations from a buffer
+---@param bufnr integer
+function M.clear(bufnr)
+    vim.api.nvim_buf_clear_namespace(bufnr, ns, 0, -1)
+end
+
+---@return integer
+local function get_target_height(min_height, line_count)
+    local height = line_count
+    if min_height and min_height > height then
+        height = min_height
+    end
+    return math.max(1, height)
+end
+
+---@return integer, integer
+local function ensure_open_with_height(height, focus)
+    local winid = open_walkthrough_split(height, focus)
+    return winid, ensure_walkthrough_buffer()
+end
+
+---@param step_index integer
+---@param analysis NRAIAnalysis
+---@param config_walkthrough NRAIWalkthroughWindow
+---@return integer
+local function render_and_resize(step_index, analysis, config_walkthrough)
+    local winid, bufnr = ensure_open_with_height(1, config_walkthrough.focus_on_open)
+    local wrapped = render_walkthrough(bufnr, analysis, step_index)
+    local target_height = get_target_height(config_walkthrough.height, #wrapped)
+    if vim.api.nvim_win_is_valid(winid) then
+        vim.api.nvim_win_set_height(winid, target_height)
+    end
+    return bufnr
+end
+
+---Open walkthrough in a split buffer
+function M.open()
+    local state = require("neo_reviewer.state")
+    local review = state.get_review()
+    local analysis = state.get_ai_analysis()
+    if not review or not analysis then
+        vim.notify("No AI analysis available", vim.log.levels.INFO)
+        return
+    end
+
+    analysis.steps = analysis.steps or {}
+
+    local config = require("neo_reviewer.config")
+    local walkthrough = config.values.ai.walkthrough_window
+    local step_index = last_step_index or 1
+    last_step_index = step_index
+    render_and_resize(step_index, analysis, walkthrough)
+end
+
+---Toggle walkthrough open/close
+function M.show_details()
+    local bufnr = walkthrough_bufnr
+    if bufnr and vim.api.nvim_buf_is_valid(bufnr) then
+        local winid = vim.fn.bufwinid(bufnr)
+        if winid ~= -1 then
+            vim.api.nvim_win_close(winid, true)
+            return
+        end
+    end
+
+    M.open()
+end
+
+---Sync walkthrough to a specific location
+---@param file_path string
+---@param line integer
+function M.sync_to_location(file_path, line)
+    local state = require("neo_reviewer.state")
+    local review = state.get_review()
+    if not review or not review.ai_analysis then
+        return
+    end
+    local analysis = review.ai_analysis
+    if not analysis then
+        return
+    end
+
+    local bufnr = walkthrough_bufnr
+    if not bufnr or not vim.api.nvim_buf_is_valid(bufnr) then
+        return
+    end
+
+    local winid = vim.fn.bufwinid(bufnr)
+    if winid == -1 then
+        return
+    end
+
+    local step_index = find_step_for_location(review, file_path, line)
+    if not step_index then
+        return
+    end
+
+    if last_step_index ~= step_index then
+        last_step_index = step_index
+        local config = require("neo_reviewer.config")
+        render_and_resize(step_index, analysis, config.values.ai.walkthrough_window)
     end
 end
 
