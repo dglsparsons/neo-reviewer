@@ -12,6 +12,7 @@ describe("neo_reviewer.state", function()
         package.loaded["neo_reviewer.ui.signs"] = nil
         package.loaded["neo_reviewer.ui.virtual"] = nil
         package.loaded["neo_reviewer.ui.comments"] = nil
+        package.loaded["neo_reviewer.ui.ai"] = nil
         state = require("neo_reviewer.state")
     end)
 
@@ -137,6 +138,36 @@ describe("neo_reviewer.state", function()
             assert.has_no_errors(function()
                 state.clear_review()
             end)
+        end)
+
+        it("closes AI walkthrough window when clearing review", function()
+            local data = helpers.deep_copy(fixtures.simple_pr)
+            state.set_review(data)
+            state.set_ai_analysis({
+                overview = "Test overview",
+                steps = {},
+            })
+
+            helpers.create_test_buffer({ "line 1", "line 2" })
+
+            local ai_ui = require("neo_reviewer.ui.ai")
+            ai_ui.open()
+
+            local function find_ai_window()
+                for _, win in ipairs(vim.api.nvim_list_wins()) do
+                    local buf = vim.api.nvim_win_get_buf(win)
+                    if vim.bo[buf].filetype == "neo-reviewer-ai" then
+                        return win
+                    end
+                end
+                return nil
+            end
+
+            assert.is_not_nil(find_ai_window())
+
+            state.clear_review()
+
+            assert.is_nil(find_ai_window())
         end)
     end)
 

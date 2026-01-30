@@ -222,12 +222,15 @@ function M.clear_review()
         if state.active_review.autocmd_id then
             vim.api.nvim_del_autocmd(state.active_review.autocmd_id)
         end
+        local signs = require("neo_reviewer.ui.signs")
+        local virtual = require("neo_reviewer.ui.virtual")
+        local comments = require("neo_reviewer.ui.comments")
+        local ai_ui = require("neo_reviewer.ui.ai")
+
+        ai_ui.close()
+
         for bufnr, _ in pairs(state.active_review.applied_buffers) do
             if vim.api.nvim_buf_is_valid(bufnr) then
-                local signs = require("neo_reviewer.ui.signs")
-                local virtual = require("neo_reviewer.ui.virtual")
-                local comments = require("neo_reviewer.ui.comments")
-                local ai_ui = require("neo_reviewer.ui.ai")
                 signs.clear(bufnr)
                 virtual.clear(bufnr)
                 comments.clear(bufnr)

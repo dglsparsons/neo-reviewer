@@ -244,15 +244,26 @@ function M.open()
     render_and_resize(step_index, analysis, walkthrough)
 end
 
+---@return boolean
+function M.close()
+    local bufnr = walkthrough_bufnr
+    if not bufnr or not vim.api.nvim_buf_is_valid(bufnr) then
+        return false
+    end
+
+    local winid = vim.fn.bufwinid(bufnr)
+    if winid == -1 then
+        return false
+    end
+
+    vim.api.nvim_win_close(winid, true)
+    return true
+end
+
 ---Toggle walkthrough open/close
 function M.show_details()
-    local bufnr = walkthrough_bufnr
-    if bufnr and vim.api.nvim_buf_is_valid(bufnr) then
-        local winid = vim.fn.bufwinid(bufnr)
-        if winid ~= -1 then
-            vim.api.nvim_win_close(winid, true)
-            return
-        end
+    if M.close() then
+        return
     end
 
     M.open()

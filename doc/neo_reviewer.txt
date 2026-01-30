@@ -178,9 +178,10 @@ These user commands are created when you call `setup()`.
     optional; if not provided, opens a multi-line input window.
 
 :ReviewDone                                                        *:ReviewDone*
-    End the current review session without submitting a review. If the review
-    was opened with a PR number (which checks out the PR branch), this restores
-    the previous branch and pops any stashed changes.
+    End the current review session without submitting a review. Closes the AI
+    walkthrough window if it is open. If the review was opened with a PR
+    number (which checks out the PR branch), this restores the previous branch
+    and pops any stashed changes.
 
 :ReviewSync                                                        *:ReviewSync*
     Sync the current PR review with GitHub. Fetches the latest comments
@@ -291,9 +292,10 @@ require("neo_reviewer").request_changes({message})   *neo_reviewer.request_chang
     input window for entering the review message.
 
 require("neo_reviewer").done()                                   *neo_reviewer.done()*
-    Close the current review and restore previous state. If the review was
-    opened with a PR number (which checks out the PR branch), this restores
-    the previous branch and pops any stashed changes.
+    Close the current review and restore previous state. Closes the AI
+    walkthrough window if it is open. If the review was opened with a PR
+    number (which checks out the PR branch), this restores the previous branch
+    and pops any stashed changes.
 
 require("neo_reviewer").sync()                                   *neo_reviewer.sync()*
     Sync the current PR review with GitHub. Re-fetches PR data including
