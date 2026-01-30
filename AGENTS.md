@@ -89,7 +89,7 @@ Test buffers don't have real file paths - navigation code checks `nr_file` buffe
 - Add tests for any new code paths
 - Update fixtures if data structures changed
 
-Run `nix flake check` before considering any change complete. If tests pass without modification after significant logic changes, that's a red flag - the new code paths likely aren't covered.
+Always run `nix flake check` yourself before considering any change complete. Do not recommend it to the user in these cases—execute it and report results. If tests pass without modification after significant logic changes, that's a red flag - the new code paths likely aren't covered.
 
 ## Documentation
 
@@ -117,7 +117,7 @@ Keep the docs in sync with `lua/neo_reviewer/init.lua` (commands/functions) and 
 - `lua-tests` - Plenary test suite
 - `rust-tests` - Rust test suite
 
-**Run `nix flake check` before considering any change complete.** All checks MUST pass. This includes:
+**Always run `nix flake check` yourself before considering any change complete.** Do not recommend it to the user—execute it and report results. All checks MUST pass. This includes:
 - Zero Lua diagnostics (warnings are errors)
 - Zero Clippy warnings
 - Properly formatted code

@@ -132,6 +132,9 @@ ai ~
     explanations. The walkthrough opens automatically and updates as you
     navigate hunks. Use |neo_reviewer.toggle_ai_feedback()| to open or
     re-open the walkthrough window.
+    neo-reviewer enforces full hunk coverage for AI walkthroughs. If a hunk is
+    missed, it issues a follow-up prompt for the missing hunks and appends any
+    remaining uncovered hunks as minimal "Uncovered change" steps.
 
 ==============================================================================
 5. COMMANDS                                              *neo_reviewer-commands*

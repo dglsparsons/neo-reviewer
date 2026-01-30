@@ -113,6 +113,117 @@ describe("neo_reviewer.ai", function()
             assert.is_truthy(prompt:find('"steps"'))
         end)
     end)
+
+    describe("coverage enforcement", function()
+        local function build_review()
+            local file = {
+                path = "test.lua",
+                status = "modified",
+                additions = 3,
+                deletions = 0,
+                hunks = {
+                    {
+                        start = 1,
+                        count = 1,
+                        hunk_type = "add",
+                        old_lines = {},
+                        added_lines = { 1 },
+                        deleted_at = {},
+                        deleted_old_lines = {},
+                    },
+                    {
+                        start = 3,
+                        count = 1,
+                        hunk_type = "add",
+                        old_lines = {},
+                        added_lines = { 3 },
+                        deleted_at = {},
+                        deleted_old_lines = {},
+                    },
+                    {
+                        start = 5,
+                        count = 1,
+                        hunk_type = "add",
+                        old_lines = {},
+                        added_lines = { 5 },
+                        deleted_at = {},
+                        deleted_old_lines = {},
+                    },
+                },
+            }
+
+            ---@type NRReview
+            local review = {
+                review_type = "pr",
+                pr = { number = 1, title = "Test", description = "Coverage" },
+                files = { file },
+                files_by_path = {
+                    ["test.lua"] = file,
+                },
+                comments = {},
+                current_file_idx = 1,
+                expanded_hunks = {},
+                applied_buffers = {},
+                overlays_visible = true,
+            }
+
+            return review
+        end
+
+        it("appends placeholders for missing hunks", function()
+            local review = build_review()
+            ---@type NRAIAnalysis
+            local analysis = {
+                overview = "Overview",
+                steps = {
+                    {
+                        title = "Step One",
+                        explanation = "Covers first hunk",
+                        hunks = {
+                            { file = "test.lua", hunk_index = 0 },
+                        },
+                    },
+                },
+            }
+
+            local updated = ai.ensure_full_coverage(review, analysis)
+
+            assert.are.equal(3, #updated.steps)
+            assert.are.equal("Uncovered change: test.lua", updated.steps[2].title)
+            assert.are.same({ file = "test.lua", hunk_index = 1 }, updated.steps[2].hunks[1])
+            assert.are.same({ file = "test.lua", hunk_index = 2 }, updated.steps[3].hunks[1])
+        end)
+
+        it("does not add placeholders when all hunks covered", function()
+            local review = build_review()
+            ---@type NRAIAnalysis
+            local analysis = {
+                overview = "Overview",
+                steps = {
+                    { title = "Hunk 0", explanation = "First", hunks = { { file = "test.lua", hunk_index = 0 } } },
+                    { title = "Hunk 1", explanation = "Second", hunks = { { file = "test.lua", hunk_index = 1 } } },
+                    { title = "Hunk 2", explanation = "Third", hunks = { { file = "test.lua", hunk_index = 2 } } },
+                },
+            }
+
+            local updated = ai.ensure_full_coverage(review, analysis)
+
+            assert.are.equal(3, #updated.steps)
+        end)
+
+        it("builds missing prompt with only missing hunks", function()
+            local review = build_review()
+            local missing = {
+                { file = "test.lua", hunk_index = 2 },
+            }
+
+            local prompt = ai.build_missing_prompt(review, missing)
+
+            assert.is_truthy(prompt:find("@@ hunk 2 @@"))
+            assert.is_nil(prompt:find("@@ hunk 0 @@"))
+            assert.is_nil(prompt:find("@@ hunk 1 @@"))
+        end)
+    end)
 end)
 
 describe("neo_reviewer.config AI defaults", function()
