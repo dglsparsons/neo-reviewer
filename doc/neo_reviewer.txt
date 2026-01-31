@@ -221,10 +221,10 @@ require("neo_reviewer").review_diff({opts})               *neo_reviewer.review_d
     The file is cleared each time you start a new local diff review.
 
 require("neo_reviewer").next_hunk()                         *neo_reviewer.next_hunk()*
-    Jump to the next change in the file.
+    Jump to the next contiguous block of changes.
 
 require("neo_reviewer").prev_hunk()                         *neo_reviewer.prev_hunk()*
-    Jump to the previous change in the file.
+    Jump to the previous contiguous block of changes.
 
 require("neo_reviewer").next_comment()                   *neo_reviewer.next_comment()*
     Jump to the next comment in the review. Works in both PR review mode

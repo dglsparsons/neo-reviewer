@@ -61,6 +61,37 @@ describe("neo_reviewer.ui.nav", function()
             assert.are.equal(10, cursor[1])
         end)
 
+        it("jumps to next change block within a hunk", function()
+            setup_review_buffer(fixtures.mixed_changes_pr)
+            helpers.set_cursor(2)
+
+            nav.next_hunk(false)
+
+            local cursor = helpers.get_cursor()
+            assert.are.equal(5, cursor[1])
+        end)
+
+        it("uses change blocks for AI navigation within a hunk", function()
+            setup_review_buffer(fixtures.mixed_changes_pr)
+            state.set_ai_analysis({
+                overview = "Test overview",
+                steps = {
+                    {
+                        title = "Step 1",
+                        explanation = "Mixed changes",
+                        hunks = { { file = "mixed.lua", hunk_index = 0 } },
+                    },
+                },
+            })
+
+            helpers.set_cursor(1)
+
+            nav.next_hunk(false)
+
+            local cursor = helpers.get_cursor()
+            assert.are.equal(5, cursor[1])
+        end)
+
         it("skips duplicate AI hunks in order", function()
             setup_review_buffer(fixtures.navigation_pr)
             state.set_ai_analysis({
@@ -332,6 +363,16 @@ describe("neo_reviewer.ui.nav", function()
 
             local cursor = helpers.get_cursor()
             assert.are.equal(10, cursor[1])
+        end)
+
+        it("jumps to start of current change block when inside it", function()
+            setup_review_buffer(fixtures.mixed_changes_pr)
+            helpers.set_cursor(6)
+
+            nav.prev_hunk(false)
+
+            local cursor = helpers.get_cursor()
+            assert.are.equal(5, cursor[1])
         end)
 
         it("jumps to previous hunk from between hunks", function()

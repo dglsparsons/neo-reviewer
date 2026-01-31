@@ -2,9 +2,66 @@
 ---@field file string File path
 ---@field hunk_index integer 0-based hunk index
 ---@field line integer Line number to jump to
+---@field end_line? integer Last line in the change block
+
+---@class NRChangeBlock
+---@field start_line integer
+---@field end_line integer
 
 ---@class NRNavModule
 local M = {}
+
+---@param hunk NRHunk
+---@return NRChangeBlock[]
+local function collect_hunk_change_blocks(hunk)
+    ---@type table<integer, boolean>
+    local positions = {}
+
+    for _, line in ipairs(hunk.added_lines or {}) do
+        if type(line) == "number" then
+            positions[line] = true
+        end
+    end
+
+    for _, line in ipairs(hunk.deleted_at or {}) do
+        if type(line) == "number" then
+            positions[line] = true
+        end
+    end
+
+    ---@type integer[]
+    local sorted = {}
+    for line, _ in pairs(positions) do
+        table.insert(sorted, line)
+    end
+    table.sort(sorted)
+
+    ---@type NRChangeBlock[]
+    local blocks = {}
+    local has_block = false
+    local block_start = 0
+    local block_end = 0
+
+    for _, line in ipairs(sorted) do
+        if not has_block then
+            block_start = line
+            block_end = line
+            has_block = true
+        elseif line == block_end + 1 then
+            block_end = line
+        else
+            table.insert(blocks, { start_line = block_start, end_line = block_end })
+            block_start = line
+            block_end = line
+        end
+    end
+
+    if has_block then
+        table.insert(blocks, { start_line = block_start, end_line = block_end })
+    end
+
+    return blocks
+end
 
 ---Build ordered navigation list from AI analysis
 ---@param review NRReview
@@ -17,43 +74,28 @@ local function build_ai_nav_list(review)
     ---@type NRAINavItem[]
     local nav_list = {}
     ---@type table<string, boolean>
-    local seen_by_index = {}
-    ---@type table<string, boolean>
     local seen_by_line = {}
 
     for _, step in ipairs(review.ai_analysis.steps or {}) do
         for _, hunk_ref in ipairs(step.hunks or {}) do
-            local index_key = hunk_ref.file .. ":" .. tostring(hunk_ref.hunk_index)
-            if not seen_by_index[index_key] then
-                local file = review.files_by_path[hunk_ref.file]
-                if file then
-                    local hunk = file.hunks[hunk_ref.hunk_index + 1]
-                    if hunk then
-                        local first_add = hunk.added_lines and hunk.added_lines[1]
-                        local first_del = hunk.deleted_at and hunk.deleted_at[1]
-                        local line = nil
-                        if first_add and first_del then
-                            line = math.min(first_add, first_del)
-                        else
-                            line = first_add or first_del
-                        end
-
-                        if line then
-                            local line_key = hunk_ref.file .. ":" .. tostring(line)
-                            if not seen_by_line[line_key] then
-                                table.insert(nav_list, {
-                                    file = hunk_ref.file,
-                                    hunk_index = hunk_ref.hunk_index,
-                                    line = line,
-                                })
-                                seen_by_line[line_key] = true
-                            end
+            local file = review.files_by_path[hunk_ref.file]
+            if file then
+                local hunk = file.hunks[hunk_ref.hunk_index + 1]
+                if hunk then
+                    local blocks = collect_hunk_change_blocks(hunk)
+                    for _, block in ipairs(blocks) do
+                        local line_key = hunk_ref.file .. ":" .. tostring(block.start_line)
+                        if not seen_by_line[line_key] then
+                            table.insert(nav_list, {
+                                file = hunk_ref.file,
+                                hunk_index = hunk_ref.hunk_index,
+                                line = block.start_line,
+                                end_line = block.end_line,
+                            })
+                            seen_by_line[line_key] = true
                         end
                     end
                 end
-
-                -- Avoid bouncing to the same hunk/line when AI order repeats entries.
-                seen_by_index[index_key] = true
             end
         end
     end
@@ -88,6 +130,7 @@ local function build_ai_nav_anchor(item)
     return {
         file = item.file,
         hunk_index = item.hunk_index,
+        line = item.line,
     }
 end
 
@@ -101,11 +144,55 @@ local function find_ai_nav_anchor_position(nav_list, anchor)
 
     for i, item in ipairs(nav_list) do
         if item.file == anchor.file and item.hunk_index == anchor.hunk_index then
-            return i
+            if anchor.line == nil or anchor.line == item.line then
+                return i
+            end
+        end
+    end
+
+    if anchor.line ~= nil then
+        for i, item in ipairs(nav_list) do
+            if item.file == anchor.file and item.line == anchor.line then
+                return i
+            end
         end
     end
 
     return nil
+end
+
+---@param hunks? NRHunk[]
+---@param line integer
+---@return integer|nil
+local function find_hunk_index_at_line(hunks, line)
+    for i, hunk in ipairs(hunks or {}) do
+        if is_line_in_hunk(hunk, line) then
+            return i - 1
+        end
+    end
+    return nil
+end
+
+---@param nav_list NRAINavItem[]
+---@param file NRFile
+---@param hunk_index integer
+---@param cursor_line integer
+---@return integer|nil
+local function find_ai_position_in_hunk(nav_list, file, hunk_index, cursor_line)
+    local candidate = nil
+    for i, item in ipairs(nav_list) do
+        if item.file == file.path and item.hunk_index == hunk_index then
+            local end_line = item.end_line or item.line
+            if cursor_line >= item.line and cursor_line <= end_line then
+                return i
+            end
+            if cursor_line > end_line then
+                candidate = i
+            end
+        end
+    end
+
+    return candidate
 end
 
 ---Find current position in AI nav list based on cursor location
@@ -121,12 +208,11 @@ local function find_ai_nav_position(review, nav_list, current_file, cursor_line)
 
     local file = review.files_by_path[current_file]
     if file then
-        for i, item in ipairs(nav_list) do
-            if item.file == current_file then
-                local hunk = file.hunks[item.hunk_index + 1]
-                if hunk and is_line_in_hunk(hunk, cursor_line) then
-                    return i
-                end
+        local hunk_index = find_hunk_index_at_line(file.hunks, cursor_line)
+        if hunk_index ~= nil then
+            local pos = find_ai_position_in_hunk(nav_list, file, hunk_index, cursor_line)
+            if pos then
+                return pos
             end
         end
     end
@@ -197,31 +283,24 @@ local function collect_comment_lines(file_path, hunks)
     return lines
 end
 
----@param hunk NRHunk
----@return integer?
-local function get_hunk_first_change(hunk)
-    local first_add = hunk.added_lines and hunk.added_lines[1]
-    local first_del = hunk.deleted_at and hunk.deleted_at[1]
-    if first_add and first_del then
-        return math.min(first_add, first_del)
-    end
-    return first_add or first_del
-end
-
 ---@param hunks? NRHunk[]
 ---@return integer[]
-local function collect_hunk_starts(hunks)
+local function collect_change_starts(hunks)
     ---@type integer[]
     local starts = {}
     ---@type table<integer, boolean>
     local seen = {}
+
     for _, hunk in ipairs(hunks or {}) do
-        local first = get_hunk_first_change(hunk)
-        if first and not seen[first] then
-            table.insert(starts, first)
-            seen[first] = true
+        local blocks = collect_hunk_change_blocks(hunk)
+        for _, block in ipairs(blocks) do
+            if not seen[block.start_line] then
+                table.insert(starts, block.start_line)
+                seen[block.start_line] = true
+            end
         end
     end
+
     table.sort(starts)
     return starts
 end
@@ -330,7 +409,7 @@ function M.next_hunk(wrap)
 
     if current_idx then
         local current_file = review.files[current_idx]
-        local hunk_starts = collect_hunk_starts(current_file.hunks)
+        local hunk_starts = collect_change_starts(current_file.hunks)
         for _, ln in ipairs(hunk_starts) do
             if ln > cursor_line then
                 M.jump_to(current_file.path, ln)
@@ -341,7 +420,7 @@ function M.next_hunk(wrap)
 
         for i = current_idx + 1, #review.files do
             local file = review.files[i]
-            local starts = collect_hunk_starts(file.hunks)
+            local starts = collect_change_starts(file.hunks)
             if #starts > 0 then
                 M.jump_to(file.path, starts[1])
                 ai_ui.sync_to_location(file.path, starts[1])
@@ -350,7 +429,7 @@ function M.next_hunk(wrap)
         end
     else
         for _, file in ipairs(review.files) do
-            local starts = collect_hunk_starts(file.hunks)
+            local starts = collect_change_starts(file.hunks)
             if #starts > 0 then
                 M.jump_to(file.path, starts[1])
                 ai_ui.sync_to_location(file.path, starts[1])
@@ -361,7 +440,7 @@ function M.next_hunk(wrap)
 
     if wrap then
         for _, file in ipairs(review.files) do
-            local starts = collect_hunk_starts(file.hunks)
+            local starts = collect_change_starts(file.hunks)
             if #starts > 0 then
                 M.jump_to(file.path, starts[1])
                 vim.notify("Wrapped to first change", vim.log.levels.INFO)
@@ -438,7 +517,7 @@ function M.prev_hunk(wrap)
 
     if current_idx then
         local current_file = review.files[current_idx]
-        local hunk_starts = collect_hunk_starts(current_file.hunks)
+        local hunk_starts = collect_change_starts(current_file.hunks)
         for i = #hunk_starts, 1, -1 do
             if hunk_starts[i] < cursor_line then
                 M.jump_to(current_file.path, hunk_starts[i])
@@ -449,7 +528,7 @@ function M.prev_hunk(wrap)
 
         for i = current_idx - 1, 1, -1 do
             local file = review.files[i]
-            local starts = collect_hunk_starts(file.hunks)
+            local starts = collect_change_starts(file.hunks)
             if #starts > 0 then
                 M.jump_to(file.path, starts[#starts])
                 ai_ui.sync_to_location(file.path, starts[#starts])
@@ -459,7 +538,7 @@ function M.prev_hunk(wrap)
     else
         for i = #review.files, 1, -1 do
             local file = review.files[i]
-            local starts = collect_hunk_starts(file.hunks)
+            local starts = collect_change_starts(file.hunks)
             if #starts > 0 then
                 M.jump_to(file.path, starts[#starts])
                 ai_ui.sync_to_location(file.path, starts[#starts])
@@ -471,7 +550,7 @@ function M.prev_hunk(wrap)
     if wrap then
         for i = #review.files, 1, -1 do
             local file = review.files[i]
-            local starts = collect_hunk_starts(file.hunks)
+            local starts = collect_change_starts(file.hunks)
             if #starts > 0 then
                 M.jump_to(file.path, starts[#starts])
                 vim.notify("Wrapped to last change", vim.log.levels.INFO)
@@ -501,7 +580,7 @@ function M.first_hunk()
     end
 
     for _, file in ipairs(review.files) do
-        local starts = collect_hunk_starts(file.hunks)
+        local starts = collect_change_starts(file.hunks)
         if #starts > 0 then
             M.jump_to(file.path, starts[1])
             return
@@ -527,7 +606,7 @@ function M.last_hunk()
 
     for i = #review.files, 1, -1 do
         local file = review.files[i]
-        local starts = collect_hunk_starts(file.hunks)
+        local starts = collect_change_starts(file.hunks)
         if #starts > 0 then
             M.jump_to(file.path, starts[#starts])
             return

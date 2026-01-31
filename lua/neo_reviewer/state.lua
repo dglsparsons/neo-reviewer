@@ -5,6 +5,7 @@
 ---@class NRAINavAnchor
 ---@field file string File path
 ---@field hunk_index integer 0-based index into the file's hunks array
+---@field line? integer Line number of the change block
 
 ---@class NRAIWalkthroughStep
 ---@field title string Step title
