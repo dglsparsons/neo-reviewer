@@ -137,6 +137,9 @@ ai ~
     blocks and appends any remaining uncovered change blocks as minimal
     "Uncovered change" steps.
 
+    Codebase explorations reuse this AI configuration and the walkthrough
+    window settings. See |:Explore| for a guided tour of the codebase.
+
 ==============================================================================
 5. COMMANDS                                              *neo_reviewer-commands*
 
@@ -168,6 +171,14 @@ These user commands are created when you call `setup()`.
         :ReviewDiff              " Local diff, default AI setting
         :ReviewDiff --analyze    " Local diff with AI analysis
 <
+
+:Explore                                                           *:Explore*
+    Open an AI-guided codebase exploration. Prompts for a question or theme.
+    If invoked with a visual range, the selected file and line range are
+    included as seed context. The exploration runs from the repo root and
+    expects the AI tool to read files directly from disk.
+    When the exploration window is open, |neo_reviewer.next_change()| and
+    |neo_reviewer.prev_change()| navigate between exploration steps.
 
 :AddComment                                                        *:AddComment*
     Add a review comment at cursor position. Supports visual range selection
@@ -219,6 +230,12 @@ require("neo_reviewer").review_diff({opts})               *neo_reviewer.review_d
         Multi-line comment spanning lines 100-105.
 <
     This file can be fed to an AI agent or used as a review checklist.
+
+require("neo_reviewer").explore({opts})                 *neo_reviewer.explore()*
+    Run an AI-guided codebase exploration. If {opts.prompt} is nil, opens a
+    multi-line input window to gather the prompt. Optional {opts}:
+    - `prompt`: string prompt to guide the exploration
+    - `line1`, `line2`: visual selection range to seed context
     The file is cleared each time you start a new local diff review.
 
 require("neo_reviewer").next_change()                     *neo_reviewer.next_change()*

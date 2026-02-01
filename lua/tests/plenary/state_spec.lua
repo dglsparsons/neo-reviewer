@@ -18,6 +18,7 @@ describe("neo_reviewer.state", function()
 
     after_each(function()
         state.clear_review()
+        state.clear_walkthrough()
         helpers.clear_all_buffers()
     end)
 
@@ -219,6 +220,45 @@ describe("neo_reviewer.state", function()
             assert.has_no_errors(function()
                 state.set_current_file_idx(5)
             end)
+        end)
+    end)
+
+    describe("walkthrough state", function()
+        it("stores and retrieves walkthrough data", function()
+            state.set_walkthrough({
+                overview = "Walkthrough overview",
+                steps = {},
+                prompt = "Prompt",
+                root = "/repo/root",
+            })
+
+            local walkthrough = state.get_walkthrough()
+            assert.is_not_nil(walkthrough)
+            assert.are.equal("Walkthrough overview", walkthrough.overview)
+        end)
+
+        it("clears walkthrough data", function()
+            state.set_walkthrough({
+                overview = "Walkthrough overview",
+                steps = {},
+                prompt = "Prompt",
+                root = "/repo/root",
+            })
+
+            state.clear_walkthrough()
+            assert.is_nil(state.get_walkthrough())
+        end)
+
+        it("does not clear walkthrough on clear_review", function()
+            state.set_walkthrough({
+                overview = "Walkthrough overview",
+                steps = {},
+                prompt = "Prompt",
+                root = "/repo/root",
+            })
+
+            state.clear_review()
+            assert.is_not_nil(state.get_walkthrough())
         end)
     end)
 
@@ -525,6 +565,17 @@ describe("neo_reviewer.state", function()
 
         it("returns nil when no review is active", function()
             assert.is_nil(state.get_git_root())
+        end)
+
+        it("returns walkthrough root when no review is active", function()
+            state.set_walkthrough({
+                overview = "Walkthrough overview",
+                steps = {},
+                prompt = "Prompt",
+                root = "/tmp/walkthrough-repo",
+            })
+
+            assert.are.equal("/tmp/walkthrough-repo", state.get_git_root())
         end)
     end)
 end)

@@ -16,6 +16,22 @@
 ---@field overview string Concise walkthrough overview
 ---@field steps NRAIWalkthroughStep[] Ordered walkthrough steps
 
+---@class NRWalkthroughAnchor
+---@field file string File path (repo-relative)
+---@field start_line integer Start line number (1-based)
+---@field end_line integer End line number (1-based)
+
+---@class NRWalkthroughStep
+---@field title string Step title
+---@field explanation string Plain-language explanation
+---@field anchors NRWalkthroughAnchor[] Code anchors for this step
+
+---@class NRWalkthrough
+---@field overview string Walkthrough overview
+---@field steps NRWalkthroughStep[] Ordered walkthrough steps
+---@field prompt string Prompt used to generate the walkthrough
+---@field root string Repository root for path resolution
+
 ---@alias NRChangeKind "add"|"delete"|"change"
 
 ---@class NRDeletionGroup
@@ -101,6 +117,7 @@
 
 ---@class NRState
 ---@field active_review? NRReview
+---@field walkthrough? NRWalkthrough
 
 ---@class NRStateModule
 local M = {}
@@ -108,6 +125,7 @@ local M = {}
 ---@type NRState
 local state = {
     active_review = nil,
+    walkthrough = nil,
 }
 
 ---@param review_data NRReviewData
@@ -183,6 +201,9 @@ end
 function M.get_git_root()
     if state.active_review then
         return state.active_review.git_root
+    end
+    if state.walkthrough then
+        return state.walkthrough.root
     end
     return nil
 end
@@ -419,6 +440,22 @@ function M.set_ai_nav_anchor(anchor)
     if state.active_review then
         state.active_review.ai_nav_anchor = anchor
     end
+end
+
+---@return NRWalkthrough|nil
+function M.get_walkthrough()
+    return state.walkthrough
+end
+
+---@param walkthrough NRWalkthrough
+---@return nil
+function M.set_walkthrough(walkthrough)
+    state.walkthrough = walkthrough
+end
+
+---@return nil
+function M.clear_walkthrough()
+    state.walkthrough = nil
 end
 
 return M

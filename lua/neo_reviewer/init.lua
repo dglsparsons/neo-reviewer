@@ -5,6 +5,12 @@
 ---@class NRReviewOpts
 ---@field analyze? boolean Whether to run AI analysis (nil = use config default)
 
+---@class NRExploreOpts
+---@field prompt? string Prompt text (nil = request input)
+---@field line1? integer Start line from visual selection
+---@field line2? integer End line from visual selection
+---@field range? integer Range count from user command
+
 ---@class NRModule
 local M = {}
 
@@ -55,6 +61,10 @@ function M.setup(opts)
 
         M.review_diff({ analyze = analyze })
     end, { nargs = "?", desc = "Review local git diff (staged + unstaged changes)" })
+
+    vim.api.nvim_create_user_command("Explore", function(ctx)
+        M.explore({ line1 = ctx.line1, line2 = ctx.line2, range = ctx.range })
+    end, { range = true, desc = "AI-guided codebase exploration" })
 
     vim.api.nvim_create_user_command("AddComment", function(ctx)
         M.add_comment({ line1 = ctx.line1, line2 = ctx.line2 })
@@ -586,12 +596,26 @@ end
 function M.next_change()
     local nav = require("neo_reviewer.ui.nav")
     local config = require("neo_reviewer.config")
+    local walkthrough_ui = require("neo_reviewer.ui.walkthrough")
+    local state = require("neo_reviewer.state")
+    if walkthrough_ui.is_open() and state.get_walkthrough() then
+        walkthrough_ui.next_step(config.values.wrap_navigation)
+        return
+    end
+
     nav.next_change(config.values.wrap_navigation)
 end
 
 function M.prev_change()
     local nav = require("neo_reviewer.ui.nav")
     local config = require("neo_reviewer.config")
+    local walkthrough_ui = require("neo_reviewer.ui.walkthrough")
+    local state = require("neo_reviewer.state")
+    if walkthrough_ui.is_open() and state.get_walkthrough() then
+        walkthrough_ui.prev_step(config.values.wrap_navigation)
+        return
+    end
+
     nav.prev_change(config.values.wrap_navigation)
 end
 
@@ -626,6 +650,114 @@ end
 function M.toggle_ai_feedback()
     local ai_ui = require("neo_reviewer.ui.ai")
     ai_ui.show_details()
+end
+
+---@param path string
+---@return boolean
+local function is_absolute_path(path)
+    return path:match("^/") ~= nil or path:match("^%a:[/\\]") ~= nil
+end
+
+---@param path string
+---@param root string|nil
+---@return string
+local function to_repo_relative(path, root)
+    if not root or root == "" then
+        return path
+    end
+
+    local trimmed = root:gsub("/+$", "")
+    if is_absolute_path(path) and path:sub(1, #trimmed + 1) == trimmed .. "/" then
+        return path:sub(#trimmed + 2)
+    end
+
+    return path
+end
+
+---@param opts? NRExploreOpts
+---@return string|nil
+---@return integer|nil
+---@return integer|nil
+---@return string|nil
+---@return string
+local function collect_explore_seed(opts)
+    local cli = require("neo_reviewer.cli")
+    local root = cli.get_git_root() or vim.fn.getcwd()
+    local bufnr = vim.api.nvim_get_current_buf()
+
+    local seed_file = nil
+    local seed_start = nil
+    local seed_end = nil
+    local seed_snippet = nil
+
+    if vim.bo[bufnr].buftype == "" then
+        local path = vim.api.nvim_buf_get_name(bufnr)
+        if path ~= "" then
+            seed_file = to_repo_relative(path, root)
+        end
+    end
+
+    if seed_file and opts and opts.range and opts.range > 0 and opts.line1 and opts.line2 then
+        local line1 = opts.line1 --[[@as integer]]
+        local line2 = opts.line2 --[[@as integer]]
+        local start_line = math.min(line1, line2)
+        local end_line = math.max(line1, line2)
+        local lines = vim.api.nvim_buf_get_lines(bufnr, start_line - 1, end_line, false)
+        seed_snippet = table.concat(lines, "\n")
+        seed_start = start_line
+        seed_end = end_line
+    end
+
+    return seed_file, seed_start, seed_end, seed_snippet, root
+end
+
+---@param opts? NRExploreOpts
+---@return nil
+function M.explore(opts)
+    opts = opts or {}
+    local comments = require("neo_reviewer.ui.comments")
+    local state = require("neo_reviewer.state")
+    local walkthrough_ui = require("neo_reviewer.ui.walkthrough")
+    local walkthrough = require("neo_reviewer.walkthrough")
+
+    ---@param prompt string
+    ---@return nil
+    local function run_with_prompt(prompt)
+        local seed_file, seed_start, seed_end, seed_snippet, root = collect_explore_seed(opts)
+
+        walkthrough_ui.close()
+        state.clear_walkthrough()
+
+        walkthrough.run({
+            prompt = prompt,
+            root = root,
+            seed_file = seed_file,
+            seed_start_line = seed_start,
+            seed_end_line = seed_end,
+            seed_snippet = seed_snippet,
+        }, function(result, err)
+            if err then
+                vim.notify("[neo-reviewer] Explore failed: " .. err, vim.log.levels.WARN)
+                return
+            end
+            if not result then
+                vim.notify("[neo-reviewer] Explore failed: unknown error", vim.log.levels.WARN)
+                return
+            end
+
+            state.set_walkthrough(result)
+            walkthrough_ui.open()
+        end)
+    end
+
+    if opts.prompt and opts.prompt ~= "" then
+        run_with_prompt(opts.prompt)
+        return
+    end
+
+    comments.open_multiline_input({ title = " Explore " }, function(body)
+        run_with_prompt(body)
+    end)
 end
 
 function M.check_auth()
