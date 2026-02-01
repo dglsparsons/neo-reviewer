@@ -69,10 +69,11 @@
           };
 
           lua-lint = pkgs.runCommand "lua-lint" {
-            nativeBuildInputs = [ pkgs.lua-language-server ];
+            nativeBuildInputs = [ pkgs.lua-language-server pkgs.neovim-unwrapped ];
           } ''
             export HOME=$(mktemp -d)
-            lua-language-server --check ${./.}/lua --checklevel=Warning --configpath ${./.}/.luarc.lint.json
+            export VIMRUNTIME=${pkgs.neovim-unwrapped}/share/nvim/runtime
+            lua-language-server --check ${./.} --checklevel=Hint --configpath ${./.}/.luarc.json
             touch $out
           '';
 

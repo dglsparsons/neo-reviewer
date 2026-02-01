@@ -59,8 +59,8 @@ function M.open_multiline_input(opts, callback)
     close_input_window()
 
     input_buf = vim.api.nvim_create_buf(false, true)
-    vim.api.nvim_buf_set_option(input_buf, "buftype", "nofile")
-    vim.api.nvim_buf_set_option(input_buf, "filetype", "markdown")
+    vim.api.nvim_set_option_value("buftype", "nofile", { buf = input_buf })
+    vim.api.nvim_set_option_value("filetype", "markdown", { buf = input_buf })
 
     local width = math.min(80, math.floor(vim.o.columns * 0.8))
     local height = 10
@@ -85,7 +85,7 @@ function M.open_multiline_input(opts, callback)
         footer_pos = "center",
     })
 
-    vim.api.nvim_win_set_option(input_win, "wrap", true)
+    vim.api.nvim_set_option_value("wrap", true, { win = input_win })
 
     local function submit()
         local lines = vim.api.nvim_buf_get_lines(input_buf, 0, -1, false)
@@ -169,14 +169,18 @@ end
 ---@param cursor_line integer
 ---@return NRCommentPosition
 local function find_comment_position(file, cursor_line)
-    local hunks = file.hunks or {}
+    local change_blocks = file.change_blocks or {}
 
-    for _, hunk in ipairs(hunks) do
-        local deleted_at = hunk.deleted_at or {}
-        local deleted_old_lines = hunk.deleted_old_lines or {}
-        for i, del_pos in ipairs(deleted_at) do
-            if del_pos == cursor_line and deleted_old_lines[i] then
-                return { line = deleted_old_lines[i], side = "LEFT" }
+    for _, block in ipairs(change_blocks) do
+        for _, line in ipairs(block.added_lines or {}) do
+            if line == cursor_line then
+                return { line = cursor_line, side = "RIGHT" }
+            end
+        end
+
+        for _, group in ipairs(block.deletion_groups or {}) do
+            if group.anchor_line == cursor_line and group.old_line_numbers[1] then
+                return { line = group.old_line_numbers[1], side = "LEFT" }
             end
         end
     end
@@ -314,38 +318,57 @@ function M.add_pr_comment(file, pr_url, start_line, end_line, end_pos, start_pos
     end)
 end
 
----@param hunks? NRHunk[]
+---@param change_blocks? NRChangeBlock[]
 ---@param old_line integer
 ---@return integer?
-local function map_old_line_to_new(hunks, old_line)
-    for _, hunk in ipairs(hunks or {}) do
-        local deleted_old_lines = hunk.deleted_old_lines or {}
-        for i, old_ln in ipairs(deleted_old_lines) do
-            if old_ln == old_line then
-                local deleted_at = hunk.deleted_at or {}
-                if deleted_at[i] then
-                    return deleted_at[i]
-                end
+local function map_old_line_to_new(change_blocks, old_line)
+    for _, block in ipairs(change_blocks or {}) do
+        for _, mapping in ipairs(block.old_to_new or {}) do
+            if mapping.old_line == old_line then
+                return mapping.new_line
             end
         end
     end
     return nil
 end
 
+---@param change_blocks? NRChangeBlock[]
+---@param old_line integer
+---@return boolean
+local function old_line_in_deletions(change_blocks, old_line)
+    for _, block in ipairs(change_blocks or {}) do
+        for _, group in ipairs(block.deletion_groups or {}) do
+            for _, line in ipairs(group.old_line_numbers or {}) do
+                if line == old_line then
+                    return true
+                end
+            end
+        end
+    end
+    return false
+end
+
 ---@param bufnr integer
 ---@param comment NRComment
----@param hunks? NRHunk[]
+---@param change_blocks? NRChangeBlock[]
 ---@param reply_count? integer
-function M.show_comment(bufnr, comment, hunks, reply_count)
+function M.show_comment(bufnr, comment, change_blocks, reply_count)
     if type(comment.line) ~= "number" then
         return
     end
 
     local display_end_line = comment.line
-    if comment.side == "LEFT" and hunks then
-        local mapped = map_old_line_to_new(hunks, comment.line)
+    local mapped_end = false
+    if comment.side == "LEFT" then
+        if not change_blocks or not old_line_in_deletions(change_blocks, comment.line) then
+            return
+        end
+        local mapped = map_old_line_to_new(change_blocks, comment.line)
         if mapped then
             display_end_line = mapped
+            mapped_end = true
+        else
+            return
         end
     end
 
@@ -353,15 +376,31 @@ function M.show_comment(bufnr, comment, hunks, reply_count)
     local display_start_line = nil
     if type(comment.start_line) == "number" then
         display_start_line = comment.start_line
-        if comment.start_side == "LEFT" and hunks then
-            local mapped = map_old_line_to_new(hunks, comment.start_line)
+        if comment.start_side == "LEFT" then
+            if not change_blocks or not old_line_in_deletions(change_blocks, comment.start_line) then
+                return
+            end
+            local mapped = map_old_line_to_new(change_blocks, comment.start_line)
             if mapped then
                 display_start_line = mapped
+            else
+                return
             end
         end
     end
 
     local line_count = vim.api.nvim_buf_line_count(bufnr)
+    if line_count == 0 then
+        return
+    end
+
+    if mapped_end and display_end_line > line_count then
+        display_end_line = line_count
+    end
+    if display_start_line and display_start_line > line_count then
+        display_start_line = line_count
+    end
+
     local end_row = display_end_line - 1
     if end_row >= line_count then
         return
@@ -427,7 +466,7 @@ function M.show_existing(bufnr, file_path)
     define_highlights()
 
     local file = state.get_file_by_path(file_path)
-    local hunks = file and file.hunks or {}
+    local change_blocks = file and file.change_blocks or {}
     local comments = state.get_comments_for_file(file_path)
 
     ---@type NRComment[]
@@ -449,7 +488,7 @@ function M.show_existing(bufnr, file_path)
     end
 
     for _, comment in ipairs(root_comments) do
-        M.show_comment(bufnr, comment, hunks, reply_counts[comment.id])
+        M.show_comment(bufnr, comment, change_blocks, reply_counts[comment.id])
     end
 end
 
@@ -460,9 +499,9 @@ end
 
 ---@param comment NRComment
 ---@param line integer
----@param hunks? NRHunk[]
+---@param change_blocks? NRChangeBlock[]
 ---@return boolean
-local function comment_matches_line(comment, line, hunks)
+local function comment_matches_line(comment, line, change_blocks)
     local end_line = comment.line
     if type(end_line) ~= "number" then
         return false
@@ -475,11 +514,11 @@ local function comment_matches_line(comment, line, hunks)
     end
 
     if comment.side == "LEFT" then
-        end_line = map_old_line_to_new(hunks, comment.line) or end_line
+        end_line = map_old_line_to_new(change_blocks, comment.line) or end_line
     end
 
     if start_line and comment.start_side == "LEFT" then
-        start_line = map_old_line_to_new(hunks, comment.start_line) or start_line
+        start_line = map_old_line_to_new(change_blocks, comment.start_line) or start_line
     end
 
     if start_line and start_line < end_line then
@@ -491,15 +530,15 @@ end
 
 ---@param file_path string
 ---@param line integer
----@param hunks? NRHunk[]
+---@param change_blocks? NRChangeBlock[]
 ---@return NRComment[][]
-local function get_threads_for_line(file_path, line, hunks)
+local function get_threads_for_line(file_path, line, change_blocks)
     local comments = state.get_comments_for_file(file_path)
     ---@type NRComment[][]
     local threads = {}
 
     for _, comment in ipairs(comments) do
-        if comment_matches_line(comment, line, hunks) and not is_reply(comment) then
+        if comment_matches_line(comment, line, change_blocks) and not is_reply(comment) then
             ---@type NRComment[]
             local thread = { comment }
             for _, reply in ipairs(comments) do
@@ -516,7 +555,7 @@ local function get_threads_for_line(file_path, line, hunks)
 
     if #threads == 0 then
         for _, comment in ipairs(comments) do
-            if comment_matches_line(comment, line, hunks) then
+            if comment_matches_line(comment, line, change_blocks) then
                 table.insert(threads, { comment })
             end
         end
@@ -736,6 +775,9 @@ local function get_comment_at_cursor(comment_positions)
     if not thread_buf or not vim.api.nvim_buf_is_valid(thread_buf) then
         return nil
     end
+    if not thread_win or not vim.api.nvim_win_is_valid(thread_win) then
+        return nil
+    end
 
     local cursor_line = vim.api.nvim_win_get_cursor(thread_win)[1]
 
@@ -894,7 +936,7 @@ local function apply_suggestion(source_bufnr, suggestions, file_path)
     local signs = require("neo_reviewer.ui.signs")
     local file = state.get_file_by_path(file_path)
     signs.clear(source_bufnr)
-    signs.place(source_bufnr, file and file.hunks or {})
+    signs.place(source_bufnr, file and file.change_blocks or {})
 
     vim.notify(
         string.format(
@@ -927,7 +969,7 @@ function M.show_thread()
 
     local source_bufnr = vim.api.nvim_get_current_buf()
     local line = vim.api.nvim_win_get_cursor(0)[1]
-    local threads = get_threads_for_line(file.path, line, file.hunks)
+    local threads = get_threads_for_line(file.path, line, file.change_blocks)
 
     if #threads == 0 then
         vim.notify("No comments on this line", vim.log.levels.INFO)
@@ -940,12 +982,20 @@ function M.show_thread()
 
     thread_buf = vim.api.nvim_create_buf(false, true)
     vim.api.nvim_buf_set_lines(thread_buf, 0, -1, false, lines)
-    vim.api.nvim_buf_set_option(thread_buf, "modifiable", false)
-    vim.api.nvim_buf_set_option(thread_buf, "buftype", "nofile")
-    vim.api.nvim_buf_set_option(thread_buf, "filetype", "nr_thread")
+    vim.api.nvim_set_option_value("modifiable", false, { buf = thread_buf })
+    vim.api.nvim_set_option_value("buftype", "nofile", { buf = thread_buf })
+    vim.api.nvim_set_option_value("filetype", "nr_thread", { buf = thread_buf })
 
     for _, hl in ipairs(highlights) do
-        vim.api.nvim_buf_add_highlight(thread_buf, -1, hl.hl, hl.line - 1, hl.col_start, hl.col_end)
+        local opts = {
+            hl_group = hl.hl,
+        }
+        if hl.col_end == -1 then
+            opts.hl_eol = true
+        else
+            opts.end_col = hl.col_end
+        end
+        vim.api.nvim_buf_set_extmark(thread_buf, ns, hl.line - 1, hl.col_start, opts)
     end
 
     local width = math.min(80, math.floor(vim.o.columns * 0.8))
@@ -965,8 +1015,8 @@ function M.show_thread()
         title_pos = "center",
     })
 
-    vim.api.nvim_win_set_option(thread_win, "wrap", true)
-    vim.api.nvim_win_set_option(thread_win, "cursorline", true)
+    vim.api.nvim_set_option_value("wrap", true, { win = thread_win })
+    vim.api.nvim_set_option_value("cursorline", true, { win = thread_win })
 
     local config = require("neo_reviewer.config")
     local keys = config.values.thread_window.keys

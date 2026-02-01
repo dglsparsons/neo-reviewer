@@ -115,17 +115,17 @@ fn parse_git_diff(diff_output: &str) -> Result<Vec<ReviewFile>> {
             }
 
             let patch = patch_lines.join("\n");
-            let hunks = parse_patch(&patch);
+            let change_blocks = parse_patch(&patch);
 
             // Only include files with actual changes
-            if !hunks.is_empty() {
+            if !change_blocks.is_empty() {
                 files.push(ReviewFile {
                     path,
                     status,
                     additions,
                     deletions,
                     content: None, // Local diff doesn't need content, files are on disk
-                    hunks,
+                    change_blocks,
                 });
             }
         } else {
@@ -158,7 +158,7 @@ index abc123..def456 100644
         assert_eq!(files[0].status, FileStatus::Modified);
         assert_eq!(files[0].additions, 1);
         assert_eq!(files[0].deletions, 0);
-        assert_eq!(files[0].hunks.len(), 1);
+        assert_eq!(files[0].change_blocks.len(), 1);
     }
 
     #[test]
@@ -231,7 +231,7 @@ index 123..456 100644
     }
 
     #[test]
-    fn test_parse_multiple_hunks() {
+    fn test_parse_multiple_change_blocks() {
         let diff = r#"diff --git a/test.lua b/test.lua
 index abc..def 100644
 --- a/test.lua
@@ -249,6 +249,6 @@ index abc..def 100644
 
         let files = parse_git_diff(diff).unwrap();
         assert_eq!(files.len(), 1);
-        assert_eq!(files[0].hunks.len(), 2);
+        assert_eq!(files[0].change_blocks.len(), 2);
     }
 }

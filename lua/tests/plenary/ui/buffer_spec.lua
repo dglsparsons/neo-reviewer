@@ -42,14 +42,14 @@ describe("neo_reviewer.ui.buffer", function()
             assert.are.equal("src/main.lua", result.path)
         end)
 
-        it("returns full file data including hunks", function()
+        it("returns full file data including change blocks", function()
             local file = helpers.deep_copy(fixtures.simple_pr.files[1])
             setup_review_buffer(file, "https://github.com/owner/repo/pull/123")
 
             local result = buffer.get_current_file_from_buffer()
-            assert.is_not_nil(result.hunks)
-            assert.are.equal(1, #result.hunks)
-            assert.are.equal("change", result.hunks[1].hunk_type)
+            assert.is_not_nil(result.change_blocks)
+            assert.are.equal(1, #result.change_blocks)
+            assert.are.equal("change", result.change_blocks[1].kind)
         end)
 
         it("returns nil for non-review buffer", function()

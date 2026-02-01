@@ -1,9 +1,71 @@
-use super::types::{Hunk, HunkType};
+use super::types::{ChangeBlock, ChangeKind, DeletionGroup, OldToNewMap};
 use regex::Regex;
 
-/// Parse a unified diff patch into structured hunks
-pub fn parse_patch(patch: &str) -> Vec<Hunk> {
-    let mut hunks = Vec::new();
+#[derive(Default)]
+struct BlockBuilder {
+    start_line: u32,
+    end_line: u32,
+    added_lines: Vec<u32>,
+    changed_lines: Vec<u32>,
+    deletion_groups: Vec<DeletionGroup>,
+    old_to_new: Vec<OldToNewMap>,
+    has_additions: bool,
+    has_deletions: bool,
+    initialized: bool,
+}
+
+impl BlockBuilder {
+    fn ensure_initialized(&mut self, line: u32) {
+        if !self.initialized {
+            self.start_line = line;
+            self.end_line = line;
+            self.initialized = true;
+        } else {
+            self.end_line = line;
+        }
+    }
+
+    fn push_deletion(&mut self, anchor_line: u32, old_line: String, old_line_number: u32) {
+        match self.deletion_groups.last_mut() {
+            Some(group) if group.anchor_line == anchor_line => {
+                group.old_lines.push(old_line);
+                group.old_line_numbers.push(old_line_number);
+            }
+            _ => self.deletion_groups.push(DeletionGroup {
+                anchor_line,
+                old_lines: vec![old_line],
+                old_line_numbers: vec![old_line_number],
+            }),
+        }
+    }
+
+    fn into_change_block(self) -> Option<ChangeBlock> {
+        if !self.initialized || (!self.has_additions && !self.has_deletions) {
+            return None;
+        }
+
+        let kind = match (self.has_additions, self.has_deletions) {
+            (true, true) => ChangeKind::Change,
+            (true, false) => ChangeKind::Add,
+            (false, true) => ChangeKind::Delete,
+            (false, false) => return None,
+        };
+
+        Some(ChangeBlock {
+            start_line: self.start_line,
+            end_line: self.end_line,
+            kind,
+            added_lines: self.added_lines,
+            changed_lines: self.changed_lines,
+            deletion_groups: self.deletion_groups,
+            old_to_new: self.old_to_new,
+        })
+    }
+}
+
+/// Parse a unified diff patch into contiguous change blocks (no context lines)
+pub fn parse_patch(patch: &str) -> Vec<ChangeBlock> {
+    let mut blocks = Vec::new();
     let hunk_header_re = Regex::new(r"^@@\s*-(\d+)(?:,(\d+))?\s*\+(\d+)(?:,(\d+))?\s*@@").unwrap();
 
     let lines: Vec<&str> = patch.lines().collect();
@@ -12,31 +74,15 @@ pub fn parse_patch(patch: &str) -> Vec<Hunk> {
     while i < lines.len() {
         let line = lines[i];
 
-        // Look for hunk header
         if let Some(caps) = hunk_header_re.captures(line) {
             let old_start: u32 = caps[1].parse().unwrap_or(0);
-            let old_count: u32 = caps
-                .get(2)
-                .map(|m| m.as_str().parse().unwrap_or(1))
-                .unwrap_or(1);
             let new_start: u32 = caps[3].parse().unwrap_or(0);
-            let new_count: u32 = caps
-                .get(4)
-                .map(|m| m.as_str().parse().unwrap_or(1))
-                .unwrap_or(1);
 
             i += 1;
 
-            let mut old_lines = Vec::new();
-            let mut added_lines = Vec::new();
-            let mut deleted_at = Vec::new();
-            let mut deleted_old_lines = Vec::new();
-            let mut changed_lines = Vec::new();
-            let mut has_additions = false;
-            let mut has_deletions = false;
             let mut new_line_num = new_start;
             let mut old_line_num = old_start;
-            // Treat additions immediately following deletions (no context lines) as replacements.
+            let mut builder = BlockBuilder::default();
             let mut in_change_block = false;
 
             while i < lines.len() {
@@ -46,21 +92,34 @@ pub fn parse_patch(patch: &str) -> Vec<Hunk> {
                     break;
                 }
 
+                if content_line.starts_with("\\ No newline") {
+                    i += 1;
+                    continue;
+                }
+
                 if let Some(stripped) = content_line.strip_prefix('-') {
-                    old_lines.push(stripped.to_string());
-                    deleted_at.push(new_line_num);
-                    deleted_old_lines.push(old_line_num);
-                    has_deletions = true;
+                    builder.ensure_initialized(new_line_num);
+                    builder.has_deletions = true;
+                    builder.push_deletion(new_line_num, stripped.to_string(), old_line_num);
+                    builder.old_to_new.push(OldToNewMap {
+                        old_line: old_line_num,
+                        new_line: new_line_num,
+                    });
                     in_change_block = true;
                     old_line_num += 1;
                 } else if content_line.strip_prefix('+').is_some() {
-                    added_lines.push(new_line_num);
+                    builder.ensure_initialized(new_line_num);
+                    builder.has_additions = true;
+                    builder.added_lines.push(new_line_num);
                     if in_change_block {
-                        changed_lines.push(new_line_num);
+                        builder.changed_lines.push(new_line_num);
                     }
-                    has_additions = true;
                     new_line_num += 1;
                 } else if content_line.starts_with(' ') || content_line.is_empty() {
+                    if let Some(block) = builder.into_change_block() {
+                        blocks.push(block);
+                    }
+                    builder = BlockBuilder::default();
                     in_change_block = false;
                     new_line_num += 1;
                     old_line_num += 1;
@@ -69,32 +128,15 @@ pub fn parse_patch(patch: &str) -> Vec<Hunk> {
                 i += 1;
             }
 
-            // Determine hunk type
-            let hunk_type = match (has_additions, has_deletions) {
-                (true, true) => HunkType::Change,
-                (true, false) => HunkType::Add,
-                (false, true) => HunkType::Delete,
-                (false, false) => continue, // Empty hunk, skip
-            };
-
-            hunks.push(Hunk {
-                start: new_start,
-                count: new_count,
-                old_start,
-                old_count,
-                old_lines,
-                hunk_type,
-                added_lines,
-                changed_lines,
-                deleted_at,
-                deleted_old_lines,
-            });
+            if let Some(block) = builder.into_change_block() {
+                blocks.push(block);
+            }
         } else {
             i += 1;
         }
     }
 
-    hunks
+    blocks
 }
 
 #[cfg(test)]
@@ -109,12 +151,12 @@ mod tests {
  line2
  line3"#;
 
-        let hunks = parse_patch(patch);
-        assert_eq!(hunks.len(), 1);
-        assert_eq!(hunks[0].start, 1);
-        assert_eq!(hunks[0].count, 4);
-        assert_eq!(hunks[0].hunk_type, HunkType::Add);
-        assert!(hunks[0].old_lines.is_empty());
+        let blocks = parse_patch(patch);
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0].kind, ChangeKind::Add);
+        assert_eq!(blocks[0].start_line, 2);
+        assert_eq!(blocks[0].end_line, 2);
+        assert_eq!(blocks[0].added_lines, vec![2]);
     }
 
     #[test]
@@ -125,10 +167,14 @@ mod tests {
  line2
  line3"#;
 
-        let hunks = parse_patch(patch);
-        assert_eq!(hunks.len(), 1);
-        assert_eq!(hunks[0].hunk_type, HunkType::Delete);
-        assert_eq!(hunks[0].old_lines, vec!["deleted line"]);
+        let blocks = parse_patch(patch);
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0].kind, ChangeKind::Delete);
+        assert_eq!(blocks[0].start_line, 2);
+        assert_eq!(blocks[0].end_line, 2);
+        assert_eq!(blocks[0].deletion_groups.len(), 1);
+        assert_eq!(blocks[0].deletion_groups[0].anchor_line, 2);
+        assert_eq!(blocks[0].deletion_groups[0].old_lines, vec!["deleted line"]);
     }
 
     #[test]
@@ -139,15 +185,20 @@ mod tests {
 +new line
  line3"#;
 
-        let hunks = parse_patch(patch);
-        assert_eq!(hunks.len(), 1);
-        assert_eq!(hunks[0].hunk_type, HunkType::Change);
-        assert_eq!(hunks[0].old_lines, vec!["old line"]);
-        assert_eq!(hunks[0].changed_lines, vec![2]);
+        let blocks = parse_patch(patch);
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0].kind, ChangeKind::Change);
+        assert_eq!(blocks[0].start_line, 2);
+        assert_eq!(blocks[0].end_line, 2);
+        assert_eq!(blocks[0].added_lines, vec![2]);
+        assert_eq!(blocks[0].changed_lines, vec![2]);
+        assert_eq!(blocks[0].deletion_groups[0].anchor_line, 2);
+        assert_eq!(blocks[0].old_to_new[0].old_line, 2);
+        assert_eq!(blocks[0].old_to_new[0].new_line, 2);
     }
 
     #[test]
-    fn test_parse_multiple_hunks() {
+    fn test_parse_multiple_blocks() {
         let patch = r#"@@ -1,3 +1,4 @@
  line1
 +added
@@ -158,16 +209,16 @@ mod tests {
 -removed
  line12"#;
 
-        let hunks = parse_patch(patch);
-        assert_eq!(hunks.len(), 2);
-        assert_eq!(hunks[0].start, 1);
-        assert_eq!(hunks[1].start, 11);
+        let blocks = parse_patch(patch);
+        assert_eq!(blocks.len(), 2);
+        assert_eq!(blocks[0].start_line, 2);
+        assert_eq!(blocks[1].start_line, 12);
     }
 
     #[test]
     fn test_parse_empty_patch() {
-        let hunks = parse_patch("");
-        assert!(hunks.is_empty());
+        let blocks = parse_patch("");
+        assert!(blocks.is_empty());
     }
 
     #[test]
@@ -177,8 +228,8 @@ mod tests {
  line2
  line3"#;
 
-        let hunks = parse_patch(patch);
-        assert!(hunks.is_empty());
+        let blocks = parse_patch(patch);
+        assert!(blocks.is_empty());
     }
 
     #[test]
@@ -188,21 +239,21 @@ mod tests {
 +new line
 \ No newline at end of file"#;
 
-        let hunks = parse_patch(patch);
-        assert_eq!(hunks.len(), 1);
-        assert_eq!(hunks[0].hunk_type, HunkType::Change);
+        let blocks = parse_patch(patch);
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0].kind, ChangeKind::Change);
     }
 
     #[test]
-    fn test_parse_single_line_hunk() {
+    fn test_parse_single_line_block() {
         let patch = r#"@@ -1 +1 @@
 -old
 +new"#;
 
-        let hunks = parse_patch(patch);
-        assert_eq!(hunks.len(), 1);
-        assert_eq!(hunks[0].old_count, 1);
-        assert_eq!(hunks[0].count, 1);
+        let blocks = parse_patch(patch);
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0].start_line, 1);
+        assert_eq!(blocks[0].end_line, 1);
     }
 
     #[test]
@@ -213,10 +264,9 @@ mod tests {
  more context
  end"#;
 
-        let hunks = parse_patch(patch);
-        assert_eq!(hunks.len(), 1);
-        assert_eq!(hunks[0].old_start, 10000);
-        assert_eq!(hunks[0].start, 10001);
+        let blocks = parse_patch(patch);
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0].start_line, 10002);
     }
 
     #[test]
@@ -228,10 +278,12 @@ mod tests {
 +added3
  line2"#;
 
-        let hunks = parse_patch(patch);
-        assert_eq!(hunks.len(), 1);
-        assert_eq!(hunks[0].hunk_type, HunkType::Add);
-        assert_eq!(hunks[0].added_lines.len(), 3);
+        let blocks = parse_patch(patch);
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0].kind, ChangeKind::Add);
+        assert_eq!(blocks[0].added_lines.len(), 3);
+        assert_eq!(blocks[0].start_line, 2);
+        assert_eq!(blocks[0].end_line, 4);
     }
 
     #[test]
@@ -243,10 +295,11 @@ mod tests {
 -del3
  line2"#;
 
-        let hunks = parse_patch(patch);
-        assert_eq!(hunks.len(), 1);
-        assert_eq!(hunks[0].hunk_type, HunkType::Delete);
-        assert_eq!(hunks[0].old_lines.len(), 3);
+        let blocks = parse_patch(patch);
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0].kind, ChangeKind::Delete);
+        assert_eq!(blocks[0].deletion_groups.len(), 1);
+        assert_eq!(blocks[0].deletion_groups[0].old_lines.len(), 3);
     }
 
     #[test]
@@ -258,12 +311,14 @@ mod tests {
 +added2
  line3"#;
 
-        let hunks = parse_patch(patch);
-        assert_eq!(hunks[0].added_lines, vec![2, 4]);
+        let blocks = parse_patch(patch);
+        assert_eq!(blocks.len(), 2);
+        assert_eq!(blocks[0].added_lines, vec![2]);
+        assert_eq!(blocks[1].added_lines, vec![4]);
     }
 
     #[test]
-    fn test_parse_tracks_changed_lines_in_mixed_hunk() {
+    fn test_parse_tracks_changed_lines_in_mixed_block() {
         let patch = r#"@@ -1,5 +1,6 @@
  line1
 -old line
@@ -272,10 +327,12 @@ mod tests {
 +added line
  line3"#;
 
-        let hunks = parse_patch(patch);
-        assert_eq!(hunks.len(), 1);
-        assert_eq!(hunks[0].added_lines, vec![2, 4]);
-        assert_eq!(hunks[0].changed_lines, vec![2]);
+        let blocks = parse_patch(patch);
+        assert_eq!(blocks.len(), 2);
+        assert_eq!(blocks[0].kind, ChangeKind::Change);
+        assert_eq!(blocks[0].changed_lines, vec![2]);
+        assert_eq!(blocks[1].kind, ChangeKind::Add);
+        assert_eq!(blocks[1].added_lines, vec![4]);
     }
 
     #[test]
@@ -286,7 +343,26 @@ mod tests {
 -deleted2
  line2"#;
 
-        let hunks = parse_patch(patch);
-        assert_eq!(hunks[0].deleted_at, vec![2, 2]);
+        let blocks = parse_patch(patch);
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0].deletion_groups[0].anchor_line, 2);
+        assert_eq!(blocks[0].deletion_groups[0].old_lines.len(), 2);
+        assert_eq!(blocks[0].old_to_new.len(), 2);
+    }
+
+    #[test]
+    fn test_parse_splits_deletions_by_anchor() {
+        let patch = r#"@@ -1,4 +1,4 @@
+ line1
+-old1
++new1
+-old2
+ line2"#;
+
+        let blocks = parse_patch(patch);
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0].deletion_groups.len(), 2);
+        assert_eq!(blocks[0].deletion_groups[0].anchor_line, 2);
+        assert_eq!(blocks[0].deletion_groups[1].anchor_line, 3);
     }
 }

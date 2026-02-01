@@ -1,32 +1,40 @@
----@class NRAIWalkthroughHunkRef
+---@class NRAIWalkthroughChangeRef
 ---@field file string File path
----@field hunk_index integer 0-based index into the file's hunks array
+---@field change_block_index integer 0-based index into the file's change_blocks array
 
 ---@class NRAINavAnchor
 ---@field file string File path
----@field hunk_index integer 0-based index into the file's hunks array
+---@field change_block_index integer 0-based index into the file's change_blocks array
 ---@field line? integer Line number of the change block
 
 ---@class NRAIWalkthroughStep
 ---@field title string Step title
 ---@field explanation string Plain-language explanation of the change
----@field hunks NRAIWalkthroughHunkRef[] Hunks referenced by this step
+---@field change_blocks NRAIWalkthroughChangeRef[] Change blocks referenced by this step
 
 ---@class NRAIAnalysis
 ---@field overview string Concise walkthrough overview
 ---@field steps NRAIWalkthroughStep[] Ordered walkthrough steps
 
----@alias NRHunkType "add"|"delete"|"change"
+---@alias NRChangeKind "add"|"delete"|"change"
 
----@class NRHunk
----@field start? integer Start line of the hunk in the new file
----@field count? integer Number of lines in the hunk
----@field hunk_type NRHunkType Type of change
----@field added_lines? integer[] Line numbers of additions
----@field changed_lines? integer[] Line numbers of additions that replace deletions
----@field deleted_at? integer[] Positions where deletions occurred
----@field old_lines string[] Content of deleted lines
----@field deleted_old_lines? integer[] Original line numbers of deleted lines
+---@class NRDeletionGroup
+---@field anchor_line integer Line number in the new file where deletions are anchored
+---@field old_lines string[] Deleted content lines
+---@field old_line_numbers integer[] Old file line numbers (aligned with old_lines)
+
+---@class NROldToNewMap
+---@field old_line integer Old file line number
+---@field new_line integer New file anchor line number
+
+---@class NRChangeBlock
+---@field start_line integer Start line of the change block in the new file
+---@field end_line integer End line of the change block in the new file
+---@field kind NRChangeKind Type of change
+---@field added_lines integer[] Line numbers of additions
+---@field changed_lines integer[] Line numbers of additions that replace deletions
+---@field deletion_groups NRDeletionGroup[] Grouped deletions for virtual line rendering
+---@field old_to_new NROldToNewMap[] Mapping from old to new line anchors
 
 ---@alias NRFileStatus "added"|"deleted"|"modified"|"renamed"
 
@@ -36,7 +44,7 @@
 ---@field additions? integer Number of additions
 ---@field deletions? integer Number of deletions
 ---@field content? string File content for preview/testing
----@field hunks NRHunk[] Hunks in this file
+---@field change_blocks NRChangeBlock[] Change blocks in this file
 
 ---@class NRPR
 ---@field number integer PR number
@@ -71,7 +79,7 @@
 ---@field files_by_path table<string, NRFile> Files indexed by path
 ---@field comments NRComment[] Comments on the PR
 ---@field current_file_idx integer Current file index
----@field expanded_hunks table<string, integer[]> Map of file:hunk to extmark IDs
+---@field expanded_changes table<string, integer[]> Map of file:change_start to extmark IDs
 ---@field did_checkout? boolean Whether we checked out a branch
 ---@field prev_branch? string Previous branch name
 ---@field applied_buffers table<integer, boolean> Buffers that have overlays applied
@@ -108,6 +116,9 @@ local state = {
 function M.set_review(review_data, git_root)
     local files_by_path = {}
     for _, file in ipairs(review_data.files) do
+        if not file.change_blocks then
+            file.change_blocks = {}
+        end
         files_by_path[file.path] = file
     end
 
@@ -120,7 +131,7 @@ function M.set_review(review_data, git_root)
         files_by_path = files_by_path,
         comments = review_data.comments or {},
         current_file_idx = 1,
-        expanded_hunks = {},
+        expanded_changes = {},
         did_checkout = false,
         prev_branch = nil,
         applied_buffers = {},
@@ -137,6 +148,9 @@ end
 function M.set_local_review(diff_data)
     local files_by_path = {}
     for _, file in ipairs(diff_data.files) do
+        if not file.change_blocks then
+            file.change_blocks = {}
+        end
         files_by_path[file.path] = file
     end
 
@@ -147,7 +161,7 @@ function M.set_local_review(diff_data)
         files_by_path = files_by_path,
         comments = {},
         current_file_idx = 1,
-        expanded_hunks = {},
+        expanded_changes = {},
         applied_buffers = {},
         autocmd_id = nil,
         overlays_visible = true,
@@ -259,34 +273,34 @@ function M.set_current_file_idx(idx)
 end
 
 ---@param file_path string
----@param hunk_start integer
+---@param change_start integer
 ---@return boolean
-function M.is_hunk_expanded(file_path, hunk_start)
+function M.is_change_expanded(file_path, change_start)
     if state.active_review then
-        local key = file_path .. ":" .. hunk_start
-        local extmarks = state.active_review.expanded_hunks[key]
+        local key = file_path .. ":" .. change_start
+        local extmarks = state.active_review.expanded_changes[key]
         return extmarks ~= nil and #extmarks > 0
     end
     return false
 end
 
 ---@param file_path string
----@param hunk_start integer
+---@param change_start integer
 ---@param extmark_ids? integer[]
-function M.set_hunk_expanded(file_path, hunk_start, extmark_ids)
+function M.set_change_expanded(file_path, change_start, extmark_ids)
     if state.active_review then
-        local key = file_path .. ":" .. hunk_start
-        state.active_review.expanded_hunks[key] = extmark_ids
+        local key = file_path .. ":" .. change_start
+        state.active_review.expanded_changes[key] = extmark_ids
     end
 end
 
 ---@param file_path string
----@param hunk_start integer
+---@param change_start integer
 ---@return integer[]?
-function M.get_hunk_extmarks(file_path, hunk_start)
+function M.get_change_extmarks(file_path, change_start)
     if state.active_review then
-        local key = file_path .. ":" .. hunk_start
-        return state.active_review.expanded_hunks[key]
+        local key = file_path .. ":" .. change_start
+        return state.active_review.expanded_changes[key]
     end
     return nil
 end

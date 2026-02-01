@@ -299,9 +299,9 @@ function M.review_diff(opts)
             should_analyze = config.values.ai.enabled
         end
 
-        local total_hunks = 0
+        local total_changes = 0
         for _, file in ipairs(data.files) do
-            total_hunks = total_hunks + #file.hunks
+            total_changes = total_changes + #(file.change_blocks or {})
         end
 
         local function finish_setup()
@@ -310,15 +310,15 @@ function M.review_diff(opts)
             vim.notify(string.format("Local diff review enabled (%d files changed)", #data.files), vim.log.levels.INFO)
 
             local nav = require("neo_reviewer.ui.nav")
-            nav.first_hunk()
+            nav.first_change()
         end
 
         if should_analyze then
             vim.notify(
                 string.format(
-                    "[neo-reviewer] Local diff fetched (%d files, %d hunks). Running AI analysis...",
+                    "[neo-reviewer] Local diff fetched (%d files, %d changes). Running AI analysis...",
                     #data.files,
-                    total_hunks
+                    total_changes
                 ),
                 vim.log.levels.INFO
             )
@@ -331,7 +331,7 @@ function M.review_diff(opts)
                     state.set_ai_analysis(analysis)
                     local ai_ui = require("neo_reviewer.ui.ai")
                     ai_ui.open()
-                    vim.notify("[neo-reviewer] Analysis complete. Navigate with ]h / [h", vim.log.levels.INFO)
+                    vim.notify("[neo-reviewer] Analysis complete. Navigate with next/prev change", vim.log.levels.INFO)
                 end
 
                 finish_setup()
@@ -374,24 +374,24 @@ function M.fetch_and_enable(url, on_ready, opts)
             should_analyze = config.values.ai.enabled
         end
 
-        local total_hunks = 0
+        local total_changes = 0
         for _, file in ipairs(data.files) do
-            total_hunks = total_hunks + #file.hunks
+            total_changes = total_changes + #(file.change_blocks or {})
         end
 
         local function finish_setup()
             M.enable_overlay()
 
             local nav = require("neo_reviewer.ui.nav")
-            nav.first_hunk()
+            nav.first_change()
         end
 
         if should_analyze then
             vim.notify(
                 string.format(
-                    "[neo-reviewer] PR fetched (%d files, %d hunks). Running AI analysis...",
+                    "[neo-reviewer] PR fetched (%d files, %d changes). Running AI analysis...",
                     #data.files,
-                    total_hunks
+                    total_changes
                 ),
                 vim.log.levels.INFO
             )
@@ -404,7 +404,7 @@ function M.fetch_and_enable(url, on_ready, opts)
                     state.set_ai_analysis(analysis)
                     local ai_ui = require("neo_reviewer.ui.ai")
                     ai_ui.open()
-                    vim.notify("[neo-reviewer] Analysis complete. Navigate with ]h / [h", vim.log.levels.INFO)
+                    vim.notify("[neo-reviewer] Analysis complete. Navigate with next/prev change", vim.log.levels.INFO)
                 end
 
                 finish_setup()
@@ -482,7 +482,7 @@ function M.apply_overlay_to_buffer(bufnr)
     end
 
     local signs = require("neo_reviewer.ui.signs")
-    signs.place(bufnr, file.hunks)
+    signs.place(bufnr, file.change_blocks)
 
     if not state.is_local_review() then
         local comments_ui = require("neo_reviewer.ui.comments")
@@ -583,16 +583,16 @@ function M.show_file_picker_fallback()
     end)
 end
 
-function M.next_hunk()
+function M.next_change()
     local nav = require("neo_reviewer.ui.nav")
     local config = require("neo_reviewer.config")
-    nav.next_hunk(config.values.wrap_navigation)
+    nav.next_change(config.values.wrap_navigation)
 end
 
-function M.prev_hunk()
+function M.prev_change()
     local nav = require("neo_reviewer.ui.nav")
     local config = require("neo_reviewer.config")
-    nav.prev_hunk(config.values.wrap_navigation)
+    nav.prev_change(config.values.wrap_navigation)
 end
 
 function M.next_comment()
@@ -760,7 +760,7 @@ function M.sync()
     local preserved = {
         url = review.url,
         git_root = review.git_root,
-        expanded_hunks = review.expanded_hunks,
+        expanded_changes = review.expanded_changes,
         did_checkout = review.did_checkout,
         prev_branch = review.prev_branch,
     }
@@ -795,7 +795,7 @@ function M.sync()
         end
 
         new_review.url = preserved.url
-        new_review.expanded_hunks = preserved.expanded_hunks
+        new_review.expanded_changes = preserved.expanded_changes
         new_review.did_checkout = preserved.did_checkout
         new_review.prev_branch = preserved.prev_branch
 

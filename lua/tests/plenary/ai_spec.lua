@@ -21,7 +21,7 @@ describe("neo_reviewer.ai", function()
                 files_by_path = {},
                 comments = {},
                 current_file_idx = 1,
-                expanded_hunks = {},
+                expanded_changes = {},
                 applied_buffers = {},
                 overlays_visible = true,
             }
@@ -40,7 +40,7 @@ describe("neo_reviewer.ai", function()
                 files_by_path = {},
                 comments = {},
                 current_file_idx = 1,
-                expanded_hunks = {},
+                expanded_changes = {},
                 applied_buffers = {},
                 overlays_visible = true,
             }
@@ -59,7 +59,7 @@ describe("neo_reviewer.ai", function()
                 files_by_path = {},
                 comments = {},
                 current_file_idx = 1,
-                expanded_hunks = {},
+                expanded_changes = {},
                 applied_buffers = {},
                 overlays_visible = true,
             }
@@ -75,13 +75,13 @@ describe("neo_reviewer.ai", function()
                 review_type = "pr",
                 pr = { number = 1, title = "Title" },
                 files = {
-                    { path = "src/main.rs", status = "modified", additions = 10, deletions = 5, hunks = {} },
-                    { path = "src/new.rs", status = "added", additions = 50, deletions = 0, hunks = {} },
+                    { path = "src/main.rs", status = "modified", additions = 10, deletions = 5, change_blocks = {} },
+                    { path = "src/new.rs", status = "added", additions = 50, deletions = 0, change_blocks = {} },
                 },
                 files_by_path = {},
                 comments = {},
                 current_file_idx = 1,
-                expanded_hunks = {},
+                expanded_changes = {},
                 applied_buffers = {},
                 overlays_visible = true,
             }
@@ -101,7 +101,7 @@ describe("neo_reviewer.ai", function()
                 files_by_path = {},
                 comments = {},
                 current_file_idx = 1,
-                expanded_hunks = {},
+                expanded_changes = {},
                 applied_buffers = {},
                 overlays_visible = true,
             }
@@ -121,33 +121,33 @@ describe("neo_reviewer.ai", function()
                 status = "modified",
                 additions = 3,
                 deletions = 0,
-                hunks = {
+                change_blocks = {
                     {
-                        start = 1,
-                        count = 1,
-                        hunk_type = "add",
-                        old_lines = {},
+                        start_line = 1,
+                        end_line = 1,
+                        kind = "add",
                         added_lines = { 1 },
-                        deleted_at = {},
-                        deleted_old_lines = {},
+                        changed_lines = {},
+                        deletion_groups = {},
+                        old_to_new = {},
                     },
                     {
-                        start = 3,
-                        count = 1,
-                        hunk_type = "add",
-                        old_lines = {},
+                        start_line = 3,
+                        end_line = 3,
+                        kind = "add",
                         added_lines = { 3 },
-                        deleted_at = {},
-                        deleted_old_lines = {},
+                        changed_lines = {},
+                        deletion_groups = {},
+                        old_to_new = {},
                     },
                     {
-                        start = 5,
-                        count = 1,
-                        hunk_type = "add",
-                        old_lines = {},
+                        start_line = 5,
+                        end_line = 5,
+                        kind = "add",
                         added_lines = { 5 },
-                        deleted_at = {},
-                        deleted_old_lines = {},
+                        changed_lines = {},
+                        deletion_groups = {},
+                        old_to_new = {},
                     },
                 },
             }
@@ -162,7 +162,7 @@ describe("neo_reviewer.ai", function()
                 },
                 comments = {},
                 current_file_idx = 1,
-                expanded_hunks = {},
+                expanded_changes = {},
                 applied_buffers = {},
                 overlays_visible = true,
             }
@@ -170,7 +170,7 @@ describe("neo_reviewer.ai", function()
             return review
         end
 
-        it("appends placeholders for missing hunks", function()
+        it("appends placeholders for missing change_blocks", function()
             local review = build_review()
             ---@type NRAIAnalysis
             local analysis = {
@@ -179,8 +179,8 @@ describe("neo_reviewer.ai", function()
                     {
                         title = "Step One",
                         explanation = "Covers first hunk",
-                        hunks = {
-                            { file = "test.lua", hunk_index = 0 },
+                        change_blocks = {
+                            { file = "test.lua", change_block_index = 0 },
                         },
                     },
                 },
@@ -190,19 +190,31 @@ describe("neo_reviewer.ai", function()
 
             assert.are.equal(3, #updated.steps)
             assert.are.equal("Uncovered change: test.lua", updated.steps[2].title)
-            assert.are.same({ file = "test.lua", hunk_index = 1 }, updated.steps[2].hunks[1])
-            assert.are.same({ file = "test.lua", hunk_index = 2 }, updated.steps[3].hunks[1])
+            assert.are.same({ file = "test.lua", change_block_index = 1 }, updated.steps[2].change_blocks[1])
+            assert.are.same({ file = "test.lua", change_block_index = 2 }, updated.steps[3].change_blocks[1])
         end)
 
-        it("does not add placeholders when all hunks covered", function()
+        it("does not add placeholders when all change_blocks covered", function()
             local review = build_review()
             ---@type NRAIAnalysis
             local analysis = {
                 overview = "Overview",
                 steps = {
-                    { title = "Hunk 0", explanation = "First", hunks = { { file = "test.lua", hunk_index = 0 } } },
-                    { title = "Hunk 1", explanation = "Second", hunks = { { file = "test.lua", hunk_index = 1 } } },
-                    { title = "Hunk 2", explanation = "Third", hunks = { { file = "test.lua", hunk_index = 2 } } },
+                    {
+                        title = "Hunk 0",
+                        explanation = "First",
+                        change_blocks = { { file = "test.lua", change_block_index = 0 } },
+                    },
+                    {
+                        title = "Hunk 1",
+                        explanation = "Second",
+                        change_blocks = { { file = "test.lua", change_block_index = 1 } },
+                    },
+                    {
+                        title = "Hunk 2",
+                        explanation = "Third",
+                        change_blocks = { { file = "test.lua", change_block_index = 2 } },
+                    },
                 },
             }
 
@@ -211,17 +223,17 @@ describe("neo_reviewer.ai", function()
             assert.are.equal(3, #updated.steps)
         end)
 
-        it("builds missing prompt with only missing hunks", function()
+        it("builds missing prompt with only missing change_blocks", function()
             local review = build_review()
             local missing = {
-                { file = "test.lua", hunk_index = 2 },
+                { file = "test.lua", change_block_index = 2 },
             }
 
             local prompt = ai.build_missing_prompt(review, missing)
 
-            assert.is_truthy(prompt:find("@@ hunk 2 @@"))
-            assert.is_nil(prompt:find("@@ hunk 0 @@"))
-            assert.is_nil(prompt:find("@@ hunk 1 @@"))
+            assert.is_truthy(prompt:find("@@ change_block 2 @@"))
+            assert.is_nil(prompt:find("@@ change_block 0 @@"))
+            assert.is_nil(prompt:find("@@ change_block 1 @@"))
         end)
     end)
 end)
@@ -303,8 +315,8 @@ describe("neo_reviewer.state AI analysis", function()
                 {
                     title = "Step 1",
                     explanation = "Test context for reviewer",
-                    hunks = {
-                        { file = "test.lua", hunk_index = 0 },
+                    change_blocks = {
+                        { file = "test.lua", change_block_index = 0 },
                     },
                 },
             },

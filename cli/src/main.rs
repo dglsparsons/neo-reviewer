@@ -19,7 +19,7 @@ enum Commands {
     /// Parse local git diff (staged + unstaged changes)
     Diff,
 
-    /// Fetch PR data including files, hunks, and content
+    /// Fetch PR data including files, change blocks, and content
     Fetch {
         /// GitHub PR URL (e.g., https://github.com/owner/repo/pull/123)
         #[arg(short, long)]

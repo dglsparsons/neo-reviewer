@@ -26,10 +26,13 @@ describe("neo_reviewer.ui.signs", function()
 
             signs.place(bufnr, {
                 {
-                    hunk_type = "add",
-                    old_lines = {},
+                    start_line = 2,
+                    end_line = 3,
+                    kind = "add",
                     added_lines = { 2, 3 },
-                    deleted_at = {},
+                    changed_lines = {},
+                    deletion_groups = {},
+                    old_to_new = {},
                 },
             })
 
@@ -51,10 +54,15 @@ describe("neo_reviewer.ui.signs", function()
 
             signs.place(bufnr, {
                 {
-                    hunk_type = "delete",
-                    old_lines = { "deleted line" },
+                    start_line = 2,
+                    end_line = 2,
+                    kind = "delete",
                     added_lines = {},
-                    deleted_at = { 2 },
+                    changed_lines = {},
+                    deletion_groups = {
+                        { anchor_line = 2, old_lines = {}, old_line_numbers = {} },
+                    },
+                    old_to_new = {},
                 },
             })
 
@@ -71,15 +79,42 @@ describe("neo_reviewer.ui.signs", function()
             assert.is_true(found_delete_sign)
         end)
 
+        it("clamps delete signs past EOF to last line", function()
+            local bufnr = helpers.create_test_buffer({ "line 1", "line 2", "line 3" })
+
+            signs.place(bufnr, {
+                {
+                    start_line = 4,
+                    end_line = 4,
+                    kind = "delete",
+                    added_lines = {},
+                    changed_lines = {},
+                    deletion_groups = {
+                        { anchor_line = 4, old_lines = {}, old_line_numbers = {} },
+                    },
+                    old_to_new = {},
+                },
+            })
+
+            local extmarks = helpers.get_extmarks(bufnr, "nr_signs")
+            assert.are.equal(1, #extmarks)
+            assert.are.equal(2, extmarks[1][2])
+        end)
+
         it("places change signs for change hunks", function()
             local bufnr = helpers.create_test_buffer({ "line 1", "line 2", "line 3" })
 
             signs.place(bufnr, {
                 {
-                    hunk_type = "change",
-                    old_lines = { "old line" },
+                    start_line = 2,
+                    end_line = 2,
+                    kind = "change",
                     added_lines = { 2 },
-                    deleted_at = { 2 },
+                    changed_lines = { 2 },
+                    deletion_groups = {
+                        { anchor_line = 2, old_lines = {}, old_line_numbers = {} },
+                    },
+                    old_to_new = {},
                 },
             })
 
@@ -101,11 +136,15 @@ describe("neo_reviewer.ui.signs", function()
 
             signs.place(bufnr, {
                 {
-                    hunk_type = "change",
-                    old_lines = { "old line" },
+                    start_line = 2,
+                    end_line = 4,
+                    kind = "change",
                     added_lines = { 2, 3, 4 },
                     changed_lines = { 2 },
-                    deleted_at = { 2 },
+                    deletion_groups = {
+                        { anchor_line = 2, old_lines = {}, old_line_numbers = {} },
+                    },
+                    old_to_new = {},
                 },
             })
 
@@ -143,22 +182,35 @@ describe("neo_reviewer.ui.signs", function()
 
             signs.place(bufnr, {
                 {
-                    hunk_type = "add",
-                    old_lines = {},
+                    start_line = 2,
+                    end_line = 3,
+                    kind = "add",
                     added_lines = { 2, 3 },
-                    deleted_at = {},
+                    changed_lines = {},
+                    deletion_groups = {},
+                    old_to_new = {},
                 },
                 {
-                    hunk_type = "change",
-                    old_lines = { "old" },
+                    start_line = 5,
+                    end_line = 5,
+                    kind = "change",
                     added_lines = { 5 },
-                    deleted_at = { 5 },
+                    changed_lines = { 5 },
+                    deletion_groups = {
+                        { anchor_line = 5, old_lines = {}, old_line_numbers = {} },
+                    },
+                    old_to_new = {},
                 },
                 {
-                    hunk_type = "delete",
-                    old_lines = { "deleted" },
+                    start_line = 8,
+                    end_line = 8,
+                    kind = "delete",
                     added_lines = {},
-                    deleted_at = { 8 },
+                    changed_lines = {},
+                    deletion_groups = {
+                        { anchor_line = 8, old_lines = {}, old_line_numbers = {} },
+                    },
+                    old_to_new = {},
                 },
             })
 
@@ -171,20 +223,26 @@ describe("neo_reviewer.ui.signs", function()
 
             signs.place(bufnr, {
                 {
-                    hunk_type = "add",
-                    old_lines = {},
+                    start_line = 1,
+                    end_line = 1,
+                    kind = "add",
                     added_lines = { 1 },
-                    deleted_at = {},
+                    changed_lines = {},
+                    deletion_groups = {},
+                    old_to_new = {},
                 },
             })
             local first_count = #helpers.get_extmarks(bufnr, "nr_signs")
 
             signs.place(bufnr, {
                 {
-                    hunk_type = "change",
-                    old_lines = { "old" },
+                    start_line = 2,
+                    end_line = 2,
+                    kind = "change",
                     added_lines = { 2 },
-                    deleted_at = {},
+                    changed_lines = { 2 },
+                    deletion_groups = {},
+                    old_to_new = {},
                 },
             })
             local second_count = #helpers.get_extmarks(bufnr, "nr_signs")
@@ -197,10 +255,15 @@ describe("neo_reviewer.ui.signs", function()
 
             signs.place(bufnr, {
                 {
-                    hunk_type = "change",
-                    old_lines = { "old" },
+                    start_line = 2,
+                    end_line = 2,
+                    kind = "change",
                     added_lines = { 2 },
-                    deleted_at = { 2 },
+                    changed_lines = { 2 },
+                    deletion_groups = {
+                        { anchor_line = 2, old_lines = {}, old_line_numbers = {} },
+                    },
+                    old_to_new = {},
                 },
             })
 
@@ -208,7 +271,7 @@ describe("neo_reviewer.ui.signs", function()
             assert.are.equal(1, #extmarks)
         end)
 
-        it("handles nil hunks gracefully", function()
+        it("handles nil change blocks gracefully", function()
             local bufnr = helpers.create_test_buffer({ "line 1", "line 2" })
 
             assert.has_no_errors(function()
@@ -219,7 +282,7 @@ describe("neo_reviewer.ui.signs", function()
             assert.are.equal(0, #extmarks)
         end)
 
-        it("handles empty hunks array", function()
+        it("handles empty change blocks array", function()
             local bufnr = helpers.create_test_buffer({ "line 1", "line 2" })
 
             assert.has_no_errors(function()
@@ -230,16 +293,19 @@ describe("neo_reviewer.ui.signs", function()
             assert.are.equal(0, #extmarks)
         end)
 
-        it("handles hunks with empty added_lines and deleted_at", function()
+        it("handles change blocks with empty added_lines and deletion_groups", function()
             local bufnr = helpers.create_test_buffer({ "line 1", "line 2" })
 
             assert.has_no_errors(function()
                 signs.place(bufnr, {
                     {
-                        hunk_type = "add",
-                        old_lines = {},
+                        start_line = 1,
+                        end_line = 1,
+                        kind = "add",
                         added_lines = {},
-                        deleted_at = {},
+                        changed_lines = {},
+                        deletion_groups = {},
+                        old_to_new = {},
                     },
                 })
             end)
@@ -264,10 +330,13 @@ describe("neo_reviewer.ui.signs", function()
 
             signs.place(bufnr, {
                 {
-                    hunk_type = "add",
-                    old_lines = {},
+                    start_line = 1,
+                    end_line = 1,
+                    kind = "add",
                     added_lines = { 1 },
-                    deleted_at = {},
+                    changed_lines = {},
+                    deletion_groups = {},
+                    old_to_new = {},
                 },
             })
 
@@ -288,10 +357,13 @@ describe("neo_reviewer.ui.signs", function()
             assert.has_no_errors(function()
                 signs.place(bufnr, {
                     {
-                        hunk_type = "add",
-                        old_lines = {},
+                        start_line = 1,
+                        end_line = 100,
+                        kind = "add",
                         added_lines = { 1, 100 },
-                        deleted_at = {},
+                        changed_lines = {},
+                        deletion_groups = {},
+                        old_to_new = {},
                     },
                 })
             end)
@@ -307,10 +379,13 @@ describe("neo_reviewer.ui.signs", function()
 
             signs.place(bufnr, {
                 {
-                    hunk_type = "add",
-                    old_lines = {},
+                    start_line = 1,
+                    end_line = 2,
+                    kind = "add",
                     added_lines = { 1, 2 },
-                    deleted_at = {},
+                    changed_lines = {},
+                    deletion_groups = {},
+                    old_to_new = {},
                 },
             })
             assert.is_true(#helpers.get_extmarks(bufnr, "nr_signs") > 0)

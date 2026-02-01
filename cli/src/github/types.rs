@@ -40,8 +40,8 @@ pub struct ReviewFile {
     pub deletions: u32,
     /// Full file content at HEAD (None if file was deleted)
     pub content: Option<String>,
-    /// Parsed hunks from the diff
-    pub hunks: Vec<crate::diff::types::Hunk>,
+    /// Parsed change blocks from the diff
+    pub change_blocks: Vec<crate::diff::types::ChangeBlock>,
 }
 
 /// File change status

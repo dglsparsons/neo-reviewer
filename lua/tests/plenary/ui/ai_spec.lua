@@ -52,7 +52,7 @@ describe("neo_reviewer.ui.ai", function()
                 {
                     title = "First step",
                     explanation = "Explains the first change",
-                    hunks = { { file = "test.lua", hunk_index = 0 } },
+                    change_blocks = { { file = "test.lua", change_block_index = 0 } },
                 },
             },
         })
@@ -68,6 +68,7 @@ describe("neo_reviewer.ui.ai", function()
         local walkthrough_bufnr = find_walkthrough_buffer()
 
         assert.is_not_nil(walkthrough_bufnr)
+        ---@cast walkthrough_bufnr integer
         local rendered = vim.api.nvim_buf_get_lines(walkthrough_bufnr, 0, -1, false)
         local combined = table.concat(rendered, "\n")
         assert.is_truthy(combined:find("Overview:"))
@@ -75,7 +76,7 @@ describe("neo_reviewer.ui.ai", function()
         assert.is_truthy(combined:find("Explains the first change"))
     end)
 
-    it("syncs walkthrough step when navigating hunks", function()
+    it("syncs walkthrough step when navigating change blocks", function()
         local review, state = setup_review(fixtures.navigation_pr)
         state.set_ai_analysis({
             overview = "Test overview",
@@ -83,12 +84,12 @@ describe("neo_reviewer.ui.ai", function()
                 {
                     title = "Step One",
                     explanation = "First change",
-                    hunks = { { file = "test.lua", hunk_index = 0 } },
+                    change_blocks = { { file = "test.lua", change_block_index = 0 } },
                 },
                 {
                     title = "Step Two",
                     explanation = "Second change",
-                    hunks = { { file = "test.lua", hunk_index = 1 } },
+                    change_blocks = { { file = "test.lua", change_block_index = 1 } },
                 },
             },
         })
@@ -103,11 +104,12 @@ describe("neo_reviewer.ui.ai", function()
 
         local nav = require("neo_reviewer.ui.nav")
         helpers.set_cursor(3)
-        nav.next_hunk(false)
+        nav.next_change(false)
 
         local walkthrough_bufnr = find_walkthrough_buffer()
 
         assert.is_not_nil(walkthrough_bufnr)
+        ---@cast walkthrough_bufnr integer
         local rendered = vim.api.nvim_buf_get_lines(walkthrough_bufnr, 0, -1, false)
         local combined = table.concat(rendered, "\n")
         assert.is_truthy(combined:find("Step 2/2: Step Two"))

@@ -54,13 +54,13 @@ describe("neo_reviewer.state", function()
             assert.are.equal(0, vim.tbl_count(review.applied_buffers))
         end)
 
-        it("initializes empty expanded_hunks table", function()
+        it("initializes empty expanded_changes table", function()
             local data = helpers.deep_copy(fixtures.simple_pr)
             state.set_review(data)
 
             local review = state.get_review()
-            assert.is_table(review.expanded_hunks)
-            assert.are.equal(0, vim.tbl_count(review.expanded_hunks))
+            assert.is_table(review.expanded_changes)
+            assert.are.equal(0, vim.tbl_count(review.expanded_changes))
         end)
 
         it("builds files_by_path lookup table", function()
@@ -72,6 +72,26 @@ describe("neo_reviewer.state", function()
             assert.is_not_nil(review.files_by_path["src/foo.lua"])
             assert.is_not_nil(review.files_by_path["src/bar.lua"])
             assert.are.equal("src/foo.lua", review.files_by_path["src/foo.lua"].path)
+        end)
+
+        it("normalizes missing change_blocks to empty table", function()
+            local data = {
+                pr = { number = 555, title = "Missing blocks" },
+                files = {
+                    {
+                        path = "missing.lua",
+                        status = "modified",
+                        additions = 0,
+                        deletions = 0,
+                    },
+                },
+                comments = {},
+            }
+            state.set_review(data)
+
+            local review = state.get_review()
+            assert.is_table(review.files[1].change_blocks)
+            assert.are.equal(0, #review.files[1].change_blocks)
         end)
 
         it("initializes checkout state to false/nil", function()
@@ -299,53 +319,53 @@ describe("neo_reviewer.state", function()
         end)
     end)
 
-    describe("is_hunk_expanded / set_hunk_expanded", function()
-        it("tracks expanded state for hunks", function()
+    describe("is_change_expanded / set_change_expanded", function()
+        it("tracks expanded state for change blocks", function()
             local data = helpers.deep_copy(fixtures.simple_pr)
             state.set_review(data)
 
-            assert.is_false(state.is_hunk_expanded("test.lua", 10))
+            assert.is_false(state.is_change_expanded("test.lua", 10))
 
-            state.set_hunk_expanded("test.lua", 10, { 1 })
-            assert.is_true(state.is_hunk_expanded("test.lua", 10))
+            state.set_change_expanded("test.lua", 10, { 1 })
+            assert.is_true(state.is_change_expanded("test.lua", 10))
 
-            state.set_hunk_expanded("test.lua", 10, nil)
-            assert.is_false(state.is_hunk_expanded("test.lua", 10))
+            state.set_change_expanded("test.lua", 10, nil)
+            assert.is_false(state.is_change_expanded("test.lua", 10))
         end)
 
-        it("tracks hunks by file path and start line", function()
+        it("tracks change blocks by file path and start line", function()
             local data = helpers.deep_copy(fixtures.simple_pr)
             state.set_review(data)
 
-            state.set_hunk_expanded("file1.lua", 10, { 1 })
-            state.set_hunk_expanded("file2.lua", 10, { 2 })
-            state.set_hunk_expanded("file1.lua", 20, { 3, 4 })
+            state.set_change_expanded("file1.lua", 10, { 1 })
+            state.set_change_expanded("file2.lua", 10, { 2 })
+            state.set_change_expanded("file1.lua", 20, { 3, 4 })
 
-            assert.is_true(state.is_hunk_expanded("file1.lua", 10))
-            assert.is_true(state.is_hunk_expanded("file2.lua", 10))
-            assert.is_true(state.is_hunk_expanded("file1.lua", 20))
-            assert.is_false(state.is_hunk_expanded("file1.lua", 15))
+            assert.is_true(state.is_change_expanded("file1.lua", 10))
+            assert.is_true(state.is_change_expanded("file2.lua", 10))
+            assert.is_true(state.is_change_expanded("file1.lua", 20))
+            assert.is_false(state.is_change_expanded("file1.lua", 15))
         end)
 
         it("returns false when no review is active", function()
-            assert.is_false(state.is_hunk_expanded("test.lua", 10))
+            assert.is_false(state.is_change_expanded("test.lua", 10))
         end)
 
         it("stores and retrieves extmark IDs", function()
             local data = helpers.deep_copy(fixtures.simple_pr)
             state.set_review(data)
 
-            state.set_hunk_expanded("test.lua", 10, { 101, 102, 103 })
+            state.set_change_expanded("test.lua", 10, { 101, 102, 103 })
 
-            local extmarks = state.get_hunk_extmarks("test.lua", 10)
+            local extmarks = state.get_change_extmarks("test.lua", 10)
             assert.are.same({ 101, 102, 103 }, extmarks)
         end)
 
-        it("returns nil extmarks when hunk not expanded", function()
+        it("returns nil extmarks when change block not expanded", function()
             local data = helpers.deep_copy(fixtures.simple_pr)
             state.set_review(data)
 
-            local extmarks = state.get_hunk_extmarks("test.lua", 10)
+            local extmarks = state.get_change_extmarks("test.lua", 10)
             assert.is_nil(extmarks)
         end)
     end)
@@ -407,6 +427,25 @@ describe("neo_reviewer.state", function()
             assert.are.equal("local", review.review_type)
             assert.are.equal("/tmp/test-repo", review.git_root)
             assert.are.equal(2, #review.files)
+        end)
+
+        it("normalizes missing change_blocks for local review", function()
+            local data = {
+                git_root = "/tmp/test-repo",
+                files = {
+                    {
+                        path = "local.lua",
+                        status = "modified",
+                        additions = 0,
+                        deletions = 0,
+                    },
+                },
+            }
+            state.set_local_review(data)
+
+            local review = state.get_review()
+            assert.is_table(review.files[1].change_blocks)
+            assert.are.equal(0, #review.files[1].change_blocks)
         end)
 
         it("sets review_type to local", function()

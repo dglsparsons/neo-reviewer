@@ -17,6 +17,6 @@
       "lua/stubs"
     ],
     "checkThirdParty": false,
-    "ignoreDir": ["lua/stubs"]
+    "ignoreDir": ["lua/stubs", "trees"]
   }
 }

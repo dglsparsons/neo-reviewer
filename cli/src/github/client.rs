@@ -79,7 +79,7 @@ impl GitHubClient {
             let status_str = format!("{:?}", file.status).to_lowercase();
             let status = FileStatus::from(status_str.as_str());
 
-            let hunks = file
+            let change_blocks = file
                 .patch
                 .as_ref()
                 .map(|p| parse_patch(p))
@@ -100,7 +100,7 @@ impl GitHubClient {
                 additions: file.additions as u32,
                 deletions: file.deletions as u32,
                 content,
-                hunks,
+                change_blocks,
             });
         }
 

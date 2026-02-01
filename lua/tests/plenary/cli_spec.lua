@@ -83,31 +83,31 @@ describe("neo_reviewer.cli", function()
 
     describe("is_worktree_dirty", function()
         it("returns true when there are uncommitted changes", function()
-            stub(vim.fn, "systemlist", function()
+            local systemlist_stub = stub(vim.fn, "systemlist", function()
                 return { "M modified.lua", "?? untracked.lua" }
             end)
 
             local result = cli.is_worktree_dirty()
 
             assert.is_true(result)
-            vim.fn.systemlist:revert()
+            systemlist_stub:revert()
         end)
 
         it("returns false when worktree is clean", function()
-            stub(vim.fn, "systemlist", function()
+            local systemlist_stub = stub(vim.fn, "systemlist", function()
                 return {}
             end)
 
             local result = cli.is_worktree_dirty()
 
             assert.is_false(result)
-            vim.fn.systemlist:revert()
+            systemlist_stub:revert()
         end)
     end)
 
     describe("checkout_pr", function()
         it("accepts PR number", function()
-            stub(vim.fn, "systemlist", function()
+            local systemlist_stub = stub(vim.fn, "systemlist", function()
                 return {}
             end)
 
@@ -119,11 +119,11 @@ describe("neo_reviewer.cli", function()
             assert.are.equal("gh", opts.command)
             assert.are.same({ "pr", "checkout", "123" }, opts.args)
 
-            vim.fn.systemlist:revert()
+            systemlist_stub:revert()
         end)
 
         it("accepts PR URL", function()
-            stub(vim.fn, "systemlist", function()
+            local systemlist_stub = stub(vim.fn, "systemlist", function()
                 return {}
             end)
 
@@ -135,7 +135,7 @@ describe("neo_reviewer.cli", function()
             assert.are.equal("gh", opts.command)
             assert.are.same({ "pr", "checkout", "https://github.com/owner/repo/pull/456" }, opts.args)
 
-            vim.fn.systemlist:revert()
+            systemlist_stub:revert()
         end)
     end)
 
@@ -423,10 +423,9 @@ describe("neo_reviewer.cli", function()
         end)
 
         it("returns ok=false on failure", function()
-            local received_ok, received_output
-            local callback = function(ok, output)
+            local received_ok
+            local callback = function(ok)
                 received_ok = ok
-                received_output = output
             end
 
             cli.check_auth(callback)

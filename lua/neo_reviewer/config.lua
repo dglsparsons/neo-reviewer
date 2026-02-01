@@ -32,7 +32,7 @@
 ---@class NRConfig
 ---@field cli_path string Path to the neo-reviewer CLI binary
 ---@field signs NRSigns
----@field wrap_navigation boolean Whether to wrap around when navigating hunks
+---@field wrap_navigation boolean Whether to wrap around when navigating change blocks
 ---@field auto_expand_deletes boolean Whether to auto-expand deleted lines
 ---@field thread_window NRThreadWindow
 ---@field input_window NRInputWindow
@@ -72,7 +72,7 @@
 ---@class NRPartialConfig
 ---@field cli_path? string Path to the neo-reviewer CLI binary
 ---@field signs? NRPartialSigns
----@field wrap_navigation? boolean Whether to wrap around when navigating hunks
+---@field wrap_navigation? boolean Whether to wrap around when navigating change blocks
 ---@field auto_expand_deletes? boolean Whether to auto-expand deleted lines
 ---@field thread_window? NRPartialThreadWindow
 ---@field input_window? NRPartialInputWindow

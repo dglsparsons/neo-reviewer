@@ -1,5 +1,148 @@
 local M = {}
 
+---@param hunks table[]
+---@return table[]
+local function build_change_blocks_from_hunks(hunks)
+    local blocks = {}
+
+    for _, hunk in ipairs(hunks or {}) do
+        -- context_breaks forces a split even when positions are contiguous (simulates context lines).
+        ---@type table<integer, boolean>
+        local context_breaks = {}
+        for _, line in ipairs(hunk.context_breaks or {}) do
+            context_breaks[line] = true
+        end
+
+        ---@type table<integer, boolean>
+        local positions = {}
+        for _, line in ipairs(hunk.added_lines or {}) do
+            positions[line] = true
+        end
+        for _, line in ipairs(hunk.deleted_at or {}) do
+            positions[line] = true
+        end
+
+        ---@type integer[]
+        local sorted = {}
+        for line, _ in pairs(positions) do
+            table.insert(sorted, line)
+        end
+        table.sort(sorted)
+
+        local runs = {}
+        local run_start = nil
+        local run_end = nil
+        for _, line in ipairs(sorted) do
+            if not run_start then
+                run_start = line
+                run_end = line
+            elseif line == run_end + 1 and not context_breaks[line] then
+                run_end = line
+            else
+                table.insert(runs, { run_start, run_end })
+                run_start = line
+                run_end = line
+            end
+        end
+        if run_start then
+            table.insert(runs, { run_start, run_end })
+        end
+
+        for _, run in ipairs(runs) do
+            local start_line = run[1]
+            local end_line = run[2]
+
+            ---@type integer[]
+            local added_lines = {}
+            for _, ln in ipairs(hunk.added_lines or {}) do
+                if ln >= start_line and ln <= end_line then
+                    table.insert(added_lines, ln)
+                end
+            end
+
+            ---@type integer[]
+            local changed_lines = {}
+            for _, ln in ipairs(hunk.changed_lines or {}) do
+                if ln >= start_line and ln <= end_line then
+                    table.insert(changed_lines, ln)
+                end
+            end
+
+            ---@type table[]
+            local deletion_groups = {}
+            ---@type table?
+            local current_group = nil
+
+            ---@type table[]
+            local old_to_new = {}
+
+            for i, old_line in ipairs(hunk.old_lines or {}) do
+                local anchor = (hunk.deleted_at and hunk.deleted_at[i]) or start_line
+                local old_line_number = hunk.deleted_old_lines and hunk.deleted_old_lines[i] or nil
+
+                if anchor >= start_line and anchor <= end_line then
+                    if current_group and current_group.anchor_line == anchor then
+                        table.insert(current_group.old_lines, old_line)
+                        if old_line_number then
+                            table.insert(current_group.old_line_numbers, old_line_number)
+                        end
+                    else
+                        current_group = {
+                            anchor_line = anchor,
+                            old_lines = { old_line },
+                            old_line_numbers = {},
+                        }
+                        if old_line_number then
+                            table.insert(current_group.old_line_numbers, old_line_number)
+                        end
+                        table.insert(deletion_groups, current_group)
+                    end
+
+                    if old_line_number then
+                        table.insert(old_to_new, { old_line = old_line_number, new_line = anchor })
+                    end
+                end
+            end
+
+            local kind = hunk.hunk_type
+            if #added_lines > 0 and #deletion_groups > 0 then
+                kind = "change"
+            elseif #added_lines > 0 then
+                kind = "add"
+            elseif #deletion_groups > 0 then
+                kind = "delete"
+            end
+
+            table.insert(blocks, {
+                start_line = start_line,
+                end_line = end_line,
+                kind = kind,
+                added_lines = added_lines,
+                changed_lines = changed_lines,
+                deletion_groups = deletion_groups,
+                old_to_new = old_to_new,
+            })
+        end
+    end
+
+    return blocks
+end
+
+local function normalize_fixtures(fixtures)
+    for _, data in pairs(fixtures) do
+        if type(data) == "table" and data.files then
+            for _, file in ipairs(data.files) do
+                if file.hunks then
+                    file.change_blocks = build_change_blocks_from_hunks(file.hunks)
+                    file.hunks = nil
+                elseif not file.change_blocks then
+                    file.change_blocks = {}
+                end
+            end
+        end
+    end
+end
+
 M.simple_pr = {
     pr = {
         number = 123,
@@ -200,6 +343,41 @@ M.navigation_pr = {
                     added_lines = { 20, 21, 22 },
                     deleted_at = { 20, 20, 20 },
                     deleted_old_lines = { 20, 21, 22 },
+                },
+            },
+        },
+    },
+    comments = {},
+}
+
+M.context_split_pr = {
+    pr = {
+        number = 790,
+        title = "Context split PR",
+        body = "PR for testing context-based change block splits",
+        state = "open",
+        author = "testuser",
+    },
+    files = {
+        {
+            path = "context_split.lua",
+            status = "modified",
+            additions = 0,
+            deletions = 2,
+            content = table.concat({
+                "context line 1",
+                "context line 2",
+            }, "\n"),
+            hunks = {
+                {
+                    start = 1,
+                    count = 2,
+                    hunk_type = "delete",
+                    old_lines = { "old line 1", "old line 3" },
+                    added_lines = {},
+                    deleted_at = { 1, 2 },
+                    deleted_old_lines = { 1, 3 },
+                    context_breaks = { 2 },
                 },
             },
         },
@@ -650,5 +828,7 @@ M.eof_deletion_pr = {
     },
     comments = {},
 }
+
+normalize_fixtures(M)
 
 return M

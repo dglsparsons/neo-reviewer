@@ -130,11 +130,12 @@ ai ~
     When AI analysis is enabled, neo-reviewer generates a plain-language
     overview and an ordered walkthrough of the PR with step-by-step
     explanations. The walkthrough opens automatically and updates as you
-    navigate hunks. Use |neo_reviewer.toggle_ai_feedback()| to open or
+    navigate change blocks. Use |neo_reviewer.toggle_ai_feedback()| to open or
     re-open the walkthrough window.
-    neo-reviewer enforces full hunk coverage for AI walkthroughs. If a hunk is
-    missed, it issues a follow-up prompt for the missing hunks and appends any
-    remaining uncovered hunks as minimal "Uncovered change" steps.
+    neo-reviewer enforces full change block coverage for AI walkthroughs. If a
+    change block is missed, it issues a follow-up prompt for the missing change
+    blocks and appends any remaining uncovered change blocks as minimal
+    "Uncovered change" steps.
 
 ==============================================================================
 5. COMMANDS                                              *neo_reviewer-commands*
@@ -188,7 +189,7 @@ These user commands are created when you call `setup()`.
 
 :ReviewSync                                                        *:ReviewSync*
     Sync the current PR review with GitHub. Fetches the latest comments
-    and diff changes. Preserves cursor position and expanded hunk state.
+    and diff changes. Preserves cursor position and expanded change block state.
     Only works during an active PR review (not local diff reviews).
 
 ==============================================================================
@@ -220,10 +221,10 @@ require("neo_reviewer").review_diff({opts})               *neo_reviewer.review_d
     This file can be fed to an AI agent or used as a review checklist.
     The file is cleared each time you start a new local diff review.
 
-require("neo_reviewer").next_hunk()                         *neo_reviewer.next_hunk()*
+require("neo_reviewer").next_change()                     *neo_reviewer.next_change()*
     Jump to the next contiguous block of changes.
 
-require("neo_reviewer").prev_hunk()                         *neo_reviewer.prev_hunk()*
+require("neo_reviewer").prev_change()                     *neo_reviewer.prev_change()*
     Jump to the previous contiguous block of changes.
 
 require("neo_reviewer").next_comment()                   *neo_reviewer.next_comment()*
@@ -302,24 +303,24 @@ require("neo_reviewer").done()                                   *neo_reviewer.d
 
 require("neo_reviewer").sync()                                   *neo_reviewer.sync()*
     Sync the current PR review with GitHub. Re-fetches PR data including
-    comments and diff changes. Preserves cursor position, expanded hunk
+    comments and diff changes. Preserves cursor position, expanded change block
     state, and checkout state. Only works during an active PR review.
     See |:ReviewSync|.
 
 require("neo_reviewer").toggle_ai_feedback()     *neo_reviewer.toggle_ai_feedback()*
     Toggle the AI walkthrough window open/closed. The walkthrough updates
-    as you navigate hunks with next/prev.
+    as you navigate changes with next/prev.
 
 ==============================================================================
 7. KEYMAPS                                                *neo_reviewer-keymaps*
 
 neo-reviewer does not set any keymaps by default. Add your own: >lua
     vim.keymap.set("n", "]c", function()
-        require("neo_reviewer").next_hunk()
+        require("neo_reviewer").next_change()
     end, { desc = "Next change" })
 
     vim.keymap.set("n", "[c", function()
-        require("neo_reviewer").prev_hunk()
+        require("neo_reviewer").prev_change()
     end, { desc = "Previous change" })
 
     vim.keymap.set("n", "]C", function()

@@ -69,21 +69,22 @@ local function build_walkthrough_lines(analysis, step_index)
 end
 
 ---@param review NRReview
----@param hunk_ref NRAIWalkthroughHunkRef
+---@param block_ref NRAIWalkthroughChangeRef
 ---@return integer|nil
-local function get_hunk_line(review, hunk_ref)
-    local file = review.files_by_path[hunk_ref.file]
+local function get_change_block_line(review, block_ref)
+    local file = review.files_by_path[block_ref.file]
     if not file then
         return nil
     end
 
-    local hunk = file.hunks[hunk_ref.hunk_index + 1]
-    if not hunk then
+    local block = file.change_blocks[block_ref.change_block_index + 1]
+    if not block then
         return nil
     end
 
-    local first_add = hunk.added_lines and hunk.added_lines[1]
-    local first_del = hunk.deleted_at and hunk.deleted_at[1]
+    local first_add = block.added_lines and block.added_lines[1]
+    local first_group = block.deletion_groups and block.deletion_groups[1]
+    local first_del = first_group and first_group.anchor_line or nil
     if first_add and first_del then
         return math.min(first_add, first_del)
     end
@@ -100,14 +101,14 @@ local function find_step_for_location(review, file_path, line)
     end
 
     for step_index, step in ipairs(review.ai_analysis.steps or {}) do
-        for _, hunk_ref in ipairs(step.hunks or {}) do
-            if hunk_ref.file == file_path then
+        for _, block_ref in ipairs(step.change_blocks or {}) do
+            if block_ref.file == file_path then
                 local file = review.files_by_path[file_path]
                 if file then
-                    local hunk = file.hunks[hunk_ref.hunk_index + 1]
-                    if hunk then
-                        local start_line = get_hunk_line(review, hunk_ref)
-                        local end_line = hunk.start and (hunk.start + (hunk.count or 1) - 1) or start_line
+                    local block = file.change_blocks[block_ref.change_block_index + 1]
+                    if block then
+                        local start_line = get_change_block_line(review, block_ref)
+                        local end_line = block.end_line or start_line
                         if start_line and end_line and line >= start_line and line <= end_line then
                             return step_index
                         end
@@ -185,8 +186,8 @@ end
 
 ---Apply AI annotations as virtual text to a buffer (no-op; walkthrough uses a split)
 ---@param bufnr integer
----@param _file NRFile
-function M.apply(bufnr, _file)
+---@param _ NRFile
+function M.apply(bufnr, _)
     M.clear(bufnr)
 end
 

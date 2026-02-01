@@ -10,7 +10,7 @@ pub async fn run(url: &str) -> Result<()> {
     // Fetch PR metadata and viewer in parallel
     let (pr, viewer) = tokio::try_join!(client.get_pr(&pr_ref), client.get_viewer())?;
 
-    // Fetch files with hunks
+    // Fetch files with change blocks
     let files = client.get_pr_files(&pr_ref, &pr.head_sha).await?;
 
     // Fetch existing comments

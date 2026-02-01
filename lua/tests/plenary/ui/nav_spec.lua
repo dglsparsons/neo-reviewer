@@ -40,12 +40,12 @@ describe("neo_reviewer.ui.nav", function()
         return bufnr, file
     end
 
-    describe("next_hunk", function()
+    describe("next_change", function()
         it("jumps to first hunk from before first change", function()
             setup_review_buffer(fixtures.navigation_pr)
             helpers.set_cursor(1)
 
-            nav.next_hunk(false)
+            nav.next_change(false)
 
             local cursor = helpers.get_cursor()
             assert.are.equal(3, cursor[1])
@@ -55,7 +55,7 @@ describe("neo_reviewer.ui.nav", function()
             setup_review_buffer(fixtures.navigation_pr)
             helpers.set_cursor(3)
 
-            nav.next_hunk(false)
+            nav.next_change(false)
 
             local cursor = helpers.get_cursor()
             assert.are.equal(10, cursor[1])
@@ -65,10 +65,21 @@ describe("neo_reviewer.ui.nav", function()
             setup_review_buffer(fixtures.mixed_changes_pr)
             helpers.set_cursor(2)
 
-            nav.next_hunk(false)
+            nav.next_change(false)
 
             local cursor = helpers.get_cursor()
             assert.are.equal(5, cursor[1])
+        end)
+
+        it("splits contiguous changes when context breaks are present", function()
+            local _, file = setup_review_buffer(fixtures.context_split_pr)
+            assert.are.equal(2, #file.change_blocks)
+            helpers.set_cursor(1)
+
+            nav.next_change(false)
+
+            local cursor = helpers.get_cursor()
+            assert.are.equal(2, cursor[1])
         end)
 
         it("uses change blocks for AI navigation within a hunk", function()
@@ -79,20 +90,47 @@ describe("neo_reviewer.ui.nav", function()
                     {
                         title = "Step 1",
                         explanation = "Mixed changes",
-                        hunks = { { file = "mixed.lua", hunk_index = 0 } },
+                        change_blocks = {
+                            { file = "mixed.lua", change_block_index = 0 },
+                            { file = "mixed.lua", change_block_index = 1 },
+                        },
                     },
                 },
             })
 
             helpers.set_cursor(1)
 
-            nav.next_hunk(false)
+            nav.next_change(false)
 
             local cursor = helpers.get_cursor()
             assert.are.equal(5, cursor[1])
         end)
 
-        it("skips duplicate AI hunks in order", function()
+        it("uses context-split change blocks for AI navigation", function()
+            setup_review_buffer(fixtures.context_split_pr)
+            state.set_ai_analysis({
+                overview = "Test overview",
+                steps = {
+                    {
+                        title = "Step 1",
+                        explanation = "Context split",
+                        change_blocks = {
+                            { file = "context_split.lua", change_block_index = 0 },
+                            { file = "context_split.lua", change_block_index = 1 },
+                        },
+                    },
+                },
+            })
+
+            helpers.set_cursor(1)
+
+            nav.next_change(false)
+
+            local cursor = helpers.get_cursor()
+            assert.are.equal(2, cursor[1])
+        end)
+
+        it("skips duplicate AI change_blocks in order", function()
             setup_review_buffer(fixtures.navigation_pr)
             state.set_ai_analysis({
                 overview = "Test overview",
@@ -100,23 +138,23 @@ describe("neo_reviewer.ui.nav", function()
                     {
                         title = "Step 1",
                         explanation = "First change",
-                        hunks = {
-                            { file = "test.lua", hunk_index = 0 },
-                            { file = "test.lua", hunk_index = 0 },
+                        change_blocks = {
+                            { file = "test.lua", change_block_index = 0 },
+                            { file = "test.lua", change_block_index = 0 },
                         },
                     },
                     {
                         title = "Step 2",
                         explanation = "Second change",
-                        hunks = {
-                            { file = "test.lua", hunk_index = 1 },
+                        change_blocks = {
+                            { file = "test.lua", change_block_index = 1 },
                         },
                     },
                 },
             })
             helpers.set_cursor(3)
 
-            nav.next_hunk(false)
+            nav.next_change(false)
 
             local cursor = helpers.get_cursor()
             assert.are.equal(10, cursor[1])
@@ -144,15 +182,15 @@ describe("neo_reviewer.ui.nav", function()
                             "a4",
                             "a5",
                         }, "\n"),
-                        hunks = {
+                        change_blocks = {
                             {
-                                start = 3,
-                                count = 1,
-                                hunk_type = "add",
-                                old_lines = {},
+                                start_line = 3,
+                                end_line = 3,
+                                kind = "add",
                                 added_lines = { 3 },
-                                deleted_at = {},
-                                deleted_old_lines = {},
+                                changed_lines = {},
+                                deletion_groups = {},
+                                old_to_new = {},
                             },
                         },
                     },
@@ -193,24 +231,24 @@ describe("neo_reviewer.ui.nav", function()
                             "b29",
                             "b30",
                         }, "\n"),
-                        hunks = {
+                        change_blocks = {
                             {
-                                start = 10,
-                                count = 8,
-                                hunk_type = "add",
-                                old_lines = {},
+                                start_line = 10,
+                                end_line = 17,
+                                kind = "add",
                                 added_lines = { 10, 11, 12, 13, 14, 15, 16, 17 },
-                                deleted_at = {},
-                                deleted_old_lines = {},
+                                changed_lines = {},
+                                deletion_groups = {},
+                                old_to_new = {},
                             },
                             {
-                                start = 25,
-                                count = 1,
-                                hunk_type = "add",
-                                old_lines = {},
+                                start_line = 25,
+                                end_line = 25,
+                                kind = "add",
                                 added_lines = { 25 },
-                                deleted_at = {},
-                                deleted_old_lines = {},
+                                changed_lines = {},
+                                deletion_groups = {},
+                                old_to_new = {},
                             },
                         },
                     },
@@ -225,24 +263,24 @@ describe("neo_reviewer.ui.nav", function()
                     {
                         title = "Step A",
                         explanation = "First change",
-                        hunks = { { file = "file_a.lua", hunk_index = 0 } },
+                        change_blocks = { { file = "file_a.lua", change_block_index = 0 } },
                     },
                     {
                         title = "Step B",
                         explanation = "Second change",
-                        hunks = { { file = "file_b.lua", hunk_index = 0 } },
+                        change_blocks = { { file = "file_b.lua", change_block_index = 0 } },
                     },
                     {
                         title = "Step C",
                         explanation = "Third change",
-                        hunks = { { file = "file_b.lua", hunk_index = 1 } },
+                        change_blocks = { { file = "file_b.lua", change_block_index = 1 } },
                     },
                 },
             })
 
             helpers.set_cursor(16)
 
-            nav.next_hunk(true)
+            nav.next_change(true)
 
             local cursor = helpers.get_cursor()
             assert.are.equal(25, cursor[1])
@@ -256,36 +294,36 @@ describe("neo_reviewer.ui.nav", function()
                     {
                         title = "Step 1",
                         explanation = "First change",
-                        hunks = { { file = "test.lua", hunk_index = 0 } },
+                        change_blocks = { { file = "test.lua", change_block_index = 0 } },
                     },
                     {
                         title = "Step 2",
                         explanation = "Second change",
-                        hunks = { { file = "test.lua", hunk_index = 1 } },
+                        change_blocks = { { file = "test.lua", change_block_index = 1 } },
                     },
                     {
                         title = "Step 3",
                         explanation = "Third change",
-                        hunks = { { file = "test.lua", hunk_index = 2 } },
+                        change_blocks = { { file = "test.lua", change_block_index = 2 } },
                     },
                 },
             })
 
             helpers.set_cursor(3)
-            nav.next_hunk(false)
+            nav.next_change(false)
 
             helpers.set_cursor(1)
-            nav.next_hunk(false)
+            nav.next_change(false)
 
             local cursor = helpers.get_cursor()
             assert.are.equal(20, cursor[1])
         end)
 
-        it("jumps to next hunk from between hunks", function()
+        it("jumps to next hunk from between change_blocks", function()
             setup_review_buffer(fixtures.navigation_pr)
             helpers.set_cursor(5)
 
-            nav.next_hunk(false)
+            nav.next_change(false)
 
             local cursor = helpers.get_cursor()
             assert.are.equal(10, cursor[1])
@@ -295,7 +333,7 @@ describe("neo_reviewer.ui.nav", function()
             setup_review_buffer(fixtures.navigation_pr)
             helpers.set_cursor(10)
 
-            nav.next_hunk(false)
+            nav.next_change(false)
 
             local cursor = helpers.get_cursor()
             assert.are.equal(20, cursor[1])
@@ -305,7 +343,7 @@ describe("neo_reviewer.ui.nav", function()
             setup_review_buffer(fixtures.navigation_pr)
             helpers.set_cursor(20)
 
-            nav.next_hunk(false)
+            nav.next_change(false)
 
             local cursor = helpers.get_cursor()
             assert.are.equal(20, cursor[1])
@@ -315,7 +353,7 @@ describe("neo_reviewer.ui.nav", function()
             setup_review_buffer(fixtures.navigation_pr)
             helpers.set_cursor(22)
 
-            nav.next_hunk(true)
+            nav.next_change(true)
 
             local cursor = helpers.get_cursor()
             assert.are.equal(3, cursor[1])
@@ -325,7 +363,7 @@ describe("neo_reviewer.ui.nav", function()
             setup_review_buffer(fixtures.navigation_pr)
             helpers.set_cursor(22)
 
-            nav.next_hunk(false)
+            nav.next_change(false)
 
             local cursor = helpers.get_cursor()
             assert.are.equal(22, cursor[1])
@@ -335,7 +373,7 @@ describe("neo_reviewer.ui.nav", function()
             helpers.create_test_buffer({ "not", "a", "review" })
             local notifications = helpers.capture_notifications()
 
-            nav.next_hunk(false)
+            nav.next_change(false)
 
             local msgs = notifications.get()
             notifications.restore()
@@ -344,12 +382,12 @@ describe("neo_reviewer.ui.nav", function()
         end)
     end)
 
-    describe("prev_hunk", function()
+    describe("prev_change", function()
         it("jumps to last hunk from after last change", function()
             setup_review_buffer(fixtures.navigation_pr)
             helpers.set_cursor(25)
 
-            nav.prev_hunk(false)
+            nav.prev_change(false)
 
             local cursor = helpers.get_cursor()
             assert.are.equal(20, cursor[1])
@@ -359,7 +397,7 @@ describe("neo_reviewer.ui.nav", function()
             setup_review_buffer(fixtures.navigation_pr)
             helpers.set_cursor(20)
 
-            nav.prev_hunk(false)
+            nav.prev_change(false)
 
             local cursor = helpers.get_cursor()
             assert.are.equal(10, cursor[1])
@@ -369,17 +407,17 @@ describe("neo_reviewer.ui.nav", function()
             setup_review_buffer(fixtures.mixed_changes_pr)
             helpers.set_cursor(6)
 
-            nav.prev_hunk(false)
+            nav.prev_change(false)
 
             local cursor = helpers.get_cursor()
             assert.are.equal(5, cursor[1])
         end)
 
-        it("jumps to previous hunk from between hunks", function()
+        it("jumps to previous hunk from between change_blocks", function()
             setup_review_buffer(fixtures.navigation_pr)
             helpers.set_cursor(8)
 
-            nav.prev_hunk(false)
+            nav.prev_change(false)
 
             local cursor = helpers.get_cursor()
             assert.are.equal(3, cursor[1])
@@ -389,7 +427,7 @@ describe("neo_reviewer.ui.nav", function()
             setup_review_buffer(fixtures.navigation_pr)
             helpers.set_cursor(1)
 
-            nav.prev_hunk(true)
+            nav.prev_change(true)
 
             local cursor = helpers.get_cursor()
             assert.are.equal(20, cursor[1])
@@ -399,7 +437,7 @@ describe("neo_reviewer.ui.nav", function()
             setup_review_buffer(fixtures.navigation_pr)
             helpers.set_cursor(1)
 
-            nav.prev_hunk(false)
+            nav.prev_change(false)
 
             local cursor = helpers.get_cursor()
             assert.are.equal(1, cursor[1])
@@ -413,50 +451,50 @@ describe("neo_reviewer.ui.nav", function()
                     {
                         title = "Step 1",
                         explanation = "First change",
-                        hunks = { { file = "test.lua", hunk_index = 0 } },
+                        change_blocks = { { file = "test.lua", change_block_index = 0 } },
                     },
                     {
                         title = "Step 2",
                         explanation = "Second change",
-                        hunks = { { file = "test.lua", hunk_index = 1 } },
+                        change_blocks = { { file = "test.lua", change_block_index = 1 } },
                     },
                     {
                         title = "Step 3",
                         explanation = "Third change",
-                        hunks = { { file = "test.lua", hunk_index = 2 } },
+                        change_blocks = { { file = "test.lua", change_block_index = 2 } },
                     },
                 },
             })
 
             helpers.set_cursor(3)
-            nav.next_hunk(false)
+            nav.next_change(false)
 
             helpers.set_cursor(25)
-            nav.prev_hunk(false)
+            nav.prev_change(false)
 
             local cursor = helpers.get_cursor()
             assert.are.equal(3, cursor[1])
         end)
     end)
 
-    describe("first_hunk", function()
+    describe("first_change", function()
         it("jumps to first hunk start", function()
             setup_review_buffer(fixtures.navigation_pr)
             helpers.set_cursor(15)
 
-            nav.first_hunk()
+            nav.first_change()
 
             local cursor = helpers.get_cursor()
             assert.are.equal(3, cursor[1])
         end)
     end)
 
-    describe("last_hunk", function()
+    describe("last_change", function()
         it("jumps to last hunk start", function()
             setup_review_buffer(fixtures.navigation_pr)
             helpers.set_cursor(1)
 
-            nav.last_hunk()
+            nav.last_change()
 
             local cursor = helpers.get_cursor()
             assert.are.equal(20, cursor[1])

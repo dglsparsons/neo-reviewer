@@ -138,7 +138,7 @@ describe("neo_reviewer.ui.comments", function()
 
             local notified = false
             local original_notify = vim.notify
-            vim.notify = function(msg, level)
+            vim.notify = function(msg)
                 if msg == "Not in a review buffer" then
                     notified = true
                 end
@@ -235,15 +235,97 @@ describe("neo_reviewer.ui.comments", function()
         end)
     end)
 
+    describe("comment side selection", function()
+        it("uses RIGHT side for replacement lines", function()
+            local data = {
+                pr = { number = 101, title = "Replacement PR" },
+                files = {
+                    {
+                        path = "test.lua",
+                        status = "modified",
+                        content = table.concat({
+                            "line 1",
+                            "new line 2",
+                            "line 3",
+                        }, "\n"),
+                        change_blocks = {
+                            {
+                                start_line = 2,
+                                end_line = 2,
+                                kind = "change",
+                                added_lines = { 2 },
+                                changed_lines = { 2 },
+                                deletion_groups = {
+                                    {
+                                        anchor_line = 2,
+                                        old_lines = { "old line 2" },
+                                        old_line_numbers = { 2 },
+                                    },
+                                },
+                                old_to_new = {
+                                    { old_line = 2, new_line = 2 },
+                                },
+                            },
+                        },
+                    },
+                },
+                comments = {},
+            }
+            state.set_review(data)
+            local review = state.get_review()
+            review.url = "https://github.com/owner/repo/pull/101"
+
+            local file = data.files[1]
+            local bufnr = helpers.create_test_buffer(vim.split(file.content, "\n"))
+            vim.api.nvim_buf_set_var(bufnr, "nr_file", file)
+            vim.api.nvim_buf_set_var(bufnr, "nr_pr_url", review.url)
+
+            local original_input = comments.open_multiline_input
+            local original_add = comments.add_pr_comment
+            local captured = nil
+
+            comments.open_multiline_input = function(_, callback)
+                callback("Test comment")
+            end
+            comments.add_pr_comment = function(_, _, _, _, end_pos, _, _)
+                captured = end_pos
+            end
+
+            helpers.set_cursor(2)
+            comments.add_at_cursor()
+
+            comments.open_multiline_input = original_input
+            comments.add_pr_comment = original_add
+
+            assert.is_not_nil(captured)
+            ---@cast captured NRCommentPosition
+            assert.are.equal("RIGHT", captured.side)
+            assert.are.equal(2, captured.line)
+        end)
+    end)
+
     describe("LEFT side comments", function()
         it("show_comment maps LEFT side comment to deleted_at position", function()
             local bufnr = helpers.create_test_buffer({ "line 1", "line 2", "line 3", "line 4", "line 5" })
 
-            local hunks = {
+            local change_blocks = {
                 {
-                    deleted_at = { 3, 3 },
-                    deleted_old_lines = { 5, 6 },
-                    old_lines = { "deleted line 5", "deleted line 6" },
+                    start_line = 3,
+                    end_line = 3,
+                    kind = "delete",
+                    added_lines = {},
+                    changed_lines = {},
+                    deletion_groups = {
+                        {
+                            anchor_line = 3,
+                            old_lines = { "deleted line 5", "deleted line 6" },
+                            old_line_numbers = { 5, 6 },
+                        },
+                    },
+                    old_to_new = {
+                        { old_line = 5, new_line = 3 },
+                        { old_line = 6, new_line = 3 },
+                    },
                 },
             }
 
@@ -252,7 +334,7 @@ describe("neo_reviewer.ui.comments", function()
                 side = "LEFT",
                 body = "Comment on deleted line",
                 author = "user",
-            }, hunks)
+            }, change_blocks)
 
             local extmarks = helpers.get_extmarks(bufnr, "nr_comments")
             assert.are.equal(1, #extmarks)
@@ -262,10 +344,23 @@ describe("neo_reviewer.ui.comments", function()
         it("show_comment places RIGHT side comment at its line number", function()
             local bufnr = helpers.create_test_buffer({ "line 1", "line 2", "line 3", "line 4", "line 5" })
 
-            local hunks = {
+            local change_blocks = {
                 {
-                    deleted_at = { 3 },
-                    deleted_old_lines = { 5 },
+                    start_line = 3,
+                    end_line = 3,
+                    kind = "delete",
+                    added_lines = {},
+                    changed_lines = {},
+                    deletion_groups = {
+                        {
+                            anchor_line = 3,
+                            old_lines = { "deleted line 5" },
+                            old_line_numbers = { 5 },
+                        },
+                    },
+                    old_to_new = {
+                        { old_line = 5, new_line = 3 },
+                    },
                 },
             }
 
@@ -274,7 +369,7 @@ describe("neo_reviewer.ui.comments", function()
                 side = "RIGHT",
                 body = "Comment on new line",
                 author = "user",
-            }, hunks)
+            }, change_blocks)
 
             local extmarks = helpers.get_extmarks(bufnr, "nr_comments")
             assert.are.equal(1, #extmarks)
@@ -288,17 +383,24 @@ describe("neo_reviewer.ui.comments", function()
                     {
                         path = "test.lua",
                         status = "modified",
-                        hunks = {
+                        change_blocks = {
                             {
-                                start = 1,
-                                count = 3,
-                                old_start = 1,
-                                old_count = 5,
-                                hunk_type = "change",
-                                old_lines = { "old2", "old3" },
+                                start_line = 2,
+                                end_line = 2,
+                                kind = "change",
                                 added_lines = { 2 },
-                                deleted_at = { 2, 2 },
-                                deleted_old_lines = { 2, 3 },
+                                changed_lines = { 2 },
+                                deletion_groups = {
+                                    {
+                                        anchor_line = 2,
+                                        old_lines = { "old2", "old3" },
+                                        old_line_numbers = { 2, 3 },
+                                    },
+                                },
+                                old_to_new = {
+                                    { old_line = 2, new_line = 2 },
+                                    { old_line = 3, new_line = 2 },
+                                },
                             },
                         },
                     },
@@ -329,10 +431,23 @@ describe("neo_reviewer.ui.comments", function()
         it("LEFT side comment not displayed if old line not in hunks", function()
             local bufnr = helpers.create_test_buffer({ "line 1", "line 2", "line 3" })
 
-            local hunks = {
+            local change_blocks = {
                 {
-                    deleted_at = { 2 },
-                    deleted_old_lines = { 5 },
+                    start_line = 2,
+                    end_line = 2,
+                    kind = "delete",
+                    added_lines = {},
+                    changed_lines = {},
+                    deletion_groups = {
+                        {
+                            anchor_line = 2,
+                            old_lines = { "deleted line 5" },
+                            old_line_numbers = { 5 },
+                        },
+                    },
+                    old_to_new = {
+                        { old_line = 5, new_line = 2 },
+                    },
                 },
             }
 
@@ -341,10 +456,45 @@ describe("neo_reviewer.ui.comments", function()
                 side = "LEFT",
                 body = "Comment on unmapped line",
                 author = "user",
-            }, hunks)
+            }, change_blocks)
 
             local extmarks = helpers.get_extmarks(bufnr, "nr_comments")
             assert.are.equal(0, #extmarks)
+        end)
+
+        it("clamps LEFT side comment past EOF to last line", function()
+            local bufnr = helpers.create_test_buffer({ "line 1", "line 2", "line 3" })
+
+            local change_blocks = {
+                {
+                    start_line = 4,
+                    end_line = 4,
+                    kind = "delete",
+                    added_lines = {},
+                    changed_lines = {},
+                    deletion_groups = {
+                        {
+                            anchor_line = 4,
+                            old_lines = { "deleted line 4" },
+                            old_line_numbers = { 4 },
+                        },
+                    },
+                    old_to_new = {
+                        { old_line = 4, new_line = 4 },
+                    },
+                },
+            }
+
+            comments.show_comment(bufnr, {
+                line = 4,
+                side = "LEFT",
+                body = "Comment on deleted line",
+                author = "user",
+            }, change_blocks)
+
+            local extmarks = helpers.get_extmarks(bufnr, "nr_comments")
+            assert.are.equal(1, #extmarks)
+            assert.are.equal(2, extmarks[1][2])
         end)
     end)
 end)

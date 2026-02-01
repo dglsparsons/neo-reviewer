@@ -93,8 +93,8 @@ vim.keymap.set("n", ",dq", nr.done, vim.tbl_extend("force", opts, { desc = "Clos
 vim.keymap.set("n", ",ds", nr.sync, vim.tbl_extend("force", opts, { desc = "Sync review" }))
 
 -- Navigation
-vim.keymap.set("n", ",dn", nr.next_hunk, vim.tbl_extend("force", opts, { desc = "Next hunk" }))
-vim.keymap.set("n", ",dp", nr.prev_hunk, vim.tbl_extend("force", opts, { desc = "Prev hunk" }))
+vim.keymap.set("n", ",dn", nr.next_change, vim.tbl_extend("force", opts, { desc = "Next change" }))
+vim.keymap.set("n", ",dp", nr.prev_change, vim.tbl_extend("force", opts, { desc = "Prev change" }))
 vim.keymap.set("n", ",dj", nr.next_comment, vim.tbl_extend("force", opts, { desc = "Next comment" }))
 vim.keymap.set("n", ",dk", nr.prev_comment, vim.tbl_extend("force", opts, { desc = "Prev comment" }))
 
@@ -159,7 +159,7 @@ vim.keymap.set("n", ",dx", nr.request_changes, vim.tbl_extend("force", opts, { d
 │                    Rust CLI                             │
 │                                                         │
 │  - Fetches PR data from GitHub API                      │
-│  - Parses unified diffs into structured hunks           │
+│  - Parses unified diffs into change blocks              │
 │  - Posts review comments                                │
 │  - Auth via `gh auth token`                             │
 └─────────────────────────────────────────────────────────┘

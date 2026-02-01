@@ -22,33 +22,33 @@ local function define_highlights()
 end
 
 ---@param bufnr integer
----@param hunks? NRHunk[]
-function M.place(bufnr, hunks)
+---@param change_blocks? NRChangeBlock[]
+function M.place(bufnr, change_blocks)
     define_highlights()
 
     vim.api.nvim_buf_clear_namespace(bufnr, ns, 0, -1)
 
-    if not hunks then
+    if not change_blocks then
         return
     end
 
     local line_count = vim.api.nvim_buf_line_count(bufnr)
 
-    for _, hunk in ipairs(hunks) do
+    for _, block in ipairs(change_blocks) do
         local changed_lookup = nil
-        if hunk.hunk_type == "change" and hunk.changed_lines ~= nil then
+        if block.kind == "change" and block.changed_lines ~= nil then
             changed_lookup = {}
-            for _, line_num in ipairs(hunk.changed_lines) do
+            for _, line_num in ipairs(block.changed_lines) do
                 changed_lookup[line_num] = true
             end
         end
 
-        for _, line_num in ipairs(hunk.added_lines or {}) do
+        for _, line_num in ipairs(block.added_lines or {}) do
             local row = line_num - 1
             if row >= 0 and row < line_count then
                 local sign_text, sign_hl, line_hl
                 local is_change = false
-                if hunk.hunk_type == "change" then
+                if block.kind == "change" then
                     if changed_lookup then
                         is_change = changed_lookup[line_num] == true
                     else
@@ -56,7 +56,7 @@ function M.place(bufnr, hunks)
                     end
                 end
 
-                if hunk.hunk_type == "add" or (hunk.hunk_type == "change" and not is_change) then
+                if block.kind == "add" or (block.kind == "change" and not is_change) then
                     sign_text = config.values.signs.add
                     sign_hl = "NRAdd"
                     line_hl = "NRAddLine"
@@ -74,8 +74,16 @@ function M.place(bufnr, hunks)
             end
         end
 
-        for _, line_num in ipairs(hunk.deleted_at or {}) do
-            local row = math.max(line_num - 1, 0)
+        for _, group in ipairs(block.deletion_groups or {}) do
+            if line_count == 0 then
+                break
+            end
+
+            local row = math.max(group.anchor_line - 1, 0)
+            if row >= line_count then
+                row = math.max(line_count - 1, 0)
+            end
+
             if row < line_count then
                 local existing = vim.api.nvim_buf_get_extmarks(bufnr, ns, { row, 0 }, { row, 0 }, {})
                 if #existing == 0 then
@@ -96,7 +104,7 @@ function M.show(bufnr, file_path)
     local state = require("neo_reviewer.state")
     local file = state.get_file_by_path(file_path)
     if file then
-        M.place(bufnr, file.hunks)
+        M.place(bufnr, file.change_blocks)
     end
 end
 

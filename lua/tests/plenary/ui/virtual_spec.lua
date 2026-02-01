@@ -7,8 +7,6 @@ local helpers = require("plenary.helpers")
 describe("neo_reviewer.ui.virtual", function()
     local virtual
     local state
-    local buffer
-
     before_each(function()
         package.loaded["neo_reviewer.ui.virtual"] = nil
         package.loaded["neo_reviewer.ui.buffer"] = nil
@@ -16,7 +14,6 @@ describe("neo_reviewer.ui.virtual", function()
         package.loaded["neo_reviewer.config"] = nil
 
         state = require("neo_reviewer.state")
-        buffer = require("neo_reviewer.ui.buffer")
         virtual = require("neo_reviewer.ui.virtual")
     end)
 
@@ -42,89 +39,89 @@ describe("neo_reviewer.ui.virtual", function()
         return bufnr, file
     end
 
-    describe("find_hunk_at_line", function()
-        it("finds hunk when cursor is at hunk start", function()
-            local hunks = {
-                { start = 5, count = 3, hunk_type = "change", old_lines = { "old" } },
+    describe("find_change_block_at_line", function()
+        it("finds change block when cursor is at block start", function()
+            local change_blocks = {
+                { start_line = 5, end_line = 7, kind = "change" },
             }
 
-            local hunk = virtual.find_hunk_at_line(hunks, 5)
-            assert.is_not_nil(hunk)
-            assert.are.equal(5, hunk.start)
+            local block = virtual.find_change_block_at_line(change_blocks, 5)
+            assert.is_not_nil(block)
+            assert.are.equal(5, block.start_line)
         end)
 
-        it("finds hunk when cursor is within hunk", function()
-            local hunks = {
-                { start = 5, count = 3, hunk_type = "change", old_lines = { "old" } },
+        it("finds change block when cursor is within block", function()
+            local change_blocks = {
+                { start_line = 5, end_line = 7, kind = "change" },
             }
 
-            local hunk = virtual.find_hunk_at_line(hunks, 6)
-            assert.is_not_nil(hunk)
-            assert.are.equal(5, hunk.start)
+            local block = virtual.find_change_block_at_line(change_blocks, 6)
+            assert.is_not_nil(block)
+            assert.are.equal(5, block.start_line)
         end)
 
-        it("finds hunk when cursor is at hunk end", function()
-            local hunks = {
-                { start = 5, count = 3, hunk_type = "change", old_lines = { "old" } },
+        it("finds change block when cursor is at block end", function()
+            local change_blocks = {
+                { start_line = 5, end_line = 7, kind = "change" },
             }
 
-            local hunk = virtual.find_hunk_at_line(hunks, 7)
-            assert.is_not_nil(hunk)
+            local block = virtual.find_change_block_at_line(change_blocks, 7)
+            assert.is_not_nil(block)
         end)
 
-        it("returns nil when cursor is outside hunk", function()
-            local hunks = {
-                { start = 5, count = 3, hunk_type = "change", old_lines = { "old" } },
+        it("returns nil when cursor is outside block", function()
+            local change_blocks = {
+                { start_line = 5, end_line = 7, kind = "change" },
             }
 
-            local hunk = virtual.find_hunk_at_line(hunks, 10)
-            assert.is_nil(hunk)
+            local block = virtual.find_change_block_at_line(change_blocks, 10)
+            assert.is_nil(block)
         end)
 
-        it("finds delete hunk at exact line", function()
-            local hunks = {
-                { start = 5, count = 0, hunk_type = "delete", old_lines = { "deleted" } },
+        it("finds delete block at exact line", function()
+            local change_blocks = {
+                { start_line = 5, end_line = 5, kind = "delete" },
             }
 
-            local hunk = virtual.find_hunk_at_line(hunks, 5)
-            assert.is_not_nil(hunk)
+            local block = virtual.find_change_block_at_line(change_blocks, 5)
+            assert.is_not_nil(block)
         end)
 
-        it("finds delete hunk at line before", function()
-            local hunks = {
-                { start = 5, count = 0, hunk_type = "delete", old_lines = { "deleted" } },
+        it("finds delete block at line before", function()
+            local change_blocks = {
+                { start_line = 5, end_line = 5, kind = "delete" },
             }
 
-            local hunk = virtual.find_hunk_at_line(hunks, 4)
-            assert.is_not_nil(hunk)
+            local block = virtual.find_change_block_at_line(change_blocks, 4)
+            assert.is_not_nil(block)
         end)
 
-        it("returns nil for nil hunks", function()
-            local hunk = virtual.find_hunk_at_line(nil, 5)
-            assert.is_nil(hunk)
+        it("returns nil for nil change blocks", function()
+            local block = virtual.find_change_block_at_line(nil, 5)
+            assert.is_nil(block)
         end)
 
-        it("handles multiple hunks", function()
-            local hunks = {
-                { start = 3, count = 2, hunk_type = "add", old_lines = {} },
-                { start = 10, count = 1, hunk_type = "change", old_lines = { "old" } },
-                { start = 20, count = 3, hunk_type = "change", old_lines = { "a", "b", "c" } },
+        it("handles multiple change blocks", function()
+            local change_blocks = {
+                { start_line = 3, end_line = 4, kind = "add" },
+                { start_line = 10, end_line = 10, kind = "change" },
+                { start_line = 20, end_line = 22, kind = "change" },
             }
 
-            assert.is_not_nil(virtual.find_hunk_at_line(hunks, 3))
-            assert.is_not_nil(virtual.find_hunk_at_line(hunks, 4))
-            assert.is_nil(virtual.find_hunk_at_line(hunks, 5))
-            assert.is_not_nil(virtual.find_hunk_at_line(hunks, 10))
-            assert.is_not_nil(virtual.find_hunk_at_line(hunks, 21))
+            assert.is_not_nil(virtual.find_change_block_at_line(change_blocks, 3))
+            assert.is_not_nil(virtual.find_change_block_at_line(change_blocks, 4))
+            assert.is_nil(virtual.find_change_block_at_line(change_blocks, 5))
+            assert.is_not_nil(virtual.find_change_block_at_line(change_blocks, 10))
+            assert.is_not_nil(virtual.find_change_block_at_line(change_blocks, 21))
         end)
     end)
 
     describe("expand / collapse", function()
         it("creates virtual lines when expanding", function()
             local bufnr, file = setup_review_buffer(fixtures.simple_pr)
-            local hunk = file.hunks[1]
+            local block = file.change_blocks[1]
 
-            virtual.expand(bufnr, hunk, file.path)
+            virtual.expand(bufnr, block, file.path)
 
             local extmarks = helpers.get_extmarks(bufnr, "nr_virtual")
             assert.is_true(#extmarks > 0)
@@ -132,35 +129,35 @@ describe("neo_reviewer.ui.virtual", function()
 
         it("updates state when expanding", function()
             local bufnr, file = setup_review_buffer(fixtures.simple_pr)
-            local hunk = file.hunks[1]
+            local block = file.change_blocks[1]
 
-            assert.is_false(state.is_hunk_expanded(file.path, hunk.start))
+            assert.is_false(state.is_change_expanded(file.path, block.start_line))
 
-            virtual.expand(bufnr, hunk, file.path)
+            virtual.expand(bufnr, block, file.path)
 
-            assert.is_true(state.is_hunk_expanded(file.path, hunk.start))
+            assert.is_true(state.is_change_expanded(file.path, block.start_line))
         end)
 
         it("removes virtual lines when collapsing", function()
             local bufnr, file = setup_review_buffer(fixtures.simple_pr)
-            local hunk = file.hunks[1]
+            local block = file.change_blocks[1]
 
-            virtual.expand(bufnr, hunk, file.path)
+            virtual.expand(bufnr, block, file.path)
             assert.is_true(#helpers.get_extmarks(bufnr, "nr_virtual") > 0)
 
-            virtual.collapse(bufnr, hunk, file.path)
+            virtual.collapse(bufnr, block, file.path)
             assert.are.equal(0, #helpers.get_extmarks(bufnr, "nr_virtual"))
         end)
 
         it("updates state when collapsing", function()
             local bufnr, file = setup_review_buffer(fixtures.simple_pr)
-            local hunk = file.hunks[1]
+            local block = file.change_blocks[1]
 
-            virtual.expand(bufnr, hunk, file.path)
-            assert.is_true(state.is_hunk_expanded(file.path, hunk.start))
+            virtual.expand(bufnr, block, file.path)
+            assert.is_true(state.is_change_expanded(file.path, block.start_line))
 
-            virtual.collapse(bufnr, hunk, file.path)
-            assert.is_false(state.is_hunk_expanded(file.path, hunk.start))
+            virtual.collapse(bufnr, block, file.path)
+            assert.is_false(state.is_change_expanded(file.path, block.start_line))
         end)
     end)
 
@@ -175,22 +172,22 @@ describe("neo_reviewer.ui.virtual", function()
             assert.is_false(state.is_showing_old_code())
         end)
 
-        it("expands all hunks in all applied buffers", function()
+        it("expands all change blocks in all applied buffers", function()
             local bufnr, file = setup_review_buffer(fixtures.simple_pr)
 
             virtual.toggle_at_cursor()
 
-            assert.is_true(state.is_hunk_expanded(file.path, file.hunks[1].start))
+            assert.is_true(state.is_change_expanded(file.path, file.change_blocks[1].start_line))
             assert.is_true(#helpers.get_extmarks(bufnr, "nr_virtual") > 0)
         end)
 
-        it("collapses all hunks when toggled off", function()
+        it("collapses all change blocks when toggled off", function()
             local bufnr, file = setup_review_buffer(fixtures.simple_pr)
 
             virtual.toggle_at_cursor()
             virtual.toggle_at_cursor()
 
-            assert.is_false(state.is_hunk_expanded(file.path, file.hunks[1].start))
+            assert.is_false(state.is_change_expanded(file.path, file.change_blocks[1].start_line))
             assert.are.equal(0, #helpers.get_extmarks(bufnr, "nr_virtual"))
         end)
 
@@ -210,8 +207,8 @@ describe("neo_reviewer.ui.virtual", function()
     describe("clear", function()
         it("removes all virtual lines", function()
             local bufnr, file = setup_review_buffer(fixtures.simple_pr)
-            local hunk = file.hunks[1]
-            virtual.expand(bufnr, hunk, file.path)
+            local block = file.change_blocks[1]
+            virtual.expand(bufnr, block, file.path)
 
             assert.is_true(#helpers.get_extmarks(bufnr, "nr_virtual") > 0)
 
@@ -223,9 +220,9 @@ describe("neo_reviewer.ui.virtual", function()
     describe("non-contiguous deletions", function()
         it("creates separate extmarks for deletions at different positions", function()
             local bufnr, file = setup_review_buffer(fixtures.mixed_changes_pr)
-            local hunk = file.hunks[1]
-
-            virtual.expand(bufnr, hunk, file.path)
+            for _, block in ipairs(file.change_blocks) do
+                virtual.expand(bufnr, block, file.path)
+            end
 
             local extmarks = helpers.get_extmarks(bufnr, "nr_virtual")
             assert.are.equal(2, #extmarks)
@@ -233,12 +230,9 @@ describe("neo_reviewer.ui.virtual", function()
 
         it("anchors scattered deletions to their respective positions", function()
             local bufnr, file = setup_review_buffer(fixtures.mixed_changes_pr)
-            local hunk = file.hunks[1]
-            -- deleted_at = { 1, 1, 5 } means:
-            --   Group 1: deletions at position 1 -> anchor=1, row=0
-            --   Group 2: deletion at position 5 -> anchor=5, row=4
-
-            virtual.expand(bufnr, hunk, file.path)
+            for _, block in ipairs(file.change_blocks) do
+                virtual.expand(bufnr, block, file.path)
+            end
 
             local extmarks = helpers.get_extmarks(bufnr, "nr_virtual")
             assert.are.equal(2, #extmarks)
@@ -256,33 +250,34 @@ describe("neo_reviewer.ui.virtual", function()
 
         it("stores multiple extmark IDs in state", function()
             local bufnr, file = setup_review_buffer(fixtures.mixed_changes_pr)
-            local hunk = file.hunks[1]
-
-            virtual.expand(bufnr, hunk, file.path)
-
-            local extmark_ids = state.get_hunk_extmarks(file.path, hunk.start)
-            assert.is_not_nil(extmark_ids)
-            assert.are.equal(2, #extmark_ids)
+            for _, block in ipairs(file.change_blocks) do
+                virtual.expand(bufnr, block, file.path)
+                local extmark_ids = state.get_change_extmarks(file.path, block.start_line)
+                assert.is_not_nil(extmark_ids)
+                assert.are.equal(1, #extmark_ids)
+            end
         end)
 
         it("removes all extmarks when collapsing", function()
             local bufnr, file = setup_review_buffer(fixtures.mixed_changes_pr)
-            local hunk = file.hunks[1]
-
-            virtual.expand(bufnr, hunk, file.path)
+            for _, block in ipairs(file.change_blocks) do
+                virtual.expand(bufnr, block, file.path)
+            end
             assert.are.equal(2, #helpers.get_extmarks(bufnr, "nr_virtual"))
 
-            virtual.collapse(bufnr, hunk, file.path)
+            for _, block in ipairs(file.change_blocks) do
+                virtual.collapse(bufnr, block, file.path)
+            end
             assert.are.equal(0, #helpers.get_extmarks(bufnr, "nr_virtual"))
         end)
     end)
 
     describe("anchoring behavior", function()
-        it("anchors CHANGE hunk virtual lines to first added line", function()
+        it("anchors CHANGE block virtual lines to first added line", function()
             local bufnr, file = setup_review_buffer(fixtures.change_hunk_pr)
-            local hunk = file.hunks[1]
+            local block = file.change_blocks[1]
 
-            virtual.expand(bufnr, hunk, file.path)
+            virtual.expand(bufnr, block, file.path)
 
             local extmarks = helpers.get_extmarks(bufnr, "nr_virtual")
             assert.are.equal(1, #extmarks)
@@ -292,11 +287,11 @@ describe("neo_reviewer.ui.virtual", function()
             assert.are.equal(2, row)
         end)
 
-        it("CHANGE hunk extmarks survive line insertions above anchor", function()
+        it("CHANGE block extmarks survive line insertions above anchor", function()
             local bufnr, file = setup_review_buffer(fixtures.change_hunk_pr)
-            local hunk = file.hunks[1]
+            local block = file.change_blocks[1]
 
-            virtual.expand(bufnr, hunk, file.path)
+            virtual.expand(bufnr, block, file.path)
 
             -- Insert a line at the beginning of the buffer
             vim.api.nvim_buf_set_lines(bufnr, 0, 0, false, { "inserted line" })
@@ -309,11 +304,11 @@ describe("neo_reviewer.ui.virtual", function()
             assert.are.equal(3, row)
         end)
 
-        it("anchors DELETE-only hunk virtual lines to deletion position", function()
+        it("anchors DELETE-only block virtual lines to deletion position", function()
             local bufnr, file = setup_review_buffer(fixtures.delete_only_pr)
-            local hunk = file.hunks[1]
+            local block = file.change_blocks[1]
 
-            virtual.expand(bufnr, hunk, file.path)
+            virtual.expand(bufnr, block, file.path)
 
             local extmarks = helpers.get_extmarks(bufnr, "nr_virtual")
             assert.are.equal(1, #extmarks)
@@ -323,11 +318,11 @@ describe("neo_reviewer.ui.virtual", function()
             assert.are.equal(2, row)
         end)
 
-        it("DELETE-only hunk extmarks survive line insertions above anchor", function()
+        it("DELETE-only block extmarks survive line insertions above anchor", function()
             local bufnr, file = setup_review_buffer(fixtures.delete_only_pr)
-            local hunk = file.hunks[1]
+            local block = file.change_blocks[1]
 
-            virtual.expand(bufnr, hunk, file.path)
+            virtual.expand(bufnr, block, file.path)
 
             -- Insert a line at the beginning of the buffer
             vim.api.nvim_buf_set_lines(bufnr, 0, 0, false, { "inserted line" })
@@ -344,16 +339,16 @@ describe("neo_reviewer.ui.virtual", function()
     describe("EOF deletion handling", function()
         it("places EOF deletions below the last line", function()
             local bufnr, file = setup_review_buffer(fixtures.eof_deletion_pr)
-            local hunk = file.hunks[1]
+            local block = file.change_blocks[1]
 
-            virtual.expand(bufnr, hunk, file.path)
+            virtual.expand(bufnr, block, file.path)
 
             local extmarks = helpers.get_extmarks(bufnr, "nr_virtual")
             assert.are.equal(1, #extmarks)
             -- File has 3 lines (0-2 rows), anchor_line=4 exceeds line_count
             -- Should clamp to row 2 (last line) with virt_lines_above=false
             local row = extmarks[1][2]
-            local details = extmarks[1][4]
+            local details = assert(extmarks[1][4])
             assert.are.equal(2, row)
             assert.is_false(details.virt_lines_above)
         end)
@@ -372,30 +367,30 @@ describe("neo_reviewer.ui.virtual", function()
             vim.api.nvim_buf_set_var(bufnr, "nr_pr_url", review.url)
             state.mark_buffer_applied(bufnr)
 
-            local hunk = file.hunks[1]
+            local block = file.change_blocks[1]
 
             -- Should not error
-            virtual.expand(bufnr, hunk, file.path)
+            virtual.expand(bufnr, block, file.path)
 
             local extmarks = helpers.get_extmarks(bufnr, "nr_virtual")
             assert.are.equal(1, #extmarks)
             -- Row should be 0 (clamped from -1), displayed below
             local row = extmarks[1][2]
-            local details = extmarks[1][4]
+            local details = assert(extmarks[1][4])
             assert.are.equal(0, row)
             assert.is_false(details.virt_lines_above)
         end)
 
         it("normal deletions still use virt_lines_above=true", function()
             local bufnr, file = setup_review_buffer(fixtures.delete_only_pr)
-            local hunk = file.hunks[1]
+            local block = file.change_blocks[1]
 
-            virtual.expand(bufnr, hunk, file.path)
+            virtual.expand(bufnr, block, file.path)
 
             local extmarks = helpers.get_extmarks(bufnr, "nr_virtual")
             assert.are.equal(1, #extmarks)
             -- Deletion at line 3 in a 5-line file should use virt_lines_above=true
-            local details = extmarks[1][4]
+            local details = assert(extmarks[1][4])
             assert.is_true(details.virt_lines_above)
         end)
     end)
