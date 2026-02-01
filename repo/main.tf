@@ -47,31 +47,6 @@ resource "github_repository" "neo_reviewer" {
   ]
 }
 
-resource "github_branch_protection" "main" {
-  repository_id = github_repository.neo_reviewer.node_id
-  pattern       = "main"
-
-  required_pull_request_reviews {
-    required_approving_review_count = 0
-  }
-
-  required_status_checks {
-    strict = true
-    contexts = [
-      "Lua Tests (stable)",
-      "Lua Tests (nightly)",
-      "Rust (ubuntu-latest)",
-      "Rust (macos-latest)",
-      "Terraform",
-    ]
-  }
-
-  required_linear_history = true
-  allows_force_pushes     = false
-  allows_deletions        = false
-  enforce_admins          = false
-}
-
 resource "github_actions_repository_permissions" "neo_reviewer" {
   repository = github_repository.neo_reviewer.name
 
