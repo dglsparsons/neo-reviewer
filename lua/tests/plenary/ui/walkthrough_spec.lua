@@ -37,6 +37,15 @@ describe("neo_reviewer.ui.walkthrough", function()
         helpers.clear_all_buffers()
     end)
 
+    it("shows a loading message while waiting for a walkthrough", function()
+        walkthrough_ui.show_loading()
+
+        local walkthrough_bufnr = assert(find_walkthrough_buffer())
+        local rendered = vim.api.nvim_buf_get_lines(walkthrough_bufnr, 0, -1, false)
+        local combined = table.concat(rendered, "\n")
+        assert.is_truthy(combined:find("Ask: generating walkthrough"))
+    end)
+
     it("renders overview and step content in the walkthrough buffer", function()
         local root = vim.fn.getcwd()
         local file_path = root .. "/tmp_walkthrough_test.lua"
@@ -45,6 +54,7 @@ describe("neo_reviewer.ui.walkthrough", function()
         vim.bo[bufnr].buftype = ""
 
         state.set_walkthrough({
+            mode = "walkthrough",
             overview = "Test overview",
             steps = {
                 {
@@ -77,6 +87,7 @@ describe("neo_reviewer.ui.walkthrough", function()
         vim.bo[bufnr].buftype = ""
 
         state.set_walkthrough({
+            mode = "walkthrough",
             overview = "Overview",
             steps = {
                 {
@@ -97,6 +108,36 @@ describe("neo_reviewer.ui.walkthrough", function()
         assert.is_true(#extmarks > 0)
     end)
 
+    it("jumps to the first anchor when opening with jump_to_first", function()
+        local root = vim.fn.getcwd()
+        local file_path = root .. "/tmp_walkthrough_jump.lua"
+        local bufnr = helpers.create_test_buffer({ "line 1", "line 2", "line 3" })
+        vim.api.nvim_buf_set_name(bufnr, file_path)
+        vim.bo[bufnr].buftype = ""
+
+        state.set_walkthrough({
+            mode = "walkthrough",
+            overview = "Overview",
+            steps = {
+                {
+                    title = "Step One",
+                    explanation = "Explains the first step",
+                    anchors = {
+                        { file = "tmp_walkthrough_jump.lua", start_line = 3, end_line = 3 },
+                    },
+                },
+            },
+            prompt = "Prompt",
+            root = root,
+        })
+
+        helpers.set_cursor(1, 0)
+        walkthrough_ui.open({ jump_to_first = true })
+
+        local cursor = vim.api.nvim_win_get_cursor(0)
+        assert.are.equal(3, cursor[1])
+    end)
+
     it("routes next_change to walkthrough steps when open", function()
         local root = vim.fn.getcwd()
         local file_path = root .. "/tmp_walkthrough_test.lua"
@@ -105,6 +146,7 @@ describe("neo_reviewer.ui.walkthrough", function()
         vim.bo[bufnr].buftype = ""
 
         state.set_walkthrough({
+            mode = "walkthrough",
             overview = "Overview",
             steps = {
                 {

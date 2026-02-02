@@ -8,9 +8,12 @@ local last_step_index = nil
 ---@type table<integer, boolean>
 local highlighted_buffers = {}
 
+---@class NRWalkthroughOpenOpts
+---@field jump_to_first? boolean
+
 ---@return nil
 local function define_highlights()
-    vim.api.nvim_set_hl(0, "NRWalkthroughRange", { link = "Visual", default = true })
+    vim.api.nvim_set_hl(0, "NRWalkthroughRange", { link = "DiffAdd", default = true })
 end
 
 ---@param lines string[]
@@ -59,28 +62,28 @@ local function build_walkthrough_lines(walkthrough, step_index)
     if #walkthrough.steps == 0 then
         table.insert(lines, "")
         table.insert(lines, "No walkthrough steps provided.")
-        return lines
-    end
+    else
+        local clamped_index = math.max(1, math.min(step_index, #walkthrough.steps))
+        local step = walkthrough.steps[clamped_index]
 
-    local clamped_index = math.max(1, math.min(step_index, #walkthrough.steps))
-    local step = walkthrough.steps[clamped_index]
-
-    table.insert(lines, "")
-    table.insert(lines, string.format("Step %d/%d: %s", clamped_index, #walkthrough.steps, step.title))
-    table.insert(lines, "")
-    for _, line in ipairs(split_lines(step.explanation)) do
-        table.insert(lines, line)
-    end
-
-    if #step.anchors > 0 then
         table.insert(lines, "")
-        table.insert(lines, "Anchors:")
-        for _, anchor in ipairs(step.anchors) do
-            table.insert(lines, string.format("- %s:%d-%d", anchor.file, anchor.start_line, anchor.end_line))
+        table.insert(lines, string.format("Step %d/%d: %s", clamped_index, #walkthrough.steps, step.title))
+        table.insert(lines, "")
+        for _, line in ipairs(split_lines(step.explanation)) do
+            table.insert(lines, line)
         end
     end
 
     return lines
+end
+
+---@return string[]
+local function build_loading_lines()
+    return {
+        "Ask: generating walkthrough...",
+        "",
+        "Waiting for AI response.",
+    }
 end
 
 ---@param bufnr integer
@@ -90,6 +93,21 @@ local function set_lines(bufnr, lines)
     vim.bo[bufnr].modifiable = true
     vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
     vim.bo[bufnr].modifiable = false
+end
+
+---@param bufnr integer
+---@return string[]
+local function render_loading(bufnr)
+    local winid = vim.fn.bufwinid(bufnr)
+    local width = vim.o.columns
+    if winid ~= -1 and vim.api.nvim_win_is_valid(winid) then
+        width = vim.api.nvim_win_get_width(winid)
+    end
+    width = math.max(20, width - 4)
+    local lines = build_loading_lines()
+    local wrapped = wrap_lines(lines, width)
+    set_lines(bufnr, wrapped)
+    return wrapped
 end
 
 ---@param bufnr integer
@@ -195,10 +213,11 @@ local function highlight_range(bufnr, start_line, end_line)
     end
 
     for line = start_idx, end_idx do
-        vim.api.nvim_buf_set_extmark(bufnr, ns, line - 1, 0, {
-            hl_group = "NRWalkthroughRange",
-            hl_eol = true,
-        })
+        local opts = {
+            line_hl_group = "NRWalkthroughRange",
+            priority = 100,
+        }
+        vim.api.nvim_buf_set_extmark(bufnr, ns, line - 1, 0, opts)
     end
 end
 
@@ -227,6 +246,50 @@ local function join_root(root, file_path)
     return root .. "/" .. file_path
 end
 
+---@param file_path string
+---@return integer|nil
+local function find_buffer_by_tail(file_path)
+    if file_path == "" then
+        return nil
+    end
+    local escaped = vim.pesc(file_path)
+    for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
+        if vim.api.nvim_buf_is_valid(bufnr) then
+            local name = vim.api.nvim_buf_get_name(bufnr)
+            if name ~= "" and name:match(escaped .. "$") then
+                return bufnr
+            end
+        end
+    end
+    return nil
+end
+
+---@param root string
+---@param file_path string
+---@return integer|nil
+local function resolve_anchor_buffer(root, file_path)
+    if file_path == "" then
+        return nil
+    end
+
+    local full_path = join_root(root, file_path)
+    local bufnr = vim.fn.bufnr(full_path)
+    if bufnr ~= -1 then
+        vim.fn.bufload(bufnr)
+        return bufnr
+    end
+
+    local existing = find_buffer_by_tail(file_path)
+    if existing then
+        vim.fn.bufload(existing)
+        return existing
+    end
+
+    bufnr = vim.fn.bufadd(full_path)
+    vim.fn.bufload(bufnr)
+    return bufnr
+end
+
 ---@param walkthrough NRWalkthrough
 ---@param step_index integer
 ---@return nil
@@ -246,11 +309,11 @@ local function apply_step_highlights(walkthrough, step_index)
     local root = walkthrough.root
     for _, anchor in ipairs(step.anchors or {}) do
         if type(anchor.file) == "string" and anchor.file ~= "" then
-            local full_path = join_root(root, anchor.file)
-            local bufnr = vim.fn.bufadd(full_path)
-            vim.fn.bufload(bufnr)
-            highlight_range(bufnr, anchor.start_line, anchor.end_line)
-            highlighted_buffers[bufnr] = true
+            local bufnr = resolve_anchor_buffer(root, anchor.file)
+            if bufnr then
+                highlight_range(bufnr, anchor.start_line, anchor.end_line)
+                highlighted_buffers[bufnr] = true
+            end
         end
     end
 end
@@ -278,6 +341,21 @@ local function render_step(walkthrough, step_index)
     apply_step_highlights(walkthrough, step_index)
 end
 
+---@param walkthrough NRWalkthrough
+---@param step_index integer
+---@return nil
+local function jump_to_step(walkthrough, step_index)
+    local step = walkthrough.steps[step_index]
+    last_step_index = step_index
+
+    if step and step.anchors and step.anchors[1] then
+        local nav = require("neo_reviewer.ui.nav")
+        nav.jump_to(step.anchors[1].file, step.anchors[1].start_line)
+    end
+
+    render_step(walkthrough, step_index)
+end
+
 ---@return boolean
 function M.is_open()
     if not walkthrough_bufnr or not vim.api.nvim_buf_is_valid(walkthrough_bufnr) then
@@ -286,9 +364,23 @@ function M.is_open()
     return vim.fn.bufwinid(walkthrough_bufnr) ~= -1
 end
 
----Open walkthrough in a split buffer
 ---@return nil
-function M.open()
+function M.show_loading()
+    clear_highlights()
+
+    local config = require("neo_reviewer.config")
+    local winid, bufnr = ensure_open_with_height(1, config.values.ai.walkthrough_window.focus_on_open)
+    local wrapped = render_loading(bufnr)
+    local target_height = get_target_height(config.values.ai.walkthrough_window.height, #wrapped)
+    if vim.api.nvim_win_is_valid(winid) then
+        vim.api.nvim_win_set_height(winid, target_height)
+    end
+end
+
+---Open walkthrough in a split buffer
+---@param opts? NRWalkthroughOpenOpts
+---@return nil
+function M.open(opts)
     local state = require("neo_reviewer.state")
     local walkthrough = state.get_walkthrough()
     if not walkthrough then
@@ -299,6 +391,9 @@ function M.open()
     walkthrough.steps = walkthrough.steps or {}
 
     local step_index = last_step_index or 1
+    if opts and opts.jump_to_first then
+        step_index = 1
+    end
     if #walkthrough.steps == 0 then
         step_index = 1
     else
@@ -306,6 +401,11 @@ function M.open()
     end
 
     last_step_index = step_index
+    if opts and opts.jump_to_first then
+        jump_to_step(walkthrough, step_index)
+        return
+    end
+
     render_step(walkthrough, step_index)
 end
 
@@ -334,21 +434,6 @@ function M.toggle()
         return
     end
     M.open()
-end
-
----@param walkthrough NRWalkthrough
----@param step_index integer
----@return nil
-local function jump_to_step(walkthrough, step_index)
-    local step = walkthrough.steps[step_index]
-    last_step_index = step_index
-
-    if step and step.anchors and step.anchors[1] then
-        local nav = require("neo_reviewer.ui.nav")
-        nav.jump_to(step.anchors[1].file, step.anchors[1].start_line)
-    end
-
-    render_step(walkthrough, step_index)
 end
 
 ---@param file_path string

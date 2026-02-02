@@ -5,7 +5,7 @@
 ---@class NRReviewOpts
 ---@field analyze? boolean Whether to run AI analysis (nil = use config default)
 
----@class NRExploreOpts
+---@class NRAskOpts
 ---@field prompt? string Prompt text (nil = request input)
 ---@field line1? integer Start line from visual selection
 ---@field line2? integer End line from visual selection
@@ -62,8 +62,8 @@ function M.setup(opts)
         M.review_diff({ analyze = analyze })
     end, { nargs = "?", desc = "Review local git diff (staged + unstaged changes)" })
 
-    vim.api.nvim_create_user_command("Explore", function(ctx)
-        M.explore({ line1 = ctx.line1, line2 = ctx.line2, range = ctx.range })
+    vim.api.nvim_create_user_command("Ask", function(ctx)
+        M.ask({ line1 = ctx.line1, line2 = ctx.line2, range = ctx.range })
     end, { range = true, desc = "AI-guided codebase exploration" })
 
     vim.api.nvim_create_user_command("AddComment", function(ctx)
@@ -674,13 +674,13 @@ local function to_repo_relative(path, root)
     return path
 end
 
----@param opts? NRExploreOpts
+---@param opts? NRAskOpts
 ---@return string|nil
 ---@return integer|nil
 ---@return integer|nil
 ---@return string|nil
 ---@return string
-local function collect_explore_seed(opts)
+local function collect_ask_seed(opts)
     local cli = require("neo_reviewer.cli")
     local root = cli.get_git_root() or vim.fn.getcwd()
     local bufnr = vim.api.nvim_get_current_buf()
@@ -711,9 +711,9 @@ local function collect_explore_seed(opts)
     return seed_file, seed_start, seed_end, seed_snippet, root
 end
 
----@param opts? NRExploreOpts
+---@param opts? NRAskOpts
 ---@return nil
-function M.explore(opts)
+function M.ask(opts)
     opts = opts or {}
     local comments = require("neo_reviewer.ui.comments")
     local state = require("neo_reviewer.state")
@@ -723,10 +723,11 @@ function M.explore(opts)
     ---@param prompt string
     ---@return nil
     local function run_with_prompt(prompt)
-        local seed_file, seed_start, seed_end, seed_snippet, root = collect_explore_seed(opts)
+        local seed_file, seed_start, seed_end, seed_snippet, root = collect_ask_seed(opts)
 
         walkthrough_ui.close()
         state.clear_walkthrough()
+        walkthrough_ui.show_loading()
 
         walkthrough.run({
             prompt = prompt,
@@ -737,16 +738,18 @@ function M.explore(opts)
             seed_snippet = seed_snippet,
         }, function(result, err)
             if err then
-                vim.notify("[neo-reviewer] Explore failed: " .. err, vim.log.levels.WARN)
+                walkthrough_ui.close()
+                vim.notify("[neo-reviewer] Ask failed: " .. err, vim.log.levels.WARN)
                 return
             end
             if not result then
-                vim.notify("[neo-reviewer] Explore failed: unknown error", vim.log.levels.WARN)
+                walkthrough_ui.close()
+                vim.notify("[neo-reviewer] Ask failed: unknown error", vim.log.levels.WARN)
                 return
             end
 
             state.set_walkthrough(result)
-            walkthrough_ui.open()
+            walkthrough_ui.open({ jump_to_first = true })
         end)
     end
 
@@ -755,7 +758,7 @@ function M.explore(opts)
         return
     end
 
-    comments.open_multiline_input({ title = " Explore " }, function(body)
+    comments.open_multiline_input({ title = " Ask " }, function(body)
         run_with_prompt(body)
     end)
 end

@@ -251,11 +251,15 @@ describe("neo_reviewer.config AI defaults", function()
     end)
 
     it("has default model", function()
-        assert.are.equal("anthropic/claude-haiku-4-5", config.values.ai.model)
+        assert.are.equal("gpt-5.2-codex", config.values.ai.model)
     end)
 
     it("has default command", function()
-        assert.are.equal("opencode", config.values.ai.command)
+        assert.are.equal("codex", config.values.ai.command)
+    end)
+
+    it("has default reasoning effort", function()
+        assert.are.equal("medium", config.values.ai.reasoning_effort)
     end)
 
     it("has walkthrough window defaults", function()
@@ -273,7 +277,42 @@ describe("neo_reviewer.config AI defaults", function()
 
         assert.is_true(config.values.ai.enabled)
         assert.are.equal("custom/model", config.values.ai.model)
-        assert.are.equal("opencode", config.values.ai.command)
+        assert.are.equal("codex", config.values.ai.command)
+    end)
+end)
+
+describe("neo_reviewer.config build_ai_command", function()
+    local config
+
+    before_each(function()
+        package.loaded["neo_reviewer.config"] = nil
+        config = require("neo_reviewer.config")
+    end)
+
+    it("builds codex exec args with reasoning effort", function()
+        local spec = config.build_ai_command("Explain this")
+
+        assert.are.equal("codex", spec.command)
+        assert.is_nil(spec.writer)
+        assert.are.same(
+            { "exec", "--model", "gpt-5.2-codex", "--config", 'model_reasoning_effort="medium"', "Explain this" },
+            spec.args
+        )
+    end)
+
+    it("builds opencode args using stdin writer", function()
+        config.setup({
+            ai = {
+                command = "opencode",
+                model = "custom/model",
+            },
+        })
+
+        local spec = config.build_ai_command("Explain this")
+
+        assert.are.equal("opencode", spec.command)
+        assert.are.same({ "run", "--model", "custom/model" }, spec.args)
+        assert.are.equal("Explain this", spec.writer)
     end)
 end)
 

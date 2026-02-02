@@ -30,6 +30,7 @@ Seed context (may be empty):
 
 Return ONLY valid JSON (no markdown, no extra text):
 {
+  "mode": "walkthrough" | "conceptual",
   "overview": "1-3 short paragraphs",
   "steps": [
     {
@@ -43,9 +44,14 @@ Return ONLY valid JSON (no markdown, no extra text):
 }
 
 Guidelines:
-- Steps should be ordered for a human walkthrough.
-- anchors can be empty for high-level steps, but the field must exist.
-- Use repo-relative paths for all anchors.
+- Decide whether the user request is best answered as a code walkthrough or a conceptual explanation.
+- Use "walkthrough" when pointing to specific code will help; use "conceptual" for high-level or architecture questions.
+- Always include at least one step. Steps should be ordered for a human walkthrough.
+- If mode is "walkthrough", every step must include at least one anchor.
+- Anchors should be tight (aim for 3-20 lines) and must use repo-relative paths.
+- If mode is "conceptual", anchors can be empty, but keep the field present.
+- If you mention a specific file or function, include an anchor even in conceptual mode.
+- Do not include follow-up questions; focus on the explanation.
 ]]
 
 ---@param ctx NRWalkthroughContext
@@ -82,6 +88,14 @@ function M.parse_response(output)
     local ok, data = pcall(vim.json.decode, json_str)
     if not ok then
         return nil, "Failed to parse JSON: " .. tostring(data)
+    end
+
+    local mode = data.mode
+    if mode == nil then
+        mode = "walkthrough"
+    end
+    if mode ~= "walkthrough" and mode ~= "conceptual" then
+        return nil, "Missing or invalid 'mode' field"
     end
 
     if type(data.overview) ~= "string" then
@@ -134,6 +148,7 @@ function M.parse_response(output)
 
     ---@type NRWalkthrough
     local walkthrough = {
+        mode = mode,
         overview = data.overview,
         steps = steps,
         prompt = "",
@@ -147,21 +162,21 @@ end
 ---@param callback fun(result: NRWalkthrough|nil, err: string|nil)
 ---@return nil
 function M.run(ctx, callback)
-    local config = require("neo_reviewer.config")
-
     if not ctx.root or ctx.root == "" then
         ctx.root = vim.fn.getcwd()
     end
 
+    local config = require("neo_reviewer.config")
     local prompt = M.build_prompt(ctx)
     local stdout_lines = {}
     local stderr_lines = {}
+    local spec = config.build_ai_command(prompt)
 
     Job:new({
-        command = config.values.ai.command,
-        args = { "run", "--model", config.values.ai.model },
+        command = spec.command,
+        args = spec.args,
         cwd = ctx.root,
-        writer = prompt,
+        writer = spec.writer,
         on_stdout = function(_, line)
             table.insert(stdout_lines, line)
         end,
@@ -171,7 +186,7 @@ function M.run(ctx, callback)
         on_exit = vim.schedule_wrap(function(_, code)
             if code ~= 0 then
                 local stderr = table.concat(stderr_lines, "\n")
-                callback(nil, "opencode failed: " .. stderr)
+                callback(nil, spec.command .. " failed: " .. stderr)
                 return
             end
 

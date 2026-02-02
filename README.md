@@ -130,7 +130,7 @@ vim.keymap.set("n", ",dx", nr.request_changes, vim.tbl_extend("force", opts, { d
 
 6. Close the review with `:ReviewDone` (or submit with `:Approve`/`:RequestChanges`)
 
-7. Start a codebase exploration with `:Explore` (prompts for a question/theme)
+7. Start a codebase exploration with `:Ask` (prompts for a question/theme)
 
 ## Commands
 
@@ -138,7 +138,7 @@ vim.keymap.set("n", ",dx", nr.request_changes, vim.tbl_extend("force", opts, { d
 |---------|-------------|
 | `:ReviewPR {url}` | Open a PR for review |
 | `:ReviewDiff` | Review local git diff |
-| `:Explore` | AI-guided codebase exploration |
+| `:Ask` | AI-guided codebase exploration |
 | `:AddComment` | Add a review comment |
 | `:Approve` | Approve the PR |
 | `:RequestChanges` | Request changes on the PR |

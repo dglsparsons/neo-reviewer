@@ -276,7 +276,7 @@ function M.build_missing_prompt(review, missing)
     return string.format(MISSING_PROMPT_TEMPLATE, title, description, file_list, diff)
 end
 
----Parse JSON response from opencode
+---Parse JSON response from AI CLI
 ---@param output string
 ---@return NRAIAnalysis|nil, string|nil
 local function parse_response(output)
@@ -376,19 +376,17 @@ function M.analyze_pr(review, callback)
     local config = require("neo_reviewer.config")
     local prompt = M.build_prompt(review)
 
-    local cmd = config.values.ai.command
-    local model = config.values.ai.model
-
     ---@param prompt_text string
     ---@param run_callback fun(analysis: NRAIAnalysis|nil, err: string|nil)
     local function run_prompt(prompt_text, run_callback)
         local stdout_lines = {}
         local stderr_lines = {}
+        local spec = config.build_ai_command(prompt_text)
 
         Job:new({
-            command = cmd,
-            args = { "run", "--model", model },
-            writer = prompt_text,
+            command = spec.command,
+            args = spec.args,
+            writer = spec.writer,
             on_stdout = function(_, line)
                 table.insert(stdout_lines, line)
             end,
@@ -398,7 +396,7 @@ function M.analyze_pr(review, callback)
             on_exit = vim.schedule_wrap(function(_, code)
                 if code ~= 0 then
                     local stderr = table.concat(stderr_lines, "\n")
-                    run_callback(nil, "opencode failed: " .. stderr)
+                    run_callback(nil, spec.command .. " failed: " .. stderr)
                     return
                 end
 

@@ -1,7 +1,8 @@
 ---@class NRAI
 ---@field enabled boolean Whether AI analysis is enabled by default
----@field model string Model for opencode
----@field command string Command to invoke opencode
+---@field model string Model for AI CLI
+---@field command string Command to invoke AI CLI
+---@field reasoning_effort? string Reasoning effort hint for the AI CLI
 ---@field walkthrough_window NRAIWalkthroughWindow Walkthrough window configuration
 
 ---@class NRSigns
@@ -65,8 +66,9 @@
 
 ---@class NRPartialAI
 ---@field enabled? boolean Whether AI analysis is enabled by default
----@field model? string Model for opencode
----@field command? string Command to invoke opencode
+---@field model? string Model for AI CLI
+---@field command? string Command to invoke AI CLI
+---@field reasoning_effort? string Reasoning effort hint for the AI CLI
 ---@field walkthrough_window? NRPartialAIWalkthroughWindow Walkthrough window configuration
 
 ---@class NRPartialConfig
@@ -109,14 +111,43 @@ M.values = {
     },
     ai = {
         enabled = false,
-        model = "anthropic/claude-haiku-4-5",
-        command = "opencode",
+        model = "gpt-5.2-codex",
+        command = "codex",
+        reasoning_effort = "medium",
         walkthrough_window = {
             height = 0,
             focus_on_open = false,
         },
     },
 }
+
+---@class NRAICommandSpec
+---@field command string
+---@field args string[]
+---@field writer? string
+
+---@param prompt string
+---@return NRAICommandSpec
+function M.build_ai_command(prompt)
+    local cmd = M.values.ai.command
+    local model = M.values.ai.model
+    if cmd == "codex" then
+        local args = { "exec", "--model", model }
+        local effort = M.values.ai.reasoning_effort
+        if effort and effort ~= "" then
+            table.insert(args, "--config")
+            table.insert(args, string.format('model_reasoning_effort="%s"', effort))
+        end
+        table.insert(args, prompt)
+        return { command = cmd, args = args }
+    end
+
+    return {
+        command = cmd,
+        args = { "run", "--model", model },
+        writer = prompt,
+    }
+end
 
 ---@param opts? NRPartialConfig
 function M.setup(opts)

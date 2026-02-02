@@ -28,7 +28,7 @@ your editor. It provides:
 - Submit reviews (approve or request changes)
 - Telescope integration for file picker
 - Local git diff review (review uncommitted changes before pushing)
-- AI-powered review analysis (optional, via opencode)
+- AI-powered review analysis (optional, via Codex CLI by default)
 
 ==============================================================================
 2. REQUIREMENTS                                      *neo_reviewer-requirements*
@@ -90,8 +90,9 @@ Call setup() with your options: >lua
         },
         ai = {
             enabled = false,                      -- Run AI analysis by default
-            model = "anthropic/claude-haiku-4-5", -- Model for opencode
-            command = "opencode",                 -- Command to invoke
+            model = "gpt-5.2-codex", -- Model for Codex CLI (default)
+            command = "codex",       -- Command to invoke
+            reasoning_effort = "medium", -- Reasoning effort hint (Codex CLI)
             walkthrough_window = {
                 height = 0,                 -- Auto size to content (min height)
                 focus_on_open = false,      -- Keep focus on diff window
@@ -118,11 +119,13 @@ input_window.keys ~
 
                                                            *neo_reviewer-config-ai*
 ai ~
-    Configure AI-powered review analysis. Requires `opencode` CLI to be
-    installed and configured.
+    Configure AI-powered review analysis. Requires an AI CLI (Codex CLI by
+    default) to be installed and configured.
     - `enabled`: Run AI analysis by default (default: false).
-    - `model`: Model to use for analysis (default: "anthropic/claude-haiku-4-5").
-    - `command`: Command to invoke opencode (default: "opencode").
+    - `model`: Model to use for analysis (default: "gpt-5.2-codex").
+    - `command`: Command to invoke the AI CLI (default: "codex").
+    - `reasoning_effort`: Reasoning effort hint for Codex CLI
+      (default: "medium", ignored by other CLIs).
     - `walkthrough_window.height`: Minimum height of the walkthrough split
       (default: 0, auto-sized to content).
     - `walkthrough_window.focus_on_open`: Focus the walkthrough window when it opens (default: false).
@@ -138,7 +141,7 @@ ai ~
     "Uncovered change" steps.
 
     Codebase explorations reuse this AI configuration and the walkthrough
-    window settings. See |:Explore| for a guided tour of the codebase.
+    window settings. See |:Ask| for a guided tour of the codebase.
 
 ==============================================================================
 5. COMMANDS                                              *neo_reviewer-commands*
@@ -172,11 +175,16 @@ These user commands are created when you call `setup()`.
         :ReviewDiff --analyze    " Local diff with AI analysis
 <
 
-:Explore                                                           *:Explore*
+:Ask                                                               *:Ask*
     Open an AI-guided codebase exploration. Prompts for a question or theme.
     If invoked with a visual range, the selected file and line range are
     included as seed context. The exploration runs from the repo root and
     expects the AI tool to read files directly from disk.
+    The AI decides whether to return a code-focused walkthrough or a more
+    conceptual explanation.
+    While the walkthrough is being generated, a temporary window shows a
+    loading message. When ready, the first step jumps to its first anchor
+    (if any).
     When the exploration window is open, |neo_reviewer.next_change()| and
     |neo_reviewer.prev_change()| navigate between exploration steps.
 
@@ -231,7 +239,7 @@ require("neo_reviewer").review_diff({opts})               *neo_reviewer.review_d
 <
     This file can be fed to an AI agent or used as a review checklist.
 
-require("neo_reviewer").explore({opts})                 *neo_reviewer.explore()*
+require("neo_reviewer").ask({opts})                        *neo_reviewer.ask()*
     Run an AI-guided codebase exploration. If {opts.prompt} is nil, opens a
     multi-line input window to gather the prompt. Optional {opts}:
     - `prompt`: string prompt to guide the exploration

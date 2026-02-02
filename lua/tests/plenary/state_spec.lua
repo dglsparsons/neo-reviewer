@@ -226,6 +226,7 @@ describe("neo_reviewer.state", function()
     describe("walkthrough state", function()
         it("stores and retrieves walkthrough data", function()
             state.set_walkthrough({
+                mode = "walkthrough",
                 overview = "Walkthrough overview",
                 steps = {},
                 prompt = "Prompt",
@@ -239,6 +240,7 @@ describe("neo_reviewer.state", function()
 
         it("clears walkthrough data", function()
             state.set_walkthrough({
+                mode = "walkthrough",
                 overview = "Walkthrough overview",
                 steps = {},
                 prompt = "Prompt",
@@ -251,6 +253,7 @@ describe("neo_reviewer.state", function()
 
         it("does not clear walkthrough on clear_review", function()
             state.set_walkthrough({
+                mode = "walkthrough",
                 overview = "Walkthrough overview",
                 steps = {},
                 prompt = "Prompt",
@@ -569,6 +572,7 @@ describe("neo_reviewer.state", function()
 
         it("returns walkthrough root when no review is active", function()
             state.set_walkthrough({
+                mode = "walkthrough",
                 overview = "Walkthrough overview",
                 steps = {},
                 prompt = "Prompt",

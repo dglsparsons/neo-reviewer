@@ -31,6 +31,7 @@ describe("neo_reviewer.walkthrough", function()
         it("parses valid JSON with anchors", function()
             local output = [[
 {
+  "mode": "walkthrough",
   "overview": "Overview text",
   "steps": [
     {
@@ -47,6 +48,7 @@ describe("neo_reviewer.walkthrough", function()
             local data, err = walkthrough.parse_response(output)
             assert.is_nil(err)
             assert.is_not_nil(data)
+            assert.are.equal("walkthrough", data.mode)
             assert.are.equal("Overview text", data.overview)
             assert.are.equal(1, #data.steps)
             assert.are.equal("Step One", data.steps[1].title)
@@ -69,6 +71,26 @@ describe("neo_reviewer.walkthrough", function()
             local data, err = walkthrough.parse_response(output)
             assert.is_nil(data)
             assert.is_truthy(err)
+        end)
+
+        it("defaults mode when missing", function()
+            local output = [[
+{
+  "overview": "Overview text",
+  "steps": [
+    {
+      "title": "Step One",
+      "explanation": "Explains the first step",
+      "anchors": []
+    }
+  ]
+}
+]]
+
+            local data, err = walkthrough.parse_response(output)
+            assert.is_nil(err)
+            assert.is_not_nil(data)
+            assert.are.equal("walkthrough", data.mode)
         end)
     end)
 end)

@@ -27,6 +27,7 @@
 ---@field anchors NRWalkthroughAnchor[] Code anchors for this step
 
 ---@class NRWalkthrough
+---@field mode "walkthrough"|"conceptual"
 ---@field overview string Walkthrough overview
 ---@field steps NRWalkthroughStep[] Ordered walkthrough steps
 ---@field prompt string Prompt used to generate the walkthrough
