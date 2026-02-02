@@ -15,6 +15,7 @@
 ---@field is_truthy fun(value: any): nil
 ---@field is_nil fun(value: any): nil
 ---@field is_not_nil fun(value: any): nil
+---@field is_function fun(value: any): nil
 ---@field is_table fun(value: any): nil
 ---@field are luassert.comparators
 ---@field has_no_errors fun(fn: function): nil

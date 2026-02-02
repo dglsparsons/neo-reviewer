@@ -356,6 +356,17 @@ local function jump_to_step(walkthrough, step_index)
     render_step(walkthrough, step_index)
 end
 
+---@param walkthrough NRWalkthrough
+---@return integer|nil
+local function find_first_anchor_step(walkthrough)
+    for index, step in ipairs(walkthrough.steps or {}) do
+        if step.anchors and #step.anchors > 0 then
+            return index
+        end
+    end
+    return nil
+end
+
 ---@return boolean
 function M.is_open()
     if not walkthrough_bufnr or not vim.api.nvim_buf_is_valid(walkthrough_bufnr) then
@@ -392,7 +403,7 @@ function M.open(opts)
 
     local step_index = last_step_index or 1
     if opts and opts.jump_to_first then
-        step_index = 1
+        step_index = find_first_anchor_step(walkthrough) or 1
     end
     if #walkthrough.steps == 0 then
         step_index = 1

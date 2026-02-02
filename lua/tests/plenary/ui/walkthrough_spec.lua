@@ -138,6 +138,41 @@ describe("neo_reviewer.ui.walkthrough", function()
         assert.are.equal(3, cursor[1])
     end)
 
+    it("jumps to the first step that has anchors when the first step has none", function()
+        local root = vim.fn.getcwd()
+        local file_path = root .. "/tmp_walkthrough_jump2.lua"
+        local bufnr = helpers.create_test_buffer({ "line 1", "line 2", "line 3" })
+        vim.api.nvim_buf_set_name(bufnr, file_path)
+        vim.bo[bufnr].buftype = ""
+
+        state.set_walkthrough({
+            mode = "walkthrough",
+            overview = "Overview",
+            steps = {
+                {
+                    title = "Step One",
+                    explanation = "Conceptual preface",
+                    anchors = {},
+                },
+                {
+                    title = "Step Two",
+                    explanation = "Anchored step",
+                    anchors = {
+                        { file = "tmp_walkthrough_jump2.lua", start_line = 2, end_line = 2 },
+                    },
+                },
+            },
+            prompt = "Prompt",
+            root = root,
+        })
+
+        helpers.set_cursor(1, 0)
+        walkthrough_ui.open({ jump_to_first = true })
+
+        local cursor = vim.api.nvim_win_get_cursor(0)
+        assert.are.equal(2, cursor[1])
+    end)
+
     it("routes next_change to walkthrough steps when open", function()
         local root = vim.fn.getcwd()
         local file_path = root .. "/tmp_walkthrough_test.lua"
