@@ -349,6 +349,18 @@ local function old_line_in_deletions(change_blocks, old_line)
 end
 
 ---@param bufnr integer
+---@param mark_id integer
+local function track_comment_mark(bufnr, mark_id)
+    local ok, marks = pcall(vim.api.nvim_buf_get_var, bufnr, "nr_comment_marks")
+    if not ok or type(marks) ~= "table" then
+        marks = {}
+    end
+
+    table.insert(marks, mark_id)
+    pcall(vim.api.nvim_buf_set_var, bufnr, "nr_comment_marks", marks)
+end
+
+---@param bufnr integer
 ---@param comment NRComment
 ---@param change_blocks? NRChangeBlock[]
 ---@param reply_count? integer
@@ -437,20 +449,22 @@ function M.show_comment(bufnr, comment, change_blocks, reply_count)
                 })
             end
 
-            vim.api.nvim_buf_set_extmark(bufnr, ns, end_row, 0, {
+            local mark_id = vim.api.nvim_buf_set_extmark(bufnr, ns, end_row, 0, {
                 virt_text = { { text, "NRComment" } },
                 virt_text_pos = "eol",
                 priority = 20,
             })
+            track_comment_mark(bufnr, mark_id)
         end
     else
-        vim.api.nvim_buf_set_extmark(bufnr, ns, end_row, 0, {
+        local mark_id = vim.api.nvim_buf_set_extmark(bufnr, ns, end_row, 0, {
             virt_text = { { text, "NRComment" } },
             virt_text_pos = "eol",
             sign_text = "",
             sign_hl_group = "NRCommentSign",
             priority = 20,
         })
+        track_comment_mark(bufnr, mark_id)
     end
 end
 
@@ -495,6 +509,7 @@ end
 ---@param bufnr integer
 function M.clear(bufnr)
     vim.api.nvim_buf_clear_namespace(bufnr, ns, 0, -1)
+    pcall(vim.api.nvim_buf_del_var, bufnr, "nr_comment_marks")
 end
 
 ---@param comment NRComment

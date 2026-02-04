@@ -263,6 +263,7 @@ function M.clear_review()
         local virtual = require("neo_reviewer.ui.virtual")
         local comments = require("neo_reviewer.ui.comments")
         local ai_ui = require("neo_reviewer.ui.ai")
+        local buffer = require("neo_reviewer.ui.buffer")
 
         ai_ui.close()
 
@@ -272,6 +273,7 @@ function M.clear_review()
                 virtual.clear(bufnr)
                 comments.clear(bufnr)
                 ai_ui.clear(bufnr)
+                buffer.clear_change_block_marks(bufnr)
             end
         end
     end
@@ -378,6 +380,7 @@ function M.hide_overlays()
     local virtual = require("neo_reviewer.ui.virtual")
     local comments = require("neo_reviewer.ui.comments")
     local ai_ui = require("neo_reviewer.ui.ai")
+    local buffer = require("neo_reviewer.ui.buffer")
 
     for bufnr, _ in pairs(state.active_review.applied_buffers) do
         if vim.api.nvim_buf_is_valid(bufnr) then
@@ -385,6 +388,7 @@ function M.hide_overlays()
             virtual.clear(bufnr)
             comments.clear(bufnr)
             ai_ui.clear(bufnr)
+            buffer.clear_change_block_marks(bufnr)
         end
     end
 

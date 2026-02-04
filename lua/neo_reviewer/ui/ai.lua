@@ -71,24 +71,25 @@ end
 ---@param review NRReview
 ---@param block_ref NRAIWalkthroughChangeRef
 ---@return integer|nil
-local function get_change_block_line(review, block_ref)
+---@return integer|nil
+local function get_change_block_range(review, block_ref)
     local file = review.files_by_path[block_ref.file]
     if not file then
-        return nil
+        return nil, nil
     end
 
     local block = file.change_blocks[block_ref.change_block_index + 1]
-    if not block then
-        return nil
+    if not block or type(block.start_line) ~= "number" then
+        return nil, nil
     end
 
-    local first_add = block.added_lines and block.added_lines[1]
-    local first_group = block.deletion_groups and block.deletion_groups[1]
-    local first_del = first_group and first_group.anchor_line or nil
-    if first_add and first_del then
-        return math.min(first_add, first_del)
-    end
-    return first_add or first_del
+    local start_line = block.start_line
+    local end_line = block.end_line or start_line
+    local buffer = require("neo_reviewer.ui.buffer")
+    local current_start, current_end =
+        buffer.get_change_block_range_for_file(file, block_ref.change_block_index, start_line, end_line)
+
+    return current_start or start_line, current_end or end_line
 end
 
 ---@param review NRReview
@@ -107,8 +108,7 @@ local function find_step_for_location(review, file_path, line)
                 if file then
                     local block = file.change_blocks[block_ref.change_block_index + 1]
                     if block then
-                        local start_line = get_change_block_line(review, block_ref)
-                        local end_line = block.end_line or start_line
+                        local start_line, end_line = get_change_block_range(review, block_ref)
                         if start_line and end_line and line >= start_line and line <= end_line then
                             return step_index
                         end

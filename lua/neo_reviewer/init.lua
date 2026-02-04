@@ -499,6 +499,9 @@ function M.apply_overlay_to_buffer(bufnr)
         comments_ui.show_existing(bufnr, file.path)
     end
 
+    local buffer = require("neo_reviewer.ui.buffer")
+    buffer.place_change_block_marks(bufnr, file)
+
     local config = require("neo_reviewer.config")
     local virtual = require("neo_reviewer.ui.virtual")
     if config.values.auto_expand_deletes or state.is_showing_old_code() then

@@ -11,6 +11,7 @@ describe("neo_reviewer.ui.nav", function()
     before_each(function()
         package.loaded["neo_reviewer.ui.nav"] = nil
         package.loaded["neo_reviewer.ui.buffer"] = nil
+        package.loaded["neo_reviewer.ui.comments"] = nil
         package.loaded["neo_reviewer.state"] = nil
         package.loaded["neo_reviewer.config"] = nil
 
@@ -36,6 +37,11 @@ describe("neo_reviewer.ui.nav", function()
 
         vim.api.nvim_buf_set_var(bufnr, "nr_file", file)
         vim.api.nvim_buf_set_var(bufnr, "nr_pr_url", review.url)
+        state.mark_buffer_applied(bufnr)
+
+        local buffer = require("neo_reviewer.ui.buffer")
+        buffer.place_change_block_marks(bufnr, file)
+        require("neo_reviewer.ui.comments").show_existing(bufnr, file.path)
 
         return bufnr, file
     end
@@ -49,6 +55,18 @@ describe("neo_reviewer.ui.nav", function()
 
             local cursor = helpers.get_cursor()
             assert.are.equal(3, cursor[1])
+        end)
+
+        it("uses extmark positions after buffer edits", function()
+            local bufnr = setup_review_buffer(fixtures.navigation_pr)
+            helpers.set_cursor(1)
+
+            vim.api.nvim_buf_set_lines(bufnr, 0, 0, false, { "inserted line" })
+
+            nav.next_change(false)
+
+            local cursor = helpers.get_cursor()
+            assert.are.equal(4, cursor[1])
         end)
 
         it("jumps to next hunk from within first hunk", function()
@@ -104,6 +122,28 @@ describe("neo_reviewer.ui.nav", function()
 
             local cursor = helpers.get_cursor()
             assert.are.equal(5, cursor[1])
+        end)
+
+        it("uses extmark positions for AI navigation after edits", function()
+            local bufnr = setup_review_buffer(fixtures.navigation_pr)
+            state.set_ai_analysis({
+                overview = "Test overview",
+                steps = {
+                    {
+                        title = "Step 1",
+                        explanation = "First change",
+                        change_blocks = { { file = "test.lua", change_block_index = 0 } },
+                    },
+                },
+            })
+
+            vim.api.nvim_buf_set_lines(bufnr, 0, 0, false, { "inserted line" })
+            helpers.set_cursor(1)
+
+            nav.next_change(false)
+
+            local cursor = helpers.get_cursor()
+            assert.are.equal(4, cursor[1])
         end)
 
         it("uses context-split change blocks for AI navigation", function()
@@ -510,6 +550,18 @@ describe("neo_reviewer.ui.nav", function()
 
             local cursor = helpers.get_cursor()
             assert.are.equal(5, cursor[1])
+        end)
+
+        it("uses extmark positions after buffer edits", function()
+            local bufnr = setup_review_buffer(fixtures.comment_navigation_pr)
+            helpers.set_cursor(1)
+
+            vim.api.nvim_buf_set_lines(bufnr, 0, 0, false, { "inserted line" })
+
+            nav.next_comment(false)
+
+            local cursor = helpers.get_cursor()
+            assert.are.equal(6, cursor[1])
         end)
 
         it("jumps to next comment from first comment", function()

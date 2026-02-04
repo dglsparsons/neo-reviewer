@@ -7,6 +7,9 @@
 ---@class NRNavModule
 local M = {}
 
+local buffer = require("neo_reviewer.ui.buffer")
+local comment_ns = vim.api.nvim_create_namespace("nr_comments")
+
 ---Build ordered navigation list from AI analysis
 ---@param review NRReview
 ---@return NRAINavItem[]|nil
@@ -18,7 +21,7 @@ local function build_ai_nav_list(review)
     ---@type NRAINavItem[]
     local nav_list = {}
     ---@type table<string, boolean>
-    local seen_by_line = {}
+    local seen_by_block = {}
 
     for _, step in ipairs(review.ai_analysis.steps or {}) do
         for _, block_ref in ipairs(step.change_blocks or {}) do
@@ -26,15 +29,23 @@ local function build_ai_nav_list(review)
             if file then
                 local block = file.change_blocks[block_ref.change_block_index + 1]
                 if block then
-                    local line_key = block_ref.file .. ":" .. tostring(block.start_line)
-                    if not seen_by_line[line_key] then
+                    local block_key = block_ref.file .. ":" .. tostring(block_ref.change_block_index)
+                    if not seen_by_block[block_key] and type(block.start_line) == "number" then
+                        local start_line = block.start_line
+                        local end_line = block.end_line or start_line
+                        local current_start, current_end = buffer.get_change_block_range_for_file(
+                            file,
+                            block_ref.change_block_index,
+                            start_line,
+                            end_line
+                        )
                         table.insert(nav_list, {
                             file = block_ref.file,
                             change_block_index = block_ref.change_block_index,
-                            line = block.start_line,
-                            end_line = block.end_line,
+                            line = current_start or start_line,
+                            end_line = current_end or end_line,
                         })
-                        seen_by_line[line_key] = true
+                        seen_by_block[block_key] = true
                     end
                 end
             end
@@ -42,22 +53,6 @@ local function build_ai_nav_list(review)
     end
 
     return #nav_list > 0 and nav_list or nil
-end
-
----@param block NRChangeBlock
----@param line integer
----@return boolean
-local function is_line_in_change_block(block, line)
-    if type(block.start_line) ~= "number" then
-        return false
-    end
-
-    if block.kind == "delete" then
-        return line == block.start_line or line == block.start_line - 1
-    end
-
-    local end_line = block.end_line or block.start_line
-    return line >= block.start_line and line <= end_line
 end
 
 ---@param item NRAINavItem
@@ -80,9 +75,7 @@ local function find_ai_nav_anchor_position(nav_list, anchor)
 
     for i, item in ipairs(nav_list) do
         if item.file == anchor.file and item.change_block_index == anchor.change_block_index then
-            if anchor.line == nil or anchor.line == item.line then
-                return i
-            end
+            return i
         end
     end
 
@@ -97,15 +90,28 @@ local function find_ai_nav_anchor_position(nav_list, anchor)
     return nil
 end
 
----@param change_blocks? NRChangeBlock[]
+---@param file NRFile
 ---@param line integer
 ---@return integer|nil
-local function find_change_block_index_at_line(change_blocks, line)
-    for i, block in ipairs(change_blocks or {}) do
-        if is_line_in_change_block(block, line) then
-            return i - 1
+local function find_change_block_index_at_line(file, line)
+    for i, block in ipairs(file.change_blocks or {}) do
+        if type(block.start_line) == "number" then
+            local start_line = block.start_line
+            local end_line = block.end_line or start_line
+            local current_start, current_end = buffer.get_change_block_range_for_file(file, i - 1, start_line, end_line)
+            local anchor_start = current_start or start_line
+            local anchor_end = current_end or end_line
+
+            if block.kind == "delete" then
+                if line == anchor_start or line == anchor_start - 1 then
+                    return i - 1
+                end
+            elseif line >= anchor_start and line <= anchor_end then
+                return i - 1
+            end
         end
     end
+
     return nil
 end
 
@@ -144,7 +150,7 @@ local function find_ai_nav_position(review, nav_list, current_file, cursor_line)
 
     local file = review.files_by_path[current_file]
     if file then
-        local change_block_index = find_change_block_index_at_line(file.change_blocks, cursor_line)
+        local change_block_index = find_change_block_index_at_line(file, cursor_line)
         if change_block_index ~= nil then
             local pos = find_ai_position_in_change_block(nav_list, file, change_block_index, cursor_line)
             if pos then
@@ -177,33 +183,90 @@ local function map_old_line_to_new(change_blocks, old_line)
 end
 
 ---@param comment NRComment
----@param change_blocks? NRChangeBlock[]
+---@param file NRFile
 ---@return integer?
-local function get_comment_display_line(comment, change_blocks)
+local function get_comment_display_line(comment, file)
     local line = comment.line
     if type(line) ~= "number" then
         return nil
     end
     if comment.side == "LEFT" then
-        return map_old_line_to_new(change_blocks, line) or line
+        line = map_old_line_to_new(file.change_blocks, line) or line
     end
-    return line
+    return buffer.map_line(file, line)
 end
 
----@param file_path string
----@param change_blocks? NRChangeBlock[]
+---@param file NRFile
 ---@return integer[]
-local function collect_comment_lines(file_path, change_blocks)
-    local state = require("neo_reviewer.state")
-    local comments = state.get_comments_for_file(file_path)
+local function collect_comment_lines(file)
     ---@type integer[]
     local lines = {}
     ---@type table<integer, boolean>
     local seen = {}
 
+    local bufnr = buffer.get_buffer_for_file(file.path)
+    if bufnr then
+        local ok, mark_ids = pcall(vim.api.nvim_buf_get_var, bufnr, "nr_comment_marks")
+        if ok and type(mark_ids) == "table" then
+            for _, mark_id in pairs(mark_ids) do
+                local resolved_id = tonumber(mark_id)
+                if resolved_id then
+                    local pos = vim.api.nvim_buf_get_extmark_by_id(bufnr, comment_ns, resolved_id, {})
+                    if pos and #pos > 0 then
+                        local line = pos[1] + 1
+                        if not seen[line] then
+                            table.insert(lines, line)
+                            seen[line] = true
+                        end
+                    end
+                end
+            end
+
+            if #lines > 0 then
+                table.sort(lines)
+                return lines
+            end
+        end
+
+        local extmarks = vim.api.nvim_buf_get_extmarks(bufnr, comment_ns, 0, -1, { details = true })
+        for _, mark in ipairs(extmarks) do
+            local details = mark[4] or {}
+            local virt_text = details.virt_text or {}
+            local has_comment = false
+            for _, chunk in ipairs(virt_text) do
+                if chunk[2] == "NRComment" then
+                    has_comment = true
+                    break
+                end
+            end
+            if not has_comment then
+                if details.virt_text_pos == "eol" then
+                    has_comment = true
+                elseif details.sign_text ~= nil then
+                    has_comment = true
+                end
+            end
+            if has_comment then
+                local line = mark[2] + 1
+                if not seen[line] then
+                    table.insert(lines, line)
+                    seen[line] = true
+                end
+            end
+        end
+
+        if #lines > 0 then
+            table.sort(lines)
+            return lines
+        end
+    end
+
+    local state = require("neo_reviewer.state")
+    local comments = state.get_comments_for_file(file.path)
+
     for _, comment in ipairs(comments) do
         if type(comment.in_reply_to_id) ~= "number" then
-            local display_line = get_comment_display_line(comment, change_blocks)
+            local display_line = get_comment_display_line(comment, file)
             if display_line and not seen[display_line] then
                 table.insert(lines, display_line)
                 seen[display_line] = true
@@ -215,18 +278,24 @@ local function collect_comment_lines(file_path, change_blocks)
     return lines
 end
 
----@param change_blocks? NRChangeBlock[]
+---@param file NRFile
 ---@return integer[]
-local function collect_change_starts(change_blocks)
+local function collect_change_starts(file)
     ---@type integer[]
     local starts = {}
     ---@type table<integer, boolean>
     local seen = {}
 
-    for _, block in ipairs(change_blocks or {}) do
-        if not seen[block.start_line] then
-            table.insert(starts, block.start_line)
-            seen[block.start_line] = true
+    for i, block in ipairs(file.change_blocks or {}) do
+        local start_line = block.start_line
+        if type(start_line) == "number" then
+            local end_line = block.end_line or start_line
+            local current_start = buffer.get_change_block_range_for_file(file, i - 1, start_line, end_line)
+            local line = current_start or start_line
+            if not seen[line] then
+                table.insert(starts, line)
+                seen[line] = true
+            end
         end
     end
 
@@ -237,7 +306,6 @@ end
 ---@param review NRReview
 ---@return integer?
 local function get_current_file_index(review)
-    local buffer = require("neo_reviewer.ui.buffer")
     local current_file = buffer.get_current_file_from_buffer()
     if current_file then
         for i, file in ipairs(review.files) do
@@ -254,7 +322,6 @@ end
 function M.jump_to(file_path, line)
     vim.cmd("normal! m'")
 
-    local buffer = require("neo_reviewer.ui.buffer")
     local current_file = buffer.get_current_file_from_buffer()
     local is_same_file = current_file and current_file.path == file_path
 
@@ -289,7 +356,6 @@ function M.next_change(wrap)
     local ai_nav_list = build_ai_nav_list(review)
 
     if ai_nav_list then
-        local buffer = require("neo_reviewer.ui.buffer")
         local current_file = buffer.get_current_file_from_buffer()
         local cursor_line = vim.api.nvim_win_get_cursor(0)[1]
         local current_path = current_file and current_file.path
@@ -338,7 +404,7 @@ function M.next_change(wrap)
 
     if current_idx then
         local current_file = review.files[current_idx]
-        local change_starts = collect_change_starts(current_file.change_blocks)
+        local change_starts = collect_change_starts(current_file)
         for _, ln in ipairs(change_starts) do
             if ln > cursor_line then
                 M.jump_to(current_file.path, ln)
@@ -349,7 +415,7 @@ function M.next_change(wrap)
 
         for i = current_idx + 1, #review.files do
             local file = review.files[i]
-            local starts = collect_change_starts(file.change_blocks)
+            local starts = collect_change_starts(file)
             if #starts > 0 then
                 M.jump_to(file.path, starts[1])
                 ai_ui.sync_to_location(file.path, starts[1])
@@ -358,7 +424,7 @@ function M.next_change(wrap)
         end
     else
         for _, file in ipairs(review.files) do
-            local starts = collect_change_starts(file.change_blocks)
+            local starts = collect_change_starts(file)
             if #starts > 0 then
                 M.jump_to(file.path, starts[1])
                 ai_ui.sync_to_location(file.path, starts[1])
@@ -369,7 +435,7 @@ function M.next_change(wrap)
 
     if wrap then
         for _, file in ipairs(review.files) do
-            local starts = collect_change_starts(file.change_blocks)
+            local starts = collect_change_starts(file)
             if #starts > 0 then
                 M.jump_to(file.path, starts[1])
                 vim.notify("Wrapped to first change", vim.log.levels.INFO)
@@ -395,7 +461,6 @@ function M.prev_change(wrap)
     local ai_nav_list = build_ai_nav_list(review)
 
     if ai_nav_list then
-        local buffer = require("neo_reviewer.ui.buffer")
         local current_file = buffer.get_current_file_from_buffer()
         local cursor_line = vim.api.nvim_win_get_cursor(0)[1]
         local current_path = current_file and current_file.path
@@ -446,7 +511,7 @@ function M.prev_change(wrap)
 
     if current_idx then
         local current_file = review.files[current_idx]
-        local change_starts = collect_change_starts(current_file.change_blocks)
+        local change_starts = collect_change_starts(current_file)
         for i = #change_starts, 1, -1 do
             if change_starts[i] < cursor_line then
                 M.jump_to(current_file.path, change_starts[i])
@@ -457,7 +522,7 @@ function M.prev_change(wrap)
 
         for i = current_idx - 1, 1, -1 do
             local file = review.files[i]
-            local starts = collect_change_starts(file.change_blocks)
+            local starts = collect_change_starts(file)
             if #starts > 0 then
                 M.jump_to(file.path, starts[#starts])
                 ai_ui.sync_to_location(file.path, starts[#starts])
@@ -467,7 +532,7 @@ function M.prev_change(wrap)
     else
         for i = #review.files, 1, -1 do
             local file = review.files[i]
-            local starts = collect_change_starts(file.change_blocks)
+            local starts = collect_change_starts(file)
             if #starts > 0 then
                 M.jump_to(file.path, starts[#starts])
                 ai_ui.sync_to_location(file.path, starts[#starts])
@@ -479,7 +544,7 @@ function M.prev_change(wrap)
     if wrap then
         for i = #review.files, 1, -1 do
             local file = review.files[i]
-            local starts = collect_change_starts(file.change_blocks)
+            local starts = collect_change_starts(file)
             if #starts > 0 then
                 M.jump_to(file.path, starts[#starts])
                 vim.notify("Wrapped to last change", vim.log.levels.INFO)
@@ -509,7 +574,7 @@ function M.first_change()
     end
 
     for _, file in ipairs(review.files) do
-        local starts = collect_change_starts(file.change_blocks)
+        local starts = collect_change_starts(file)
         if #starts > 0 then
             M.jump_to(file.path, starts[1])
             return
@@ -535,7 +600,7 @@ function M.last_change()
 
     for i = #review.files, 1, -1 do
         local file = review.files[i]
-        local starts = collect_change_starts(file.change_blocks)
+        local starts = collect_change_starts(file)
         if #starts > 0 then
             M.jump_to(file.path, starts[#starts])
             return
@@ -557,7 +622,7 @@ function M.next_comment(wrap)
 
     if current_idx then
         local current_file = review.files[current_idx]
-        local comment_lines = collect_comment_lines(current_file.path, current_file.change_blocks)
+        local comment_lines = collect_comment_lines(current_file)
         for _, ln in ipairs(comment_lines) do
             if ln > cursor_line then
                 M.jump_to(current_file.path, ln)
@@ -567,7 +632,7 @@ function M.next_comment(wrap)
 
         for i = current_idx + 1, #review.files do
             local file = review.files[i]
-            local lines = collect_comment_lines(file.path, file.change_blocks)
+            local lines = collect_comment_lines(file)
             if #lines > 0 then
                 M.jump_to(file.path, lines[1])
                 return
@@ -575,7 +640,7 @@ function M.next_comment(wrap)
         end
     else
         for _, file in ipairs(review.files) do
-            local lines = collect_comment_lines(file.path, file.change_blocks)
+            local lines = collect_comment_lines(file)
             if #lines > 0 then
                 M.jump_to(file.path, lines[1])
                 return
@@ -585,7 +650,7 @@ function M.next_comment(wrap)
 
     if wrap then
         for _, file in ipairs(review.files) do
-            local lines = collect_comment_lines(file.path, file.change_blocks)
+            local lines = collect_comment_lines(file)
             if #lines > 0 then
                 M.jump_to(file.path, lines[1])
                 vim.notify("Wrapped to first comment", vim.log.levels.INFO)
@@ -611,7 +676,7 @@ function M.prev_comment(wrap)
 
     if current_idx then
         local current_file = review.files[current_idx]
-        local comment_lines = collect_comment_lines(current_file.path, current_file.change_blocks)
+        local comment_lines = collect_comment_lines(current_file)
         for i = #comment_lines, 1, -1 do
             if comment_lines[i] < cursor_line then
                 M.jump_to(current_file.path, comment_lines[i])
@@ -621,7 +686,7 @@ function M.prev_comment(wrap)
 
         for i = current_idx - 1, 1, -1 do
             local file = review.files[i]
-            local lines = collect_comment_lines(file.path, file.change_blocks)
+            local lines = collect_comment_lines(file)
             if #lines > 0 then
                 M.jump_to(file.path, lines[#lines])
                 return
@@ -630,7 +695,7 @@ function M.prev_comment(wrap)
     else
         for i = #review.files, 1, -1 do
             local file = review.files[i]
-            local lines = collect_comment_lines(file.path, file.change_blocks)
+            local lines = collect_comment_lines(file)
             if #lines > 0 then
                 M.jump_to(file.path, lines[#lines])
                 return
@@ -641,7 +706,7 @@ function M.prev_comment(wrap)
     if wrap then
         for i = #review.files, 1, -1 do
             local file = review.files[i]
-            local lines = collect_comment_lines(file.path, file.change_blocks)
+            local lines = collect_comment_lines(file)
             if #lines > 0 then
                 M.jump_to(file.path, lines[#lines])
                 vim.notify("Wrapped to last comment", vim.log.levels.INFO)

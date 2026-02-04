@@ -62,6 +62,8 @@ describe("neo_reviewer.ui.ai", function()
         local bufnr = helpers.create_test_buffer(lines)
         vim.api.nvim_buf_set_var(bufnr, "nr_file", file)
         vim.api.nvim_buf_set_var(bufnr, "nr_pr_url", review.url)
+        state.mark_buffer_applied(bufnr)
+        require("neo_reviewer.ui.buffer").place_change_block_marks(bufnr, file)
 
         ai_ui.show_details()
 
@@ -99,6 +101,8 @@ describe("neo_reviewer.ui.ai", function()
         local bufnr = helpers.create_test_buffer(lines)
         vim.api.nvim_buf_set_var(bufnr, "nr_file", file)
         vim.api.nvim_buf_set_var(bufnr, "nr_pr_url", review.url)
+        state.mark_buffer_applied(bufnr)
+        require("neo_reviewer.ui.buffer").place_change_block_marks(bufnr, file)
 
         ai_ui.show_details()
 
