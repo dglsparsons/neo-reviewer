@@ -112,6 +112,27 @@ describe("neo_reviewer.ai", function()
             assert.is_truthy(prompt:find('"overview"'))
             assert.is_truthy(prompt:find('"steps"'))
         end)
+
+        it("includes repo root and file-reading rules", function()
+            ---@type NRReview
+            local review = {
+                review_type = "pr",
+                git_root = "/tmp/repo",
+                pr = { number = 1, title = "Title", description = "Description" },
+                files = {},
+                files_by_path = {},
+                comments = {},
+                current_file_idx = 1,
+                expanded_changes = {},
+                applied_buffers = {},
+                overlays_visible = true,
+            }
+
+            local prompt = ai.build_prompt(review)
+
+            assert.is_truthy(prompt:find("git repository at: /tmp/repo", 1, true))
+            assert.is_truthy(prompt:find("Read files directly from disk", 1, true))
+        end)
     end)
 
     describe("coverage enforcement", function()

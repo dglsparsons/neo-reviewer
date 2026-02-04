@@ -4,11 +4,16 @@ local Job = require("plenary.job")
 local M = {}
 
 local PROMPT_TEMPLATE = [[
-Here is the contents of a pull-requests diff. I want you to break this down and explain it to a human in the simplest, most concise (but still comprehensive) way possible. Your goal is to walk them through the changes so they are able to comment on the PR, and understand its implications. They may not have existing knowledge of this codebase.
+You are an AI assistant running inside a git repository at: %s
 
-Read all relevant files and code to help yourself understand the changes before attempting to walk them through this.
+Here is the contents of a pull-requests diff. Explain it to a human who is new to this codebase. Use plain, everyday language and short sentences. Avoid jargon, acronyms, and framework-speak; if you must use one, define it in the same sentence. The goal is to help them understand what changed, why it changed, and what it affects so they can comment on the PR.
 
-Use only the PR title/description, file list, and diff provided below. Do not invent files, APIs, or behavior that are not present.
+Rules:
+- Read files directly from disk when you need more context.
+- Only use git-tracked files; ignore untracked/build/vendor.
+- Use the PR title/description, file list, and diff below as the source of what changed.
+- Make sure you don't invent files, APIs, or behavior that are not present.
+- Watch out for formatting only changes. These do not actually do anything.
 
 Return ONLY valid JSON (no markdown, no explanation):
 {
@@ -27,6 +32,8 @@ Return ONLY valid JSON (no markdown, no explanation):
 Guidelines:
 - overview: 1-3 short paragraphs, plain language
 - steps: ordered walkthrough; keep each step concise
+- Avoid mentioning diff mechanics (hunks, change blocks, markers) in the explanation text
+- If you need to use a technical term, define it in the same sentence
 - When a step refers to code changes, include the change blocks that support it
 - change_blocks can be empty when a step is high-level or cross-cutting
 - change_block_index must match the @@ change_block N @@ markers in the diff below
@@ -48,9 +55,15 @@ Unified Diff:
 ]]
 
 local MISSING_PROMPT_TEMPLATE = [[
-Here are missing change blocks from a pull-requests diff. You must provide walkthrough steps that cover EVERY change block listed below. Do not reference change blocks that are not shown.
+You are an AI assistant running inside a git repository at: %s
 
-Use only the PR title/description, file list, and diff provided below. Do not invent files, APIs, or behavior that are not present.
+Here are missing change blocks from a pull-requests diff. Provide walkthrough steps that cover EVERY change block listed below. Write in plain, everyday language with short sentences. Avoid jargon; if you must use a technical term, define it in the same sentence. Do not reference change blocks that are not shown.
+
+Rules:
+- Read files directly from disk using repo-relative paths when you need more context.
+- Only use git-tracked files; ignore untracked/build/vendor.
+- Use the PR title/description, file list, and diff below as the source of what changed.
+- Do not invent files, APIs, or behavior that are not present.
 
 Return ONLY valid JSON (no markdown, no explanation):
 {
@@ -69,6 +82,8 @@ Return ONLY valid JSON (no markdown, no explanation):
 Guidelines:
 - Every change block listed below must be included in at least one step
 - steps: ordered walkthrough; keep each step concise
+- Avoid mentioning diff mechanics (hunks, change blocks, markers) in the explanation text
+- If you need to use a technical term, define it in the same sentence
 - change_block_index must match the @@ change_block N @@ markers in the diff below
 
 ---
@@ -240,6 +255,21 @@ local function append_placeholder_steps(analysis, missing)
     return analysis
 end
 
+---@param review NRReview
+---@return string?
+local function resolve_root(review)
+    if review.git_root and review.git_root ~= "" then
+        return review.git_root
+    end
+    if vim and vim.fn and vim.fn.getcwd then
+        local cwd = vim.fn.getcwd()
+        if cwd and cwd ~= "" then
+            return cwd
+        end
+    end
+    return nil
+end
+
 ---Build the prompt for AI analysis
 ---@param review NRReview
 ---@return string
@@ -248,8 +278,9 @@ function M.build_prompt(review)
     local description = review.pr and review.pr.description or "(No description provided)"
     local file_list = build_file_list(review.files)
     local diff = build_diff(review.files)
+    local root = resolve_root(review) or "Unknown"
 
-    return string.format(PROMPT_TEMPLATE, title, description, file_list, diff)
+    return string.format(PROMPT_TEMPLATE, root, title, description, file_list, diff)
 end
 
 ---Build the prompt for missing change blocks analysis
@@ -259,6 +290,7 @@ end
 function M.build_missing_prompt(review, missing)
     local title = review.pr and review.pr.title or "Unknown"
     local description = review.pr and review.pr.description or "(No description provided)"
+    local root = resolve_root(review) or "Unknown"
 
     ---@type table<string, boolean>
     local include_files = {}
@@ -273,7 +305,7 @@ function M.build_missing_prompt(review, missing)
     local file_list = build_file_list(review.files, include_files)
     local diff = build_diff(review.files, include_change_blocks)
 
-    return string.format(MISSING_PROMPT_TEMPLATE, title, description, file_list, diff)
+    return string.format(MISSING_PROMPT_TEMPLATE, root, title, description, file_list, diff)
 end
 
 ---Parse JSON response from AI CLI
@@ -375,6 +407,7 @@ end
 function M.analyze_pr(review, callback)
     local config = require("neo_reviewer.config")
     local prompt = M.build_prompt(review)
+    local root = resolve_root(review)
 
     ---@param prompt_text string
     ---@param run_callback fun(analysis: NRAIAnalysis|nil, err: string|nil)
@@ -383,7 +416,7 @@ function M.analyze_pr(review, callback)
         local stderr_lines = {}
         local spec = config.build_ai_command(prompt_text)
 
-        Job:new({
+        local job_opts = {
             command = spec.command,
             args = spec.args,
             writer = spec.writer,
@@ -404,7 +437,13 @@ function M.analyze_pr(review, callback)
                 local analysis, err = parse_response(output)
                 run_callback(analysis, err)
             end),
-        }):start()
+        }
+
+        if root and root ~= "" then
+            job_opts.cwd = root
+        end
+
+        Job:new(job_opts):start()
     end
 
     run_prompt(prompt, function(analysis, err)

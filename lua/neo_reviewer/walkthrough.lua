@@ -23,6 +23,8 @@ Rules:
 - You may use git and ripgrep to locate relevant code.
 - Do not invent files, APIs, or behavior not present in the repo.
 - Provide a concise overview and an ordered walkthrough.
+- Use plain, everyday language and short sentences.
+- Avoid jargon and acronyms; if you must use one, define it in the same sentence.
 - Use 1-based, inclusive line numbers for anchors.
 
 Seed context (may be empty):
