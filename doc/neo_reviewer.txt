@@ -198,11 +198,13 @@ These user commands are created when you call `setup()`.
     comment range.
 
 :Approve                                                              *:Approve*
-    Submit an approval for the current PR review.
+    Submit an approval for the current PR review. If the review checked out
+    a PR branch, restores the previous branch after a successful submission.
 
 :RequestChanges [message]                                      *:RequestChanges*
     Submit a "request changes" review for the current PR. The message is
-    optional; if not provided, opens a multi-line input window.
+    optional; if not provided, opens a multi-line input window. On success,
+    restores the previous branch if the review checked out a PR branch.
 
 :ReviewDone                                                        *:ReviewDone*
     End the current review session without submitting a review. Closes the AI

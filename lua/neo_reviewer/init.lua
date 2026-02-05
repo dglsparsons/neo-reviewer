@@ -20,6 +20,26 @@ local function is_github_url(input)
     return input:match("github%.com") ~= nil or input:match("^https?://") ~= nil
 end
 
+---@param review NRReview
+---@return boolean
+local function restore_previous_branch(review)
+    if not review.did_checkout or not review.prev_branch then
+        return false
+    end
+
+    local cli = require("neo_reviewer.cli")
+    vim.notify("Restoring previous branch...", vim.log.levels.INFO)
+    cli.restore_branch(review.prev_branch, function(ok, err)
+        if ok then
+            vim.notify(string.format("Restored to branch: %s", review.prev_branch), vim.log.levels.INFO)
+        else
+            vim.notify(err, vim.log.levels.ERROR)
+        end
+    end)
+
+    return true
+end
+
 ---@param opts? NRPartialConfig
 function M.setup(opts)
     local config = require("neo_reviewer.config")
@@ -801,6 +821,7 @@ function M.approve()
         if ok then
             state.clear_review()
             vim.notify("Review approved", vim.log.levels.INFO)
+            restore_previous_branch(review)
         else
             vim.notify("Failed to submit review: " .. (err or "unknown error"), vim.log.levels.ERROR)
         end
@@ -834,6 +855,7 @@ function M.request_changes(message)
             if ok then
                 state.clear_review()
                 vim.notify("Changes requested", vim.log.levels.INFO)
+                restore_previous_branch(review)
             else
                 vim.notify("Failed to submit review: " .. (err or "unknown error"), vim.log.levels.ERROR)
             end
@@ -850,7 +872,6 @@ end
 
 function M.done()
     local state = require("neo_reviewer.state")
-    local cli = require("neo_reviewer.cli")
     local review = state.get_review()
 
     if not review then
@@ -858,21 +879,9 @@ function M.done()
         return
     end
 
-    local did_checkout = review.did_checkout
-    local prev_branch = review.prev_branch
-
     state.clear_review()
 
-    if did_checkout and prev_branch then
-        vim.notify("Restoring previous branch...", vim.log.levels.INFO)
-        cli.restore_branch(prev_branch, function(ok, err)
-            if ok then
-                vim.notify(string.format("Restored to branch: %s", prev_branch), vim.log.levels.INFO)
-            else
-                vim.notify(err, vim.log.levels.ERROR)
-            end
-        end)
-    else
+    if not restore_previous_branch(review) then
         vim.notify("Review closed", vim.log.levels.INFO)
     end
 end
