@@ -9,9 +9,10 @@ You are an AI assistant running inside a git repository at: %s
 Here is the contents of a pull-requests diff. Explain it to a human who is new to this codebase. Use plain, everyday language and short sentences. Avoid jargon, acronyms, and framework-speak; if you must use one, define it in the same sentence. The goal is to help them understand what changed, why it changed, and what it affects so they can comment on the PR.
 
 Rules:
-- Read files directly from disk when you need more context.
+- Read files directly from disk using repo-relative paths when you need more context or to see the new version of added lines.
 - Only use git-tracked files; ignore untracked/build/vendor.
 - Use the PR title/description, file list, and diff below as the source of what changed.
+- Added lines and context lines in the diff are placeholders. Read the file contents to understand the new code.
 - Make sure you don't invent files, APIs, or behavior that are not present.
 - Watch out for formatting only changes. These do not actually do anything.
 
@@ -60,9 +61,10 @@ You are an AI assistant running inside a git repository at: %s
 Here are missing change blocks from a pull-requests diff. Provide walkthrough steps that cover EVERY change block listed below. Write in plain, everyday language with short sentences. Avoid jargon; if you must use a technical term, define it in the same sentence. Do not reference change blocks that are not shown.
 
 Rules:
-- Read files directly from disk using repo-relative paths when you need more context.
+- Read files directly from disk using repo-relative paths when you need more context or to see the new version of added lines.
 - Only use git-tracked files; ignore untracked/build/vendor.
 - Use the PR title/description, file list, and diff below as the source of what changed.
+- Added lines and context lines in the diff are placeholders. Read the file contents to understand the new code.
 - Do not invent files, APIs, or behavior that are not present.
 
 Return ONLY valid JSON (no markdown, no explanation):

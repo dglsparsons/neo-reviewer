@@ -136,7 +136,9 @@ ai ~
     navigate change blocks. Use |neo_reviewer.toggle_ai_feedback()| to open or
     re-open the walkthrough window.
     For context, the AI is allowed to read git-tracked files from disk using
-    repo-relative paths.
+    repo-relative paths. Make sure your working tree matches the PR before
+    running analysis. The diff sent to the AI uses placeholders for added and
+    context lines, so the AI must read files to see the new code.
     neo-reviewer enforces full change block coverage for AI walkthroughs. If a
     change block is missed, it issues a follow-up prompt for the missing change
     blocks and appends any remaining uncovered change blocks as minimal

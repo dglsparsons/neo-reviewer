@@ -132,6 +132,7 @@ describe("neo_reviewer.ai", function()
 
             assert.is_truthy(prompt:find("git repository at: /tmp/repo", 1, true))
             assert.is_truthy(prompt:find("Read files directly from disk", 1, true))
+            assert.is_truthy(prompt:find("Added lines and context lines in the diff are placeholders", 1, true))
         end)
     end)
 
