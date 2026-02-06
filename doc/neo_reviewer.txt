@@ -90,7 +90,7 @@ Call setup() with your options: >lua
         },
         ai = {
             enabled = false,                      -- Run AI analysis by default
-            model = "gpt-5.2-codex", -- Model for Codex CLI (default)
+            model = "gpt-5.3-codex", -- Model for Codex CLI (default)
             command = "codex",       -- Command to invoke
             reasoning_effort = "medium", -- Reasoning effort hint (Codex CLI)
             walkthrough_window = {
@@ -122,7 +122,7 @@ ai ~
     Configure AI-powered review analysis. Requires an AI CLI (Codex CLI by
     default) to be installed and configured.
     - `enabled`: Run AI analysis by default (default: false).
-    - `model`: Model to use for analysis (default: "gpt-5.2-codex").
+    - `model`: Model to use for analysis (default: "gpt-5.3-codex").
     - `command`: Command to invoke the AI CLI (default: "codex").
     - `reasoning_effort`: Reasoning effort hint for Codex CLI
       (default: "medium", ignored by other CLIs).

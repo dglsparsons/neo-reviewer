@@ -111,7 +111,7 @@ M.values = {
     },
     ai = {
         enabled = false,
-        model = "gpt-5.2-codex",
+        model = "gpt-5.3-codex",
         command = "codex",
         reasoning_effort = "medium",
         walkthrough_window = {

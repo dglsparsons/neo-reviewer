@@ -273,7 +273,7 @@ describe("neo_reviewer.config AI defaults", function()
     end)
 
     it("has default model", function()
-        assert.are.equal("gpt-5.2-codex", config.values.ai.model)
+        assert.are.equal("gpt-5.3-codex", config.values.ai.model)
     end)
 
     it("has default command", function()
@@ -317,7 +317,7 @@ describe("neo_reviewer.config build_ai_command", function()
         assert.are.equal("codex", spec.command)
         assert.is_nil(spec.writer)
         assert.are.same(
-            { "exec", "--model", "gpt-5.2-codex", "--config", 'model_reasoning_effort="medium"', "Explain this" },
+            { "exec", "--model", "gpt-5.3-codex", "--config", 'model_reasoning_effort="medium"', "Explain this" },
             spec.args
         )
     end)
