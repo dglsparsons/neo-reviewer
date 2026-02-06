@@ -59,12 +59,9 @@ describe("neo_reviewer review submission", function()
 
             neo_reviewer.approve()
 
-            assert.stub(cli.submit_review).was_called_with(
-                "https://github.com/owner/repo/pull/123",
-                "APPROVE",
-                nil,
-                match._
-            )
+            assert
+                .stub(cli.submit_review)
+                .was_called_with("https://github.com/owner/repo/pull/123", "APPROVE", nil, match._)
             assert.stub(cli.restore_branch).was_called_with("main", match._)
             assert.is_nil(state.get_review())
         end)
@@ -94,12 +91,9 @@ describe("neo_reviewer review submission", function()
 
             neo_reviewer.request_changes("Needs work")
 
-            assert.stub(cli.submit_review).was_called_with(
-                "https://github.com/owner/repo/pull/123",
-                "REQUEST_CHANGES",
-                "Needs work",
-                match._
-            )
+            assert
+                .stub(cli.submit_review)
+                .was_called_with("https://github.com/owner/repo/pull/123", "REQUEST_CHANGES", "Needs work", match._)
             assert.stub(cli.restore_branch).was_called_with("main", match._)
             assert.is_nil(state.get_review())
         end)
