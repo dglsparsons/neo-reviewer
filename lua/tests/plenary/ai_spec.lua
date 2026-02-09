@@ -113,6 +113,27 @@ describe("neo_reviewer.ai", function()
             assert.is_truthy(prompt:find('"steps"'))
         end)
 
+        it("allows steps to group related change blocks", function()
+            ---@type NRReview
+            local review = {
+                review_type = "pr",
+                pr = { number = 1, title = "Title" },
+                files = {},
+                files_by_path = {},
+                comments = {},
+                current_file_idx = 1,
+                expanded_changes = {},
+                applied_buffers = {},
+                overlays_visible = true,
+            }
+
+            local prompt = ai.build_prompt(review)
+
+            assert.is_truthy(prompt:find("Each step must include one or more change blocks", 1, true))
+            assert.is_truthy(prompt:find("Group related change blocks into the same step", 1, true))
+            assert.is_truthy(prompt:find("Do not return steps with empty change_blocks", 1, true))
+        end)
+
         it("includes repo root and file-reading rules", function()
             ---@type NRReview
             local review = {
@@ -214,6 +235,47 @@ describe("neo_reviewer.ai", function()
             assert.are.equal("Uncovered change: test.lua", updated.steps[2].title)
             assert.are.same({ file = "test.lua", change_block_index = 1 }, updated.steps[2].change_blocks[1])
             assert.are.same({ file = "test.lua", change_block_index = 2 }, updated.steps[3].change_blocks[1])
+        end)
+
+        it("preserves grouped steps while deduplicating change_blocks", function()
+            local review = build_review()
+            ---@type NRAIAnalysis
+            local analysis = {
+                overview = "Overview",
+                steps = {
+                    {
+                        title = "Combined",
+                        explanation = "Covers first and second hunks",
+                        change_blocks = {
+                            { file = "test.lua", change_block_index = 0 },
+                            { file = "test.lua", change_block_index = 1 },
+                            { file = "test.lua", change_block_index = 1 },
+                        },
+                    },
+                    {
+                        title = "No anchor",
+                        explanation = "Cross-cutting detail",
+                        change_blocks = {},
+                    },
+                    {
+                        title = "Duplicate",
+                        explanation = "Repeats first hunk",
+                        change_blocks = {
+                            { file = "test.lua", change_block_index = 0 },
+                        },
+                    },
+                },
+            }
+
+            local updated = ai.ensure_full_coverage(review, analysis)
+
+            assert.are.equal(2, #updated.steps)
+            assert.are.equal("Combined", updated.steps[1].title)
+            assert.are.equal(2, #updated.steps[1].change_blocks)
+            assert.are.same({ file = "test.lua", change_block_index = 0 }, updated.steps[1].change_blocks[1])
+            assert.are.same({ file = "test.lua", change_block_index = 1 }, updated.steps[1].change_blocks[2])
+            assert.are.same({ file = "test.lua", change_block_index = 2 }, updated.steps[2].change_blocks[1])
+            assert.are.equal("Uncovered change: test.lua", updated.steps[2].title)
         end)
 
         it("does not add placeholders when all change_blocks covered", function()

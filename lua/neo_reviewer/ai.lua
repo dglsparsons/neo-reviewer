@@ -35,10 +35,12 @@ Guidelines:
 - steps: ordered walkthrough; keep each step concise
 - Avoid mentioning diff mechanics (hunks, change blocks, markers) in the explanation text
 - If you need to use a technical term, define it in the same sentence
-- When a step refers to code changes, include the change blocks that support it
-- change_blocks can be empty when a step is high-level or cross-cutting
+- Each step must include one or more change blocks
+- Group related change blocks into the same step when it helps readability
+- Do not return steps with empty change_blocks
 - change_block_index must match the @@ change_block N @@ markers in the diff below
-- Every change block in the diff must be included in at least one step
+- Every change block in the diff must be included in exactly one step
+- Put cross-cutting or high-level notes in the overview, not extra steps
 - If you are unsure, add a final step that references any remaining change blocks
 
 ---
@@ -82,10 +84,13 @@ Return ONLY valid JSON (no markdown, no explanation):
 }
 
 Guidelines:
-- Every change block listed below must be included in at least one step
+- Every change block listed below must be included in exactly one step
 - steps: ordered walkthrough; keep each step concise
 - Avoid mentioning diff mechanics (hunks, change blocks, markers) in the explanation text
 - If you need to use a technical term, define it in the same sentence
+- Each step must include one or more change blocks
+- Group related change blocks into the same step when it helps readability
+- Do not return steps with empty change_blocks
 - change_block_index must match the @@ change_block N @@ markers in the diff below
 
 ---
@@ -237,6 +242,59 @@ local function collect_missing_change_blocks(review, analysis)
     return missing
 end
 
+---@param review NRReview
+---@param block_ref NRAIWalkthroughChangeRef
+---@return boolean
+local function is_valid_change_block_ref(review, block_ref)
+    local file = review.files_by_path[block_ref.file]
+    if not file then
+        return false
+    end
+    return file.change_blocks and file.change_blocks[block_ref.change_block_index + 1] ~= nil
+end
+
+---Normalize AI steps so each unique change block maps to at most one step.
+---Invalid and duplicate block references are removed, while grouped steps are preserved.
+---@param review NRReview
+---@param analysis NRAIAnalysis
+---@return NRAIAnalysis
+local function normalize_steps_to_unique_change_blocks(review, analysis)
+    ---@type NRAIAnalysis
+    local normalized = {
+        overview = analysis.overview,
+        steps = {},
+    }
+
+    ---@type table<string, boolean>
+    local seen = {}
+    for _, step in ipairs(analysis.steps or {}) do
+        ---@type NRAIWalkthroughChangeRef[]
+        local change_blocks = {}
+        for _, block_ref in ipairs(step.change_blocks or {}) do
+            if is_valid_change_block_ref(review, block_ref) then
+                local key = change_block_key(block_ref.file, block_ref.change_block_index)
+                if not seen[key] then
+                    table.insert(change_blocks, {
+                        file = block_ref.file,
+                        change_block_index = block_ref.change_block_index,
+                    })
+                    seen[key] = true
+                end
+            end
+        end
+
+        if #change_blocks > 0 then
+            table.insert(normalized.steps, {
+                title = step.title,
+                explanation = step.explanation,
+                change_blocks = change_blocks,
+            })
+        end
+    end
+
+    return normalized
+end
+
 ---@param analysis NRAIAnalysis
 ---@param missing NRAIWalkthroughChangeRef[]
 ---@return NRAIAnalysis
@@ -385,6 +443,7 @@ end
 ---@param analysis NRAIAnalysis
 ---@return NRAIAnalysis, NRAIWalkthroughChangeRef[]
 function M.ensure_full_coverage(review, analysis)
+    analysis = normalize_steps_to_unique_change_blocks(review, analysis)
     local missing = collect_missing_change_blocks(review, analysis)
     if #missing == 0 then
         return analysis, missing
@@ -454,6 +513,7 @@ function M.analyze_pr(review, callback)
             return
         end
 
+        analysis = normalize_steps_to_unique_change_blocks(review, analysis)
         local missing = collect_missing_change_blocks(review, analysis)
         if #missing == 0 then
             callback(analysis, nil)
@@ -464,6 +524,7 @@ function M.analyze_pr(review, callback)
         run_prompt(missing_prompt, function(missing_analysis)
             if missing_analysis then
                 analysis = merge_analysis(analysis, missing_analysis)
+                analysis = normalize_steps_to_unique_change_blocks(review, analysis)
             end
 
             local remaining = collect_missing_change_blocks(review, analysis)

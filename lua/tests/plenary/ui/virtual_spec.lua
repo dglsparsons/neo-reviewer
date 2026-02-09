@@ -162,37 +162,49 @@ describe("neo_reviewer.ui.virtual", function()
     end)
 
     describe("toggle_at_cursor", function()
-        it("sets global show_old_code state", function()
-            setup_review_buffer(fixtures.simple_pr)
-
-            assert.is_false(state.is_showing_old_code())
-            virtual.toggle_at_cursor()
-            assert.is_true(state.is_showing_old_code())
-            virtual.toggle_at_cursor()
-            assert.is_false(state.is_showing_old_code())
-        end)
-
-        it("expands all change blocks in all applied buffers", function()
+        it("toggles old code preview for the change block at cursor", function()
             local bufnr, file = setup_review_buffer(fixtures.simple_pr)
+            local block = file.change_blocks[1]
+
+            helpers.set_cursor(block.start_line)
 
             virtual.toggle_at_cursor()
 
-            assert.is_true(state.is_change_expanded(file.path, file.change_blocks[1].start_line))
+            assert.is_true(state.is_change_expanded(file.path, block.start_line))
             assert.is_true(#helpers.get_extmarks(bufnr, "nr_virtual") > 0)
+
+            virtual.toggle_at_cursor()
+
+            assert.is_false(state.is_change_expanded(file.path, block.start_line))
+            assert.are.equal(0, #helpers.get_extmarks(bufnr, "nr_virtual"))
         end)
 
-        it("collapses all change blocks when toggled off", function()
-            local bufnr, file = setup_review_buffer(fixtures.simple_pr)
+        it("only toggles the block under cursor", function()
+            local bufnr, file = setup_review_buffer(fixtures.mixed_changes_pr)
+            local first_block = file.change_blocks[1]
+            local second_block = file.change_blocks[2]
 
-            virtual.toggle_at_cursor()
+            helpers.set_cursor(first_block.start_line)
             virtual.toggle_at_cursor()
 
-            assert.is_false(state.is_change_expanded(file.path, file.change_blocks[1].start_line))
-            assert.are.equal(0, #helpers.get_extmarks(bufnr, "nr_virtual"))
+            assert.is_true(state.is_change_expanded(file.path, first_block.start_line))
+            assert.is_false(state.is_change_expanded(file.path, second_block.start_line))
+            assert.are.equal(1, #helpers.get_extmarks(bufnr, "nr_virtual"))
         end)
 
         it("notifies when no active review", function()
             helpers.create_test_buffer({ "not", "a", "review" })
+            local notifications = helpers.capture_notifications()
+            virtual.toggle_at_cursor()
+            local msgs = notifications.get()
+            notifications.restore()
+            assert.are.equal(1, #msgs)
+            assert.matches("No active review", msgs[1].msg)
+        end)
+
+        it("notifies when cursor is outside change blocks", function()
+            setup_review_buffer(fixtures.simple_pr)
+            helpers.set_cursor(1)
             local notifications = helpers.capture_notifications()
 
             virtual.toggle_at_cursor()
@@ -200,7 +212,20 @@ describe("neo_reviewer.ui.virtual", function()
             local msgs = notifications.get()
             notifications.restore()
             assert.are.equal(1, #msgs)
-            assert.matches("No active review", msgs[1].msg)
+            assert.matches("No change block at cursor", msgs[1].msg)
+        end)
+
+        it("notifies when block has no deleted lines", function()
+            setup_review_buffer(fixtures.multi_file_pr)
+            helpers.set_cursor(1)
+            local notifications = helpers.capture_notifications()
+
+            virtual.toggle_at_cursor()
+
+            local msgs = notifications.get()
+            notifications.restore()
+            assert.are.equal(1, #msgs)
+            assert.matches("has no deleted lines", msgs[1].msg)
         end)
     end)
 

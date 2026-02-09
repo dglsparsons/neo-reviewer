@@ -142,7 +142,9 @@ ai ~
     neo-reviewer enforces full change block coverage for AI walkthroughs. If a
     change block is missed, it issues a follow-up prompt for the missing change
     blocks and appends any remaining uncovered change blocks as minimal
-    "Uncovered change" steps.
+    "Uncovered change" steps. It also normalizes AI output so each change block
+    is referenced by at most one walkthrough step while preserving grouped
+    one-to-many steps.
 
     Codebase explorations reuse this AI configuration and the walkthrough
     window settings. See |:Ask| for a guided tour of the codebase.

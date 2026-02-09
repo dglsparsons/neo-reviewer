@@ -22,24 +22,9 @@ local function expand_all_in_buffer(bufnr, file)
     end
 end
 
-local function collapse_all_in_buffer(bufnr, file)
-    if not file.change_blocks then
-        return
-    end
-    for _, block in ipairs(file.change_blocks) do
-        if block.deletion_groups and #block.deletion_groups > 0 then
-            if state.is_change_expanded(file.path, block.start_line) then
-                M.collapse(bufnr, block, file.path)
-            end
-        end
-    end
-end
-
 function M.apply_mode_to_buffer(bufnr, file)
     define_highlights()
-    if state.is_showing_old_code() then
-        expand_all_in_buffer(bufnr, file)
-    end
+    expand_all_in_buffer(bufnr, file)
 end
 
 function M.toggle_at_cursor()
@@ -51,20 +36,29 @@ function M.toggle_at_cursor()
         return
     end
 
-    local new_mode = not state.is_showing_old_code()
-    state.set_show_old_code(new_mode)
+    local bufnr = vim.api.nvim_get_current_buf()
+    local ok, file = pcall(vim.api.nvim_buf_get_var, bufnr, "nr_file")
+    if not ok or not file then
+        vim.notify("Current buffer is not part of the active review", vim.log.levels.WARN)
+        return
+    end
 
-    for bufnr, _ in pairs(state.get_applied_buffers()) do
-        if vim.api.nvim_buf_is_valid(bufnr) then
-            local ok, file = pcall(vim.api.nvim_buf_get_var, bufnr, "nr_file")
-            if ok and file then
-                if new_mode then
-                    expand_all_in_buffer(bufnr, file)
-                else
-                    collapse_all_in_buffer(bufnr, file)
-                end
-            end
-        end
+    local cursor = vim.api.nvim_win_get_cursor(0)
+    local block = M.find_change_block_at_line(file.change_blocks, cursor[1])
+    if not block then
+        vim.notify("No change block at cursor", vim.log.levels.INFO)
+        return
+    end
+
+    if not block.deletion_groups or #block.deletion_groups == 0 then
+        vim.notify("This change block has no deleted lines to preview", vim.log.levels.INFO)
+        return
+    end
+
+    if state.is_change_expanded(file.path, block.start_line) then
+        M.collapse(bufnr, block, file.path)
+    else
+        M.expand(bufnr, block, file.path)
     end
 end
 
