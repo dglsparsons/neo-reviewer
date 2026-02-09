@@ -229,6 +229,142 @@ describe("neo_reviewer.ui.virtual", function()
         end)
     end)
 
+    describe("toggle_review_mode", function()
+        it("toggles old code preview for all hunks in the current file", function()
+            local bufnr, file = setup_review_buffer(fixtures.comment_navigation_pr)
+            ---@type NRChangeBlock[]
+            local blocks_with_deletions = {}
+
+            for _, block in ipairs(file.change_blocks) do
+                if block.deletion_groups and #block.deletion_groups > 0 then
+                    table.insert(blocks_with_deletions, block)
+                end
+            end
+
+            assert.are.equal(2, #blocks_with_deletions)
+            assert.is_false(state.is_showing_old_code())
+
+            virtual.toggle_review_mode()
+
+            assert.is_true(state.is_showing_old_code())
+            for _, block in ipairs(blocks_with_deletions) do
+                assert.is_true(state.is_change_expanded(file.path, block.start_line))
+            end
+            assert.are.equal(2, #helpers.get_extmarks(bufnr, "nr_virtual"))
+
+            virtual.toggle_review_mode()
+
+            assert.is_false(state.is_showing_old_code())
+            for _, block in ipairs(blocks_with_deletions) do
+                assert.is_false(state.is_change_expanded(file.path, block.start_line))
+            end
+            assert.are.equal(0, #helpers.get_extmarks(bufnr, "nr_virtual"))
+        end)
+
+        it("applies mode changes to all applied review buffers", function()
+            local data = {
+                pr = {
+                    number = 123,
+                    title = "Two files",
+                },
+                files = {
+                    {
+                        path = "a.lua",
+                        status = "modified",
+                        content = "line 1\nline 2\nline 3",
+                        change_blocks = {
+                            {
+                                start_line = 2,
+                                end_line = 2,
+                                kind = "change",
+                                added_lines = { 2 },
+                                changed_lines = { 2 },
+                                deletion_groups = {
+                                    {
+                                        anchor_line = 2,
+                                        old_lines = { "old line 2" },
+                                        old_line_numbers = { 2 },
+                                    },
+                                },
+                                old_to_new = {
+                                    { old_line = 2, new_line = 2 },
+                                },
+                            },
+                        },
+                    },
+                    {
+                        path = "b.lua",
+                        status = "modified",
+                        content = "line 10\nline 11\nline 12",
+                        change_blocks = {
+                            {
+                                start_line = 2,
+                                end_line = 2,
+                                kind = "change",
+                                added_lines = { 2 },
+                                changed_lines = { 2 },
+                                deletion_groups = {
+                                    {
+                                        anchor_line = 2,
+                                        old_lines = { "old line 11" },
+                                        old_line_numbers = { 11 },
+                                    },
+                                },
+                                old_to_new = {
+                                    { old_line = 11, new_line = 2 },
+                                },
+                            },
+                        },
+                    },
+                },
+                comments = {},
+            }
+            state.set_review(data)
+            local review = state.get_review()
+            review.url = "https://github.com/owner/repo/pull/123"
+
+            local file_a = data.files[1]
+            local file_b = data.files[2]
+            local bufnr_a = helpers.create_test_buffer(vim.split(file_a.content, "\n"))
+            local bufnr_b = helpers.create_test_buffer(vim.split(file_b.content, "\n"))
+
+            vim.api.nvim_buf_set_var(bufnr_a, "nr_file", file_a)
+            vim.api.nvim_buf_set_var(bufnr_a, "nr_pr_url", review.url)
+            state.mark_buffer_applied(bufnr_a)
+
+            vim.api.nvim_buf_set_var(bufnr_b, "nr_file", file_b)
+            vim.api.nvim_buf_set_var(bufnr_b, "nr_pr_url", review.url)
+            state.mark_buffer_applied(bufnr_b)
+
+            vim.api.nvim_set_current_buf(bufnr_a)
+            virtual.toggle_review_mode()
+
+            assert.is_true(state.is_showing_old_code())
+            assert.is_true(state.is_change_expanded(file_a.path, 2))
+            assert.is_true(state.is_change_expanded(file_b.path, 2))
+            assert.are.equal(1, #helpers.get_extmarks(bufnr_a, "nr_virtual"))
+            assert.are.equal(1, #helpers.get_extmarks(bufnr_b, "nr_virtual"))
+
+            virtual.toggle_review_mode()
+
+            assert.is_false(state.is_showing_old_code())
+            assert.is_false(state.is_change_expanded(file_a.path, 2))
+            assert.is_false(state.is_change_expanded(file_b.path, 2))
+            assert.are.equal(0, #helpers.get_extmarks(bufnr_a, "nr_virtual"))
+            assert.are.equal(0, #helpers.get_extmarks(bufnr_b, "nr_virtual"))
+        end)
+
+        it("notifies when no active review", function()
+            helpers.create_test_buffer({ "not", "a", "review" })
+            local notifications = helpers.capture_notifications()
+            virtual.toggle_review_mode()
+            local msgs = notifications.get()
+            notifications.restore()
+            assert.are.equal(1, #msgs)
+            assert.matches("No active review", msgs[1].msg)
+        end)
+    end)
+
     describe("clear", function()
         it("removes all virtual lines", function()
             local bufnr, file = setup_review_buffer(fixtures.simple_pr)

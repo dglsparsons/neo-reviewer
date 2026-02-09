@@ -659,7 +659,7 @@ end
 
 function M.toggle_prev_code()
     local virtual = require("neo_reviewer.ui.virtual")
-    virtual.toggle_at_cursor()
+    virtual.toggle_review_mode()
 end
 
 ---@param opts? NRAddCommentOpts

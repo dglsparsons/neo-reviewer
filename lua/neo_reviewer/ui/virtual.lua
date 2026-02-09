@@ -22,8 +22,26 @@ local function expand_all_in_buffer(bufnr, file)
     end
 end
 
-function M.apply_mode_to_buffer(bufnr, file)
+local function collapse_all_in_buffer(bufnr, file)
+    if not file.change_blocks then
+        return
+    end
+    for _, block in ipairs(file.change_blocks) do
+        if block.deletion_groups and #block.deletion_groups > 0 then
+            M.collapse(bufnr, block, file.path)
+        end
+    end
+end
+
+---@param bufnr integer
+---@param file NRFile
+---@param show_old_code? boolean
+function M.apply_mode_to_buffer(bufnr, file, show_old_code)
     define_highlights()
+    if show_old_code == false then
+        collapse_all_in_buffer(bufnr, file)
+        return
+    end
     expand_all_in_buffer(bufnr, file)
 end
 
@@ -59,6 +77,41 @@ function M.toggle_at_cursor()
         M.collapse(bufnr, block, file.path)
     else
         M.expand(bufnr, block, file.path)
+    end
+end
+
+function M.toggle_review_mode()
+    define_highlights()
+
+    local review = state.get_review()
+    if not review then
+        vim.notify("No active review", vim.log.levels.WARN)
+        return
+    end
+
+    local current_bufnr = vim.api.nvim_get_current_buf()
+    local ok, current_file = pcall(vim.api.nvim_buf_get_var, current_bufnr, "nr_file")
+    if not ok or not current_file then
+        vim.notify("Current buffer is not part of the active review", vim.log.levels.WARN)
+        return
+    end
+
+    local show_old_code = not state.is_showing_old_code()
+    state.set_show_old_code(show_old_code)
+
+    local applied = false
+    for bufnr, _ in pairs(state.get_applied_buffers()) do
+        if vim.api.nvim_buf_is_valid(bufnr) then
+            local file_ok, file = pcall(vim.api.nvim_buf_get_var, bufnr, "nr_file")
+            if file_ok and file then
+                M.apply_mode_to_buffer(bufnr, file, show_old_code)
+                applied = true
+            end
+        end
+    end
+
+    if not applied then
+        M.apply_mode_to_buffer(current_bufnr, current_file, show_old_code)
     end
 end
 

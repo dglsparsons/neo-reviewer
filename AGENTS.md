@@ -1,5 +1,19 @@
 # AGENTS.md
 
+## Why this file exists
+
+- Keep non-obvious implementation learnings that save future effort.
+- Prefer notes about pitfalls, tradeoffs, and validation patterns over things that are easy to rediscover from code.
+
+## Prompt to update this file after future work
+
+- After any substantial implementation, ask: `What did I learn that would save at least 30 minutes next time?`
+- If the answer is non-empty, add concise bullets here in the most relevant section.
+
+## Learned while implementing old-code preview behavior
+
+- `toggle_prev_code()` is a global review-mode toggle: it flips `show_old_code` and applies to all hunks in applied review buffers, not just the currently selected change block.
+
 ## Project Overview
 
 `neo-reviewer` is a Neovim plugin for reviewing GitHub PRs. Hybrid architecture: Rust CLI for GitHub API/diff parsing, Lua plugin for UI.
