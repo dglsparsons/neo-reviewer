@@ -209,8 +209,8 @@ These user commands are created when you call `setup()`.
     restores the previous branch if the review checked out a PR branch.
 
 :ReviewDone                                                        *:ReviewDone*
-    End the current review session without submitting a review. Closes the AI
-    walkthrough window if it is open. If the review was opened with a PR
+    End the current review session without submitting a review. Also closes any
+    active Ask walkthrough window/session. If the review was opened with a PR
     number (which checks out the PR branch), this restores the previous branch
     and pops any stashed changes.
 
@@ -329,10 +329,11 @@ require("neo_reviewer").request_changes({message})   *neo_reviewer.request_chang
     input window for entering the review message.
 
 require("neo_reviewer").done()                                   *neo_reviewer.done()*
-    Close the current review and restore previous state. Closes the AI
-    walkthrough window if it is open. If the review was opened with a PR
-    number (which checks out the PR branch), this restores the previous branch
-    and pops any stashed changes.
+    Close the current review and restore previous state. This also closes and
+    clears any Ask walkthrough session/window. If no review is active but an
+    Ask walkthrough exists, it closes that walkthrough. If the review was
+    opened with a PR number (which checks out the PR branch), this restores
+    the previous branch and pops any stashed changes.
 
 require("neo_reviewer").sync()                                   *neo_reviewer.sync()*
     Sync the current PR review with GitHub. Re-fetches PR data including
@@ -341,8 +342,12 @@ require("neo_reviewer").sync()                                   *neo_reviewer.s
     See |:ReviewSync|.
 
 require("neo_reviewer").toggle_ai_feedback()     *neo_reviewer.toggle_ai_feedback()*
-    Toggle the AI walkthrough window open/closed. The walkthrough updates
-    as you navigate changes with next/prev.
+    Toggle the AI walkthrough window open/closed. During PR/local review mode
+    this controls review analysis. When an Ask walkthrough is present, it
+    controls the Ask walkthrough window.
+    If both review analysis and Ask walkthrough are active, repeated toggles
+    cycle through: both visible -> review only -> both hidden -> review only
+    -> both visible.
 
 ==============================================================================
 7. KEYMAPS                                                *neo_reviewer-keymaps*

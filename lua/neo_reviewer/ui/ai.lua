@@ -246,6 +246,14 @@ function M.open()
 end
 
 ---@return boolean
+function M.is_open()
+    if not walkthrough_bufnr or not vim.api.nvim_buf_is_valid(walkthrough_bufnr) then
+        return false
+    end
+    return vim.fn.bufwinid(walkthrough_bufnr) ~= -1
+end
+
+---@return boolean
 function M.close()
     local bufnr = walkthrough_bufnr
     if not bufnr or not vim.api.nvim_buf_is_valid(bufnr) then

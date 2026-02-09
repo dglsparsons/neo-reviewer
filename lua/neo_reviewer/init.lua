@@ -14,6 +14,9 @@
 ---@class NRModule
 local M = {}
 
+---@type "both"|"hidden"|nil
+local stacked_feedback_anchor = nil
+
 ---@param input string
 ---@return boolean
 local function is_github_url(input)
@@ -671,7 +674,52 @@ function M.show_comment()
 end
 
 function M.toggle_ai_feedback()
+    local state = require("neo_reviewer.state")
+    local walkthrough_ui = require("neo_reviewer.ui.walkthrough")
     local ai_ui = require("neo_reviewer.ui.ai")
+    local review = state.get_review()
+    local has_walkthrough = state.get_walkthrough() ~= nil
+    local walkthrough_open = walkthrough_ui.is_open()
+    local review_open = ai_ui.is_open()
+
+    if review and has_walkthrough then
+        if walkthrough_open and review_open then
+            walkthrough_ui.close()
+            stacked_feedback_anchor = "both"
+            return
+        end
+
+        if review_open and not walkthrough_open then
+            if stacked_feedback_anchor == "both" then
+                ai_ui.close()
+                stacked_feedback_anchor = "hidden"
+            else
+                walkthrough_ui.open()
+                stacked_feedback_anchor = "both"
+            end
+            return
+        end
+
+        if not review_open and not walkthrough_open then
+            ai_ui.open()
+            stacked_feedback_anchor = "hidden"
+            return
+        end
+
+        if walkthrough_open and not review_open then
+            walkthrough_ui.close()
+            stacked_feedback_anchor = "hidden"
+            return
+        end
+    end
+
+    stacked_feedback_anchor = nil
+
+    if has_walkthrough or walkthrough_open then
+        walkthrough_ui.toggle()
+        return
+    end
+
     ai_ui.show_details()
 end
 
@@ -873,17 +921,34 @@ end
 function M.done()
     local state = require("neo_reviewer.state")
     local review = state.get_review()
+    stacked_feedback_anchor = nil
+    local walkthrough_ui = require("neo_reviewer.ui.walkthrough")
+    local has_walkthrough = state.get_walkthrough() ~= nil
+    local closed_window = walkthrough_ui.close()
+    if has_walkthrough then
+        state.clear_walkthrough()
+    end
 
-    if not review then
-        vim.notify("No active review", vim.log.levels.WARN)
+    if review then
+        state.clear_review()
+
+        if not restore_previous_branch(review) then
+            vim.notify("Review closed", vim.log.levels.INFO)
+        end
         return
     end
 
-    state.clear_review()
-
-    if not restore_previous_branch(review) then
-        vim.notify("Review closed", vim.log.levels.INFO)
+    if has_walkthrough then
+        vim.notify("Walkthrough closed", vim.log.levels.INFO)
+        return
     end
+
+    if closed_window then
+        vim.notify("Walkthrough window closed", vim.log.levels.INFO)
+        return
+    end
+
+    vim.notify("No active review", vim.log.levels.WARN)
 end
 
 function M.sync()
