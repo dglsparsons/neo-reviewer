@@ -75,6 +75,13 @@ require("neo_reviewer").setup({
     },
     wrap_navigation = true,      -- Wrap at file boundaries
     auto_expand_deletes = false, -- Auto-expand deleted lines
+    review_diff = {
+        skip_noise_files = true,  -- Skip common lock/noise files by default
+        noise_files = {
+            "pnpm-lock.yaml",
+            "Cargo.lock",
+        },
+    },
 })
 ```
 
@@ -137,7 +144,7 @@ vim.keymap.set("n", ",dx", nr.request_changes, vim.tbl_extend("force", opts, { d
 | Command | Description |
 |---------|-------------|
 | `:ReviewPR {url}` | Open a PR for review |
-| `:ReviewDiff` | Review local git diff |
+| `:ReviewDiff` | Review local git diff (skips configured noise files by default) |
 | `:Ask` | AI-guided codebase exploration |
 | `:AddComment` | Add a review comment |
 | `:Approve` | Approve the PR |

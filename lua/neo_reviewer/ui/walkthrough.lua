@@ -5,6 +5,7 @@ local ns = vim.api.nvim_create_namespace("nr_walkthrough")
 
 local walkthrough_bufnr = nil
 local last_step_index = nil
+local last_anchor_index = nil
 ---@type table<integer, boolean>
 local highlighted_buffers = {}
 
@@ -343,14 +344,19 @@ end
 
 ---@param walkthrough NRWalkthrough
 ---@param step_index integer
+---@param anchor_index integer|nil
 ---@return nil
-local function jump_to_step(walkthrough, step_index)
+local function jump_to_step(walkthrough, step_index, anchor_index)
     local step = walkthrough.steps[step_index]
     last_step_index = step_index
+    last_anchor_index = nil
 
-    if step and step.anchors and step.anchors[1] then
+    if step and step.anchors and #step.anchors > 0 then
+        local clamped_anchor_index = math.max(1, math.min(anchor_index or 1, #step.anchors))
+        last_anchor_index = clamped_anchor_index
+        local anchor = step.anchors[clamped_anchor_index]
         local nav = require("neo_reviewer.ui.nav")
-        nav.jump_to(step.anchors[1].file, step.anchors[1].start_line)
+        nav.jump_to(anchor.file, anchor.start_line)
     end
 
     render_step(walkthrough, step_index)
@@ -412,6 +418,7 @@ function M.open(opts)
     end
 
     last_step_index = step_index
+    last_anchor_index = nil
     if opts and opts.jump_to_first then
         jump_to_step(walkthrough, step_index)
         return
@@ -447,17 +454,106 @@ function M.toggle()
     M.open()
 end
 
+---@param path string
+---@return string
+local function normalize_path(path)
+    local normalized = path:gsub("\\", "/")
+    return normalized
+end
+
+---@param anchor_file string
+---@param file_path string
+---@return boolean
+local function file_matches(anchor_file, file_path)
+    local normalized_anchor = normalize_path(anchor_file)
+    local normalized_file = normalize_path(file_path)
+    return normalized_file == normalized_anchor or normalized_file:match(vim.pesc(normalized_anchor) .. "$") ~= nil
+end
+
+---@param walkthrough NRWalkthrough
+---@return string|nil
+local function get_current_file_path(walkthrough)
+    local buffer = require("neo_reviewer.ui.buffer")
+    local current_file = buffer.get_current_file_from_buffer()
+    if current_file and type(current_file.path) == "string" then
+        return normalize_path(current_file.path)
+    end
+
+    local bufname = vim.api.nvim_buf_get_name(0)
+    if bufname == "" then
+        return nil
+    end
+
+    local normalized_name = normalize_path(bufname)
+    local normalized_root = normalize_path(walkthrough.root or "")
+    local root_prefix = normalized_root
+    if root_prefix ~= "" and root_prefix:sub(-1) ~= "/" then
+        root_prefix = root_prefix .. "/"
+    end
+    if normalized_root ~= "" and normalized_name == normalized_root then
+        if #normalized_name == #normalized_root then
+            return ""
+        end
+        return normalized_name:sub(#normalized_root + 2)
+    end
+    if root_prefix ~= "" and normalized_name:sub(1, #root_prefix) == root_prefix then
+        return normalized_name:sub(#root_prefix + 1)
+    end
+
+    return normalized_name
+end
+
+---@param walkthrough NRWalkthrough
+---@return integer
+---@return integer|nil
+local function resolve_position(walkthrough)
+    local steps = walkthrough.steps or {}
+    local current_index = math.max(1, math.min(last_step_index or 1, math.max(#steps, 1)))
+    local current_anchor = last_anchor_index
+
+    local file_path = get_current_file_path(walkthrough)
+    if file_path then
+        local line = vim.api.nvim_win_get_cursor(0)[1]
+        for step_index, step in ipairs(steps) do
+            for anchor_index, anchor in ipairs(step.anchors or {}) do
+                if file_matches(anchor.file, file_path) then
+                    local start_line = math.min(anchor.start_line, anchor.end_line)
+                    local end_line = math.max(anchor.start_line, anchor.end_line)
+                    if line >= start_line and line <= end_line then
+                        current_index = step_index
+                        current_anchor = anchor_index
+                        last_step_index = step_index
+                        last_anchor_index = anchor_index
+                        return current_index, current_anchor
+                    end
+                end
+            end
+        end
+    end
+
+    local step = steps[current_index]
+    local anchors = step and step.anchors or {}
+    if type(current_anchor) == "number" and (current_anchor < 1 or current_anchor > #anchors) then
+        current_anchor = nil
+    end
+
+    last_step_index = current_index
+    last_anchor_index = current_anchor
+    return current_index, current_anchor
+end
+
 ---@param file_path string
 ---@param line integer
 ---@return integer|nil
+---@return integer|nil
 local function find_step_for_location(file_path, line, walkthrough)
     for step_index, step in ipairs(walkthrough.steps or {}) do
-        for _, anchor in ipairs(step.anchors or {}) do
-            if anchor.file == file_path then
+        for anchor_index, anchor in ipairs(step.anchors or {}) do
+            if file_matches(anchor.file, file_path) then
                 local start_line = math.min(anchor.start_line, anchor.end_line)
                 local end_line = math.max(anchor.start_line, anchor.end_line)
                 if line >= start_line and line <= end_line then
-                    return step_index
+                    return step_index, anchor_index
                 end
             end
         end
@@ -481,7 +577,22 @@ function M.next_step(wrap)
         return
     end
 
-    local current_index = last_step_index or 1
+    local current_index, current_anchor = resolve_position(walkthrough)
+    local current_step = steps[current_index]
+    local anchors = current_step and current_step.anchors or {}
+
+    if #anchors > 0 then
+        if not current_anchor then
+            jump_to_step(walkthrough, current_index, 1)
+            return
+        end
+
+        if current_anchor < #anchors then
+            jump_to_step(walkthrough, current_index, current_anchor + 1)
+            return
+        end
+    end
+
     local next_index = current_index + 1
     if next_index > #steps then
         if wrap then
@@ -493,7 +604,7 @@ function M.next_step(wrap)
         end
     end
 
-    jump_to_step(walkthrough, next_index)
+    jump_to_step(walkthrough, next_index, 1)
 end
 
 ---@param wrap boolean
@@ -512,7 +623,22 @@ function M.prev_step(wrap)
         return
     end
 
-    local current_index = last_step_index or 1
+    local current_index, current_anchor = resolve_position(walkthrough)
+    local current_step = steps[current_index]
+    local anchors = current_step and current_step.anchors or {}
+
+    if #anchors > 0 then
+        if not current_anchor then
+            jump_to_step(walkthrough, current_index, #anchors)
+            return
+        end
+
+        if current_anchor > 1 then
+            jump_to_step(walkthrough, current_index, current_anchor - 1)
+            return
+        end
+    end
+
     local prev_index = current_index - 1
     if prev_index < 1 then
         if wrap then
@@ -524,7 +650,10 @@ function M.prev_step(wrap)
         end
     end
 
-    jump_to_step(walkthrough, prev_index)
+    local prev_step = steps[prev_index]
+    local prev_anchor_count = prev_step and #(prev_step.anchors or {}) or 0
+    local target_anchor = prev_anchor_count > 0 and prev_anchor_count or nil
+    jump_to_step(walkthrough, prev_index, target_anchor)
 end
 
 ---Sync walkthrough to a specific location
@@ -542,13 +671,15 @@ function M.sync_to_location(file_path, line)
         return
     end
 
-    local step_index = find_step_for_location(file_path, line, walkthrough)
+    local step_index, anchor_index = find_step_for_location(file_path, line, walkthrough)
     if not step_index then
         return
     end
 
-    if last_step_index ~= step_index then
-        last_step_index = step_index
+    local should_render = last_step_index ~= step_index
+    last_step_index = step_index
+    last_anchor_index = anchor_index
+    if should_render then
         render_step(walkthrough, step_index)
     end
 end

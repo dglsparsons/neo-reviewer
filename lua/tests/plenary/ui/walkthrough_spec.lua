@@ -211,4 +211,101 @@ describe("neo_reviewer.ui.walkthrough", function()
         local cursor = vim.api.nvim_win_get_cursor(0)
         assert.are.equal(3, cursor[1])
     end)
+
+    it("navigates anchors within a step before advancing to the next step", function()
+        local root = vim.fn.getcwd()
+        local file_path = root .. "/tmp_walkthrough_multi_anchor.lua"
+        local bufnr = helpers.create_test_buffer({ "line 1", "line 2", "line 3", "line 4", "line 5" })
+        vim.api.nvim_buf_set_name(bufnr, file_path)
+        vim.bo[bufnr].buftype = ""
+
+        state.set_walkthrough({
+            mode = "walkthrough",
+            overview = "Overview",
+            steps = {
+                {
+                    title = "Step One",
+                    explanation = "Two anchors",
+                    anchors = {
+                        { file = "tmp_walkthrough_multi_anchor.lua", start_line = 1, end_line = 1 },
+                        { file = "tmp_walkthrough_multi_anchor.lua", start_line = 3, end_line = 3 },
+                    },
+                },
+                {
+                    title = "Step Two",
+                    explanation = "Next step",
+                    anchors = {
+                        { file = "tmp_walkthrough_multi_anchor.lua", start_line = 5, end_line = 5 },
+                    },
+                },
+            },
+            prompt = "Prompt",
+            root = root,
+        })
+
+        walkthrough_ui.open({ jump_to_first = true })
+        local neo_reviewer = require("neo_reviewer")
+
+        neo_reviewer.next_change()
+        local cursor = vim.api.nvim_win_get_cursor(0)
+        assert.are.equal(3, cursor[1])
+
+        local walkthrough_bufnr = assert(find_walkthrough_buffer())
+        local rendered = vim.api.nvim_buf_get_lines(walkthrough_bufnr, 0, -1, false)
+        local combined = table.concat(rendered, "\n")
+        assert.is_truthy(combined:find("Step 1/2: Step One", 1, true))
+
+        neo_reviewer.next_change()
+        cursor = vim.api.nvim_win_get_cursor(0)
+        assert.are.equal(5, cursor[1])
+
+        rendered = vim.api.nvim_buf_get_lines(walkthrough_bufnr, 0, -1, false)
+        combined = table.concat(rendered, "\n")
+        assert.is_truthy(combined:find("Step 2/2: Step Two", 1, true))
+    end)
+
+    it("navigates backwards through anchors before moving to the previous step", function()
+        local root = vim.fn.getcwd()
+        local file_path = root .. "/tmp_walkthrough_multi_anchor_prev.lua"
+        local bufnr = helpers.create_test_buffer({ "line 1", "line 2", "line 3", "line 4", "line 5" })
+        vim.api.nvim_buf_set_name(bufnr, file_path)
+        vim.bo[bufnr].buftype = ""
+
+        state.set_walkthrough({
+            mode = "walkthrough",
+            overview = "Overview",
+            steps = {
+                {
+                    title = "Step One",
+                    explanation = "Two anchors",
+                    anchors = {
+                        { file = "tmp_walkthrough_multi_anchor_prev.lua", start_line = 1, end_line = 1 },
+                        { file = "tmp_walkthrough_multi_anchor_prev.lua", start_line = 3, end_line = 3 },
+                    },
+                },
+                {
+                    title = "Step Two",
+                    explanation = "Next step",
+                    anchors = {
+                        { file = "tmp_walkthrough_multi_anchor_prev.lua", start_line = 5, end_line = 5 },
+                    },
+                },
+            },
+            prompt = "Prompt",
+            root = root,
+        })
+
+        walkthrough_ui.open({ jump_to_first = true })
+        local neo_reviewer = require("neo_reviewer")
+        neo_reviewer.next_change()
+        neo_reviewer.next_change()
+
+        neo_reviewer.prev_change()
+        local cursor = vim.api.nvim_win_get_cursor(0)
+        assert.are.equal(3, cursor[1])
+
+        neo_reviewer.prev_change()
+        cursor = vim.api.nvim_win_get_cursor(0)
+        assert.are.equal(1, cursor[1])
+    end)
 end)

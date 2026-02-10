@@ -30,6 +30,10 @@
 ---@field height integer Minimum height of the walkthrough split (0 = auto)
 ---@field focus_on_open boolean Whether to focus the walkthrough window on open
 
+---@class NRReviewDiff
+---@field skip_noise_files boolean Whether to skip common lock/noise files in local diff reviews
+---@field noise_files string[] Basenames to skip in local diff reviews when skip_noise_files is enabled
+
 ---@class NRConfig
 ---@field cli_path string Path to the neo-reviewer CLI binary
 ---@field signs NRSigns
@@ -37,6 +41,7 @@
 ---@field auto_expand_deletes boolean Whether to auto-expand deleted lines
 ---@field thread_window NRThreadWindow
 ---@field input_window NRInputWindow
+---@field review_diff NRReviewDiff
 ---@field ai NRAI AI analysis configuration
 
 ---@class NRPartialSigns
@@ -64,6 +69,10 @@
 ---@field height? integer Minimum height of the walkthrough split (0 = auto)
 ---@field focus_on_open? boolean Whether to focus the walkthrough window on open
 
+---@class NRPartialReviewDiff
+---@field skip_noise_files? boolean Whether to skip common lock/noise files in local diff reviews
+---@field noise_files? string[] Basenames to skip in local diff reviews when skip_noise_files is enabled
+
 ---@class NRPartialAI
 ---@field enabled? boolean Whether AI analysis is enabled by default
 ---@field model? string Model for AI CLI
@@ -78,6 +87,7 @@
 ---@field auto_expand_deletes? boolean Whether to auto-expand deleted lines
 ---@field thread_window? NRPartialThreadWindow
 ---@field input_window? NRPartialInputWindow
+---@field review_diff? NRPartialReviewDiff
 ---@field ai? NRPartialAI AI analysis configuration
 
 ---@class NRConfigModule
@@ -107,6 +117,41 @@ M.values = {
         keys = {
             submit = "<C-s>",
             cancel = "<Esc>",
+        },
+    },
+    review_diff = {
+        skip_noise_files = true,
+        noise_files = {
+            "pnpm-lock.yaml",
+            "pnpm-lock.yml",
+            "package-lock.json",
+            "npm-shrinkwrap.json",
+            "yarn.lock",
+            "bun.lock",
+            "bun.lockb",
+            "Cargo.lock",
+            "Gemfile.lock",
+            "Pipfile.lock",
+            "poetry.lock",
+            "uv.lock",
+            "pdm.lock",
+            "composer.lock",
+            "go.sum",
+            "Gopkg.lock",
+            "mix.lock",
+            "pubspec.lock",
+            "Podfile.lock",
+            "Package.resolved",
+            "packages.lock.json",
+            "paket.lock",
+            "gradle.lockfile",
+            "deps.lock",
+            "Chart.lock",
+            "renv.lock",
+            "conan.lock",
+            "vcpkg-lock.json",
+            "flake.lock",
+            ".terraform.lock.hcl",
         },
     },
     ai = {

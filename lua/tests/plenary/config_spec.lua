@@ -20,6 +20,16 @@ describe("neo_reviewer.config", function()
         it("has auto_expand_deletes disabled by default", function()
             assert.is_false(config.values.auto_expand_deletes)
         end)
+
+        it("skips noise files in review_diff by default", function()
+            assert.is_true(config.values.review_diff.skip_noise_files)
+            assert.is_true(vim.tbl_contains(config.values.review_diff.noise_files, "pnpm-lock.yaml"))
+            assert.is_true(vim.tbl_contains(config.values.review_diff.noise_files, "Cargo.lock"))
+            assert.is_true(vim.tbl_contains(config.values.review_diff.noise_files, "poetry.lock"))
+            assert.is_true(vim.tbl_contains(config.values.review_diff.noise_files, "Package.resolved"))
+            assert.is_true(vim.tbl_contains(config.values.review_diff.noise_files, "packages.lock.json"))
+            assert.is_true(vim.tbl_contains(config.values.review_diff.noise_files, ".terraform.lock.hcl"))
+        end)
     end)
 
     describe("setup", function()
@@ -57,6 +67,18 @@ describe("neo_reviewer.config", function()
         it("overrides auto_expand_deletes", function()
             config.setup({ auto_expand_deletes = true })
             assert.is_true(config.values.auto_expand_deletes)
+        end)
+
+        it("overrides review_diff noise settings", function()
+            config.setup({
+                review_diff = {
+                    skip_noise_files = false,
+                    noise_files = { "custom.lock" },
+                },
+            })
+
+            assert.is_false(config.values.review_diff.skip_noise_files)
+            assert.are.same({ "custom.lock" }, config.values.review_diff.noise_files)
         end)
 
         it("handles nil opts", function()

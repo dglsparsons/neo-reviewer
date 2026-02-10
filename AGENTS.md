@@ -14,6 +14,15 @@
 
 - `toggle_prev_code()` is a global review-mode toggle: it flips `show_old_code` and applies to all hunks in applied review buffers, not just the currently selected change block.
 
+## Learned while implementing Ask walkthrough navigation
+
+- `next_change`/`prev_change` route through `ui/walkthrough.lua` when Ask is open, so anchor-level behavior must live in `next_step`/`prev_step`; changing `ui/nav.lua` alone will not affect Ask navigation.
+
+## Learned while implementing local diff noise filtering
+
+- Filter `ReviewDiff` files before `state.set_local_review()` and before optional AI analysis so navigation, change counts, and AI walkthrough inputs stay consistent.
+- Basename-based skipping is sufficient for lockfiles: matching both exact path and `"/" .. basename` suffix excludes nested lockfiles without adding glob parsing complexity.
+
 ## Project Overview
 
 `neo-reviewer` is a Neovim plugin for reviewing GitHub PRs. Hybrid architecture: Rust CLI for GitHub API/diff parsing, Lua plugin for UI.

@@ -88,6 +88,13 @@ Call setup() with your options: >lua
                 cancel = "<Esc>",   -- Key to cancel input
             },
         },
+        review_diff = {
+            skip_noise_files = true, -- Skip common lock/noise files by default
+            noise_files = {
+                "pnpm-lock.yaml",
+                "Cargo.lock",
+            },
+        },
         ai = {
             enabled = false,                      -- Run AI analysis by default
             model = "gpt-5.3-codex", -- Model for Codex CLI (default)
@@ -116,6 +123,14 @@ input_window.keys ~
     messages (e.g., when requesting changes).
     - `submit`: Key to submit the input (default: "<C-s>").
     - `cancel`: Key to cancel and close the input window (default: "<Esc>").
+
+                                                  *neo_reviewer-config-review_diff*
+review_diff ~
+    Configure local diff review file filtering.
+    - `skip_noise_files`: Skip common lock/noise files in |:ReviewDiff|
+      (default: true).
+    - `noise_files`: Basenames to skip when `skip_noise_files` is enabled.
+      Any file with a matching basename is excluded from local diff review.
 
                                                            *neo_reviewer-config-ai*
 ai ~
@@ -172,7 +187,10 @@ These user commands are created when you call `setup()`.
 
 :ReviewDiff [--analyze|--no-analyze]                               *:ReviewDiff*
     Review local git diff (both staged and unstaged changes). Comments are
-    written to `REVIEW_COMMENTS.md` in the project root.
+    written to `REVIEW_COMMENTS.md` in the project root. By default, common
+    lock/noise files (for example `pnpm-lock.yaml`, `Cargo.lock`) are skipped.
+    Configure this via `review_diff.skip_noise_files` and
+    `review_diff.noise_files`.
     - `--analyze`: Force AI analysis on (overrides config)
     - `--no-analyze`: Force AI analysis off (overrides config)
 
@@ -192,7 +210,8 @@ These user commands are created when you call `setup()`.
     loading message. When ready, the first step jumps to its first anchor
     (if any).
     When the exploration window is open, |neo_reviewer.next_change()| and
-    |neo_reviewer.prev_change()| navigate between exploration steps.
+    |neo_reviewer.prev_change()| move through anchors in the current step
+    first, then move between exploration steps.
 
 :AddComment                                                        *:AddComment*
     Add a review comment at cursor position. Supports visual range selection
@@ -231,7 +250,9 @@ require("neo_reviewer").review_pr({arg})                   *neo_reviewer.review_
 
 require("neo_reviewer").review_diff({opts})               *neo_reviewer.review_diff()*
     Review local git diff (both staged and unstaged changes). This allows
-    you to review code changes before committing. Accepts optional {opts}:
+    you to review code changes before committing. By default, common lock/noise
+    files are skipped using `review_diff.skip_noise_files` and
+    `review_diff.noise_files`. Accepts optional {opts}:
     - `analyze`: boolean to force AI analysis on/off (overrides config)
 
     Comments are written to `REVIEW_COMMENTS.md` in the project root with
@@ -255,10 +276,14 @@ require("neo_reviewer").ask({opts})                        *neo_reviewer.ask()*
     The file is cleared each time you start a new local diff review.
 
 require("neo_reviewer").next_change()                     *neo_reviewer.next_change()*
-    Jump to the next contiguous block of changes.
+    Jump to the next contiguous block of changes. When an Ask walkthrough is
+    open, this moves to the next anchor in the current step before advancing
+    to the next step.
 
 require("neo_reviewer").prev_change()                     *neo_reviewer.prev_change()*
-    Jump to the previous contiguous block of changes.
+    Jump to the previous contiguous block of changes. When an Ask walkthrough
+    is open, this moves to the previous anchor in the current step before
+    moving to the previous step.
 
 require("neo_reviewer").next_comment()                   *neo_reviewer.next_comment()*
     Jump to the next comment in the review. Works in both PR review mode

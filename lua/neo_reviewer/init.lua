@@ -23,6 +23,49 @@ local function is_github_url(input)
     return input:match("github%.com") ~= nil or input:match("^https?://") ~= nil
 end
 
+---@param file_path string
+---@param noise_file string
+---@return boolean
+local function path_matches_noise_file(file_path, noise_file)
+    if file_path == noise_file then
+        return true
+    end
+
+    local suffix = "/" .. noise_file
+    return file_path:sub(-#suffix) == suffix
+end
+
+---@param files NRFile[]
+---@param review_diff_cfg NRReviewDiff
+---@return NRFile[] filtered_files
+---@return integer skipped_count
+local function filter_local_diff_files(files, review_diff_cfg)
+    if not review_diff_cfg.skip_noise_files then
+        return files, 0
+    end
+
+    local filtered_files = {}
+    local skipped_count = 0
+
+    for _, file in ipairs(files) do
+        local skip_file = false
+        for _, noise_file in ipairs(review_diff_cfg.noise_files or {}) do
+            if path_matches_noise_file(file.path, noise_file) then
+                skip_file = true
+                break
+            end
+        end
+
+        if skip_file then
+            skipped_count = skipped_count + 1
+        else
+            table.insert(filtered_files, file)
+        end
+    end
+
+    return filtered_files, skipped_count
+end
+
 ---@param review NRReview
 ---@return boolean
 local function restore_previous_branch(review)
@@ -321,8 +364,30 @@ function M.review_diff(opts)
             return
         end
 
+        local filtered_files, skipped_count = filter_local_diff_files(data.files, config.values.review_diff)
+        if #filtered_files == 0 then
+            vim.notify(
+                string.format("No reviewable changes after skipping %d noise files", skipped_count),
+                vim.log.levels.WARN
+            )
+            return
+        end
+
+        if skipped_count > 0 then
+            vim.notify(
+                string.format("[neo-reviewer] Skipped %d noise file(s) in local diff review", skipped_count),
+                vim.log.levels.INFO
+            )
+        end
+
+        ---@type NRDiffData
+        local filtered_data = {
+            git_root = data.git_root,
+            files = filtered_files,
+        }
+
         state.clear_review()
-        local review = state.set_local_review(data)
+        local review = state.set_local_review(filtered_data)
 
         local comments_file = require("neo_reviewer.ui.comments_file")
         comments_file.clear()
@@ -333,14 +398,28 @@ function M.review_diff(opts)
         end
 
         local total_changes = 0
-        for _, file in ipairs(data.files) do
+        for _, file in ipairs(filtered_files) do
             total_changes = total_changes + #(file.change_blocks or {})
         end
 
         local function finish_setup()
             M.enable_overlay()
 
-            vim.notify(string.format("Local diff review enabled (%d files changed)", #data.files), vim.log.levels.INFO)
+            if skipped_count > 0 then
+                vim.notify(
+                    string.format(
+                        "Local diff review enabled (%d files changed, %d noise files skipped)",
+                        #filtered_files,
+                        skipped_count
+                    ),
+                    vim.log.levels.INFO
+                )
+            else
+                vim.notify(
+                    string.format("Local diff review enabled (%d files changed)", #filtered_files),
+                    vim.log.levels.INFO
+                )
+            end
 
             local nav = require("neo_reviewer.ui.nav")
             nav.first_change()
@@ -350,7 +429,7 @@ function M.review_diff(opts)
             vim.notify(
                 string.format(
                     "[neo-reviewer] Local diff fetched (%d files, %d changes). Running AI analysis...",
-                    #data.files,
+                    #filtered_files,
                     total_changes
                 ),
                 vim.log.levels.INFO
