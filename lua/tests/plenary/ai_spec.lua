@@ -343,7 +343,7 @@ describe("neo_reviewer.config AI defaults", function()
     end)
 
     it("has default reasoning effort", function()
-        assert.are.equal("medium", config.values.ai.reasoning_effort)
+        assert.are.equal("low", config.values.ai.reasoning_effort)
     end)
 
     it("has walkthrough window defaults", function()
@@ -379,7 +379,7 @@ describe("neo_reviewer.config build_ai_command", function()
         assert.are.equal("codex", spec.command)
         assert.is_nil(spec.writer)
         assert.are.same(
-            { "exec", "--model", "gpt-5.3-codex", "--config", 'model_reasoning_effort="medium"', "Explain this" },
+            { "exec", "--model", "gpt-5.3-codex", "--config", 'model_reasoning_effort="low"', "Explain this" },
             spec.args
         )
     end)
