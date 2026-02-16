@@ -45,41 +45,6 @@ function M.apply_mode_to_buffer(bufnr, file, show_old_code)
     expand_all_in_buffer(bufnr, file)
 end
 
-function M.toggle_at_cursor()
-    define_highlights()
-
-    local review = state.get_review()
-    if not review then
-        vim.notify("No active review", vim.log.levels.WARN)
-        return
-    end
-
-    local bufnr = vim.api.nvim_get_current_buf()
-    local ok, file = pcall(vim.api.nvim_buf_get_var, bufnr, "nr_file")
-    if not ok or not file then
-        vim.notify("Current buffer is not part of the active review", vim.log.levels.WARN)
-        return
-    end
-
-    local cursor = vim.api.nvim_win_get_cursor(0)
-    local block = M.find_change_block_at_line(file.change_blocks, cursor[1])
-    if not block then
-        vim.notify("No change block at cursor", vim.log.levels.INFO)
-        return
-    end
-
-    if not block.deletion_groups or #block.deletion_groups == 0 then
-        vim.notify("This change block has no deleted lines to preview", vim.log.levels.INFO)
-        return
-    end
-
-    if state.is_change_expanded(file.path, block.start_line) then
-        M.collapse(bufnr, block, file.path)
-    else
-        M.expand(bufnr, block, file.path)
-    end
-end
-
 function M.toggle_review_mode()
     define_highlights()
 
@@ -172,31 +137,6 @@ function M.collapse(bufnr, block, file_path)
     end
 
     state.set_change_expanded(file_path, block.start_line, nil)
-end
-
----@param change_blocks? NRChangeBlock[]
----@param line integer
----@return NRChangeBlock?
-function M.find_change_block_at_line(change_blocks, line)
-    if not change_blocks then
-        return nil
-    end
-
-    for _, block in ipairs(change_blocks) do
-        local block_end = block.end_line or block.start_line
-
-        if block.kind == "delete" then
-            if line == block.start_line or line == block.start_line - 1 then
-                return block
-            end
-        else
-            if line >= block.start_line and line <= block_end then
-                return block
-            end
-        end
-    end
-
-    return nil
 end
 
 ---@param bufnr integer

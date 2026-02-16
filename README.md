@@ -129,7 +129,7 @@ vim.keymap.set("n", ",dx", nr.request_changes, vim.tbl_extend("force", opts, { d
 
 2. Navigate between changes with `]c` and `[c`
 
-3. Press `<CR>` on a changed line to see the old code
+3. Press `<CR>` (or your old-code toggle mapping) to show/hide old code previews
 
 4. Add a comment with `<leader>cc`
 

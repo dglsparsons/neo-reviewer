@@ -296,8 +296,8 @@ require("neo_reviewer").prev_comment()                   *neo_reviewer.prev_comm
     Respects |wrap_navigation| config option.
 
 require("neo_reviewer").toggle_prev_code()           *neo_reviewer.toggle_prev_code()*
-    Toggle inline preview of old code for all changed hunks in the current
-    review buffer.
+    Toggle inline preview of old code for all changed hunks across applied
+    review buffers.
 
 require("neo_reviewer").add_comment({opts})               *neo_reviewer.add_comment()*
     Add a review comment. When called with {line1} and {line2} in opts,
@@ -397,7 +397,7 @@ neo-reviewer does not set any keymaps by default. Add your own: >lua
 
     vim.keymap.set("n", "<CR>", function()
         require("neo_reviewer").toggle_prev_code()
-    end, { desc = "Toggle old code preview" })
+    end, { desc = "Toggle old code preview for open review buffers" })
 
     vim.keymap.set("n", "<leader>cc", function()
         require("neo_reviewer").add_comment()

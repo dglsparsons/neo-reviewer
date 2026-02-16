@@ -39,80 +39,9 @@ describe("neo_reviewer.ui.virtual", function()
         return bufnr, file
     end
 
-    describe("find_change_block_at_line", function()
-        it("finds change block when cursor is at block start", function()
-            local change_blocks = {
-                { start_line = 5, end_line = 7, kind = "change" },
-            }
-
-            local block = virtual.find_change_block_at_line(change_blocks, 5)
-            assert.is_not_nil(block)
-            assert.are.equal(5, block.start_line)
-        end)
-
-        it("finds change block when cursor is within block", function()
-            local change_blocks = {
-                { start_line = 5, end_line = 7, kind = "change" },
-            }
-
-            local block = virtual.find_change_block_at_line(change_blocks, 6)
-            assert.is_not_nil(block)
-            assert.are.equal(5, block.start_line)
-        end)
-
-        it("finds change block when cursor is at block end", function()
-            local change_blocks = {
-                { start_line = 5, end_line = 7, kind = "change" },
-            }
-
-            local block = virtual.find_change_block_at_line(change_blocks, 7)
-            assert.is_not_nil(block)
-        end)
-
-        it("returns nil when cursor is outside block", function()
-            local change_blocks = {
-                { start_line = 5, end_line = 7, kind = "change" },
-            }
-
-            local block = virtual.find_change_block_at_line(change_blocks, 10)
-            assert.is_nil(block)
-        end)
-
-        it("finds delete block at exact line", function()
-            local change_blocks = {
-                { start_line = 5, end_line = 5, kind = "delete" },
-            }
-
-            local block = virtual.find_change_block_at_line(change_blocks, 5)
-            assert.is_not_nil(block)
-        end)
-
-        it("finds delete block at line before", function()
-            local change_blocks = {
-                { start_line = 5, end_line = 5, kind = "delete" },
-            }
-
-            local block = virtual.find_change_block_at_line(change_blocks, 4)
-            assert.is_not_nil(block)
-        end)
-
-        it("returns nil for nil change blocks", function()
-            local block = virtual.find_change_block_at_line(nil, 5)
-            assert.is_nil(block)
-        end)
-
-        it("handles multiple change blocks", function()
-            local change_blocks = {
-                { start_line = 3, end_line = 4, kind = "add" },
-                { start_line = 10, end_line = 10, kind = "change" },
-                { start_line = 20, end_line = 22, kind = "change" },
-            }
-
-            assert.is_not_nil(virtual.find_change_block_at_line(change_blocks, 3))
-            assert.is_not_nil(virtual.find_change_block_at_line(change_blocks, 4))
-            assert.is_nil(virtual.find_change_block_at_line(change_blocks, 5))
-            assert.is_not_nil(virtual.find_change_block_at_line(change_blocks, 10))
-            assert.is_not_nil(virtual.find_change_block_at_line(change_blocks, 21))
+    describe("public API", function()
+        it("does not expose cursor-scoped toggling", function()
+            assert.is_nil(virtual.toggle_at_cursor)
         end)
     end)
 
@@ -158,74 +87,6 @@ describe("neo_reviewer.ui.virtual", function()
 
             virtual.collapse(bufnr, block, file.path)
             assert.is_false(state.is_change_expanded(file.path, block.start_line))
-        end)
-    end)
-
-    describe("toggle_at_cursor", function()
-        it("toggles old code preview for the change block at cursor", function()
-            local bufnr, file = setup_review_buffer(fixtures.simple_pr)
-            local block = file.change_blocks[1]
-
-            helpers.set_cursor(block.start_line)
-
-            virtual.toggle_at_cursor()
-
-            assert.is_true(state.is_change_expanded(file.path, block.start_line))
-            assert.is_true(#helpers.get_extmarks(bufnr, "nr_virtual") > 0)
-
-            virtual.toggle_at_cursor()
-
-            assert.is_false(state.is_change_expanded(file.path, block.start_line))
-            assert.are.equal(0, #helpers.get_extmarks(bufnr, "nr_virtual"))
-        end)
-
-        it("only toggles the block under cursor", function()
-            local bufnr, file = setup_review_buffer(fixtures.mixed_changes_pr)
-            local first_block = file.change_blocks[1]
-            local second_block = file.change_blocks[2]
-
-            helpers.set_cursor(first_block.start_line)
-            virtual.toggle_at_cursor()
-
-            assert.is_true(state.is_change_expanded(file.path, first_block.start_line))
-            assert.is_false(state.is_change_expanded(file.path, second_block.start_line))
-            assert.are.equal(1, #helpers.get_extmarks(bufnr, "nr_virtual"))
-        end)
-
-        it("notifies when no active review", function()
-            helpers.create_test_buffer({ "not", "a", "review" })
-            local notifications = helpers.capture_notifications()
-            virtual.toggle_at_cursor()
-            local msgs = notifications.get()
-            notifications.restore()
-            assert.are.equal(1, #msgs)
-            assert.matches("No active review", msgs[1].msg)
-        end)
-
-        it("notifies when cursor is outside change blocks", function()
-            setup_review_buffer(fixtures.simple_pr)
-            helpers.set_cursor(1)
-            local notifications = helpers.capture_notifications()
-
-            virtual.toggle_at_cursor()
-
-            local msgs = notifications.get()
-            notifications.restore()
-            assert.are.equal(1, #msgs)
-            assert.matches("No change block at cursor", msgs[1].msg)
-        end)
-
-        it("notifies when block has no deleted lines", function()
-            setup_review_buffer(fixtures.multi_file_pr)
-            helpers.set_cursor(1)
-            local notifications = helpers.capture_notifications()
-
-            virtual.toggle_at_cursor()
-
-            local msgs = notifications.get()
-            notifications.restore()
-            assert.are.equal(1, #msgs)
-            assert.matches("has no deleted lines", msgs[1].msg)
         end)
     end)
 
