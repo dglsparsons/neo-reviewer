@@ -25,7 +25,7 @@
 
 ## Learned while implementing PR local diff sourcing
 
-- `fetch` now builds PR change blocks from local git (`git diff -w <base_sha>...<head_sha>`) instead of GitHub file patches, so PR review startup must fail early when the base commit is missing locally.
+- `fetch` builds PR change blocks from local git (`git diff -w <base_sha>...<head_sha>`) instead of GitHub file patches; when commits are missing locally it attempts a targeted `git fetch` of base/head refs before failing.
 
 ## Project Overview
 

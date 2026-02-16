@@ -180,8 +180,8 @@ These user commands are created when you call `setup()`.
 
     Diff hunks are generated from local git using the PR base/head commits
     (`git diff -w base...head`), so whitespace-only changes are excluded.
-    If the base commit is missing locally, review startup fails and prompts
-    you to fetch the base branch.
+    If required commits are missing locally, neo-reviewer first attempts to
+    fetch the needed refs automatically before failing.
 
     Examples: >
         :ReviewPR                        " Current branch PR
