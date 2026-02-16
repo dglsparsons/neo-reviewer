@@ -3,8 +3,7 @@ use octocrab::Octocrab;
 use regex::Regex;
 
 use super::auth::get_token;
-use super::types::{FileStatus, PrRef, PullRequest, ReviewComment, ReviewFile};
-use crate::diff::parser::parse_patch;
+use super::types::{PrRef, PullRequest, ReviewComment};
 
 /// GitHub API client wrapper
 pub struct GitHubClient {
@@ -53,6 +52,7 @@ impl GitHubClient {
             title: pr.title.unwrap_or_default(),
             description: pr.body,
             url: pr_ref.url(),
+            base_sha: pr.base.sha,
             head_sha: pr.head.sha,
             base_ref: pr.base.ref_field,
             head_ref: pr.head.ref_field,
@@ -62,74 +62,6 @@ impl GitHubClient {
                 .map(|s| format!("{:?}", s).to_lowercase())
                 .unwrap_or_else(|| "unknown".to_string()),
         })
-    }
-
-    /// Fetch files changed in the PR with their patches
-    pub async fn get_pr_files(&self, pr_ref: &PrRef, head_sha: &str) -> Result<Vec<ReviewFile>> {
-        let files = self
-            .octocrab
-            .pulls(&pr_ref.owner, &pr_ref.repo)
-            .list_files(pr_ref.number)
-            .await?;
-
-        let mut review_files = Vec::new();
-
-        for file in files {
-            // Convert DiffEntryStatus to string via Debug format
-            let status_str = format!("{:?}", file.status).to_lowercase();
-            let status = FileStatus::from(status_str.as_str());
-
-            let change_blocks = file
-                .patch
-                .as_ref()
-                .map(|p| parse_patch(p))
-                .unwrap_or_default();
-
-            // Fetch file content at HEAD (unless deleted)
-            let content = if status != FileStatus::Deleted {
-                self.get_file_content(pr_ref, &file.filename, head_sha)
-                    .await
-                    .ok()
-            } else {
-                None
-            };
-
-            review_files.push(ReviewFile {
-                path: file.filename,
-                status,
-                additions: file.additions as u32,
-                deletions: file.deletions as u32,
-                content,
-                change_blocks,
-            });
-        }
-
-        Ok(review_files)
-    }
-
-    /// Fetch file content at a specific commit
-    async fn get_file_content(&self, pr_ref: &PrRef, path: &str, sha: &str) -> Result<String> {
-        let content = self
-            .octocrab
-            .repos(&pr_ref.owner, &pr_ref.repo)
-            .get_content()
-            .path(path)
-            .r#ref(sha)
-            .send()
-            .await?;
-
-        match content.items.first() {
-            Some(item) => {
-                if let Some(encoded) = &item.content {
-                    // Content is base64 encoded
-                    let decoded = base64_decode(encoded)?;
-                    Ok(decoded)
-                } else {
-                    Err(anyhow!("File content is empty"))
-                }
-            }
-            None => Err(anyhow!("File not found: {}", path)),
-        }
     }
 
     /// Fetch review comments for the PR
@@ -425,13 +357,6 @@ impl GitHubClient {
     }
 }
 
-fn base64_decode(encoded: &str) -> Result<String> {
-    use base64::Engine;
-    let cleaned: String = encoded.chars().filter(|c| !c.is_whitespace()).collect();
-    let bytes = base64::engine::general_purpose::STANDARD.decode(&cleaned)?;
-    Ok(String::from_utf8(bytes)?)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -525,70 +450,6 @@ mod tests {
         fn invalid_url_random_string() {
             let result = GitHubClient::parse_pr_url("not a url at all");
             assert!(result.is_err());
-        }
-    }
-
-    mod base64_decode {
-        use super::*;
-
-        #[test]
-        fn decode_hello() {
-            let result = base64_decode("SGVsbG8=").unwrap();
-            assert_eq!(result, "Hello");
-        }
-
-        #[test]
-        fn decode_strips_newlines() {
-            let result = base64_decode("SGVs\nbG8=").unwrap();
-            assert_eq!(result, "Hello");
-        }
-
-        #[test]
-        fn decode_multiline_content() {
-            let result = base64_decode("SGVsbG8KV29ybGQ=").unwrap();
-            assert_eq!(result, "Hello\nWorld");
-        }
-
-        #[test]
-        fn decode_empty_string() {
-            let result = base64_decode("").unwrap();
-            assert_eq!(result, "");
-        }
-
-        #[test]
-        fn decode_no_padding() {
-            let result = base64_decode("YWJj").unwrap();
-            assert_eq!(result, "abc");
-        }
-
-        #[test]
-        fn decode_single_padding() {
-            let result = base64_decode("YWI=").unwrap();
-            assert_eq!(result, "ab");
-        }
-
-        #[test]
-        fn decode_double_padding() {
-            let result = base64_decode("YQ==").unwrap();
-            assert_eq!(result, "a");
-        }
-
-        #[test]
-        fn decode_with_plus_and_slash() {
-            let result = base64_decode("Pj4/").unwrap();
-            assert_eq!(result, ">>?");
-        }
-
-        #[test]
-        fn invalid_base64_char() {
-            let result = base64_decode("Invalid!Char");
-            assert!(result.is_err());
-        }
-
-        #[test]
-        fn decode_strips_all_whitespace() {
-            let result = base64_decode("  SGVs\t\nbG8=  ").unwrap();
-            assert_eq!(result, "Hello");
         }
     }
 }

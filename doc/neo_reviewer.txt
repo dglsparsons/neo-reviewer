@@ -178,6 +178,11 @@ These user commands are created when you call `setup()`.
     - `--analyze`: Force AI analysis on (overrides config)
     - `--no-analyze`: Force AI analysis off (overrides config)
 
+    Diff hunks are generated from local git using the PR base/head commits
+    (`git diff -w base...head`), so whitespace-only changes are excluded.
+    If the base commit is missing locally, review startup fails and prompts
+    you to fetch the base branch.
+
     Examples: >
         :ReviewPR                        " Current branch PR
         :ReviewPR 123                    " Checkout PR #123
@@ -191,6 +196,7 @@ These user commands are created when you call `setup()`.
     lock/noise files (for example `pnpm-lock.yaml`, `Cargo.lock`) are skipped.
     Configure this via `review_diff.skip_noise_files` and
     `review_diff.noise_files`.
+    Whitespace-only changes are excluded (`git diff -w HEAD`).
     - `--analyze`: Force AI analysis on (overrides config)
     - `--no-analyze`: Force AI analysis off (overrides config)
 
@@ -234,8 +240,10 @@ These user commands are created when you call `setup()`.
     and pops any stashed changes.
 
 :ReviewSync                                                        *:ReviewSync*
-    Sync the current PR review with GitHub. Fetches the latest comments
-    and diff changes. Preserves cursor position and expanded change block state.
+    Sync the current PR review with GitHub. Fetches the latest comments and
+    rebuilds diff changes from local git (same base/head commit range and
+    whitespace filtering as |:ReviewPR|). Preserves cursor position and
+    expanded change block state.
     Only works during an active PR review (not local diff reviews).
 
 ==============================================================================
@@ -247,6 +255,9 @@ require("neo_reviewer").review_pr({arg})                   *neo_reviewer.review_
     - A PR number: checks out the PR branch and opens review
     - A GitHub PR URL: https://github.com/owner/repo/pull/123
     - A branch name: checks out the PR for that branch and opens review
+
+    PR diff hunks are computed from local git using `base...head` with
+    whitespace ignored (`-w`).
 
 require("neo_reviewer").review_diff({opts})               *neo_reviewer.review_diff()*
     Review local git diff (both staged and unstaged changes). This allows
@@ -362,9 +373,10 @@ require("neo_reviewer").done()                                   *neo_reviewer.d
     the previous branch and pops any stashed changes.
 
 require("neo_reviewer").sync()                                   *neo_reviewer.sync()*
-    Sync the current PR review with GitHub. Re-fetches PR data including
-    comments and diff changes. Preserves cursor position, expanded change block
-    state, and checkout state. Only works during an active PR review.
+    Sync the current PR review with GitHub. Re-fetches PR metadata/comments and
+    rebuilds diff changes from local git (`base...head`, `-w`). Preserves
+    cursor position, expanded change block state, and checkout state. Only
+    works during an active PR review.
     See |:ReviewSync|.
 
 require("neo_reviewer").toggle_ai_feedback()     *neo_reviewer.toggle_ai_feedback()*

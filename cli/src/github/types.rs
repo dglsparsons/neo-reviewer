@@ -24,6 +24,7 @@ pub struct PullRequest {
     pub title: String,
     pub description: Option<String>,
     pub url: String,
+    pub base_sha: String,
     pub head_sha: String,
     pub base_ref: String,
     pub head_ref: String,

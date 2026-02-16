@@ -6,6 +6,8 @@ use std::process::Command;
 use crate::diff::parser::parse_patch;
 use crate::github::types::{FileStatus, ReviewFile};
 
+const IGNORE_WHITESPACE_CHANGES: bool = true;
+
 #[derive(Debug, Serialize)]
 pub struct DiffResponse {
     pub files: Vec<ReviewFile>,
@@ -13,14 +15,14 @@ pub struct DiffResponse {
 }
 
 pub fn run() -> Result<()> {
-    let response = get_local_diff()?;
+    let response = get_local_diff(IGNORE_WHITESPACE_CHANGES)?;
     println!("{}", serde_json::to_string(&response)?);
     Ok(())
 }
 
-fn get_local_diff() -> Result<DiffResponse> {
+pub(crate) fn get_local_diff(ignore_whitespace: bool) -> Result<DiffResponse> {
     let git_root = get_git_root()?;
-    let diff_output = get_git_diff()?;
+    let diff_output = get_git_diff("HEAD", ignore_whitespace)?;
 
     if diff_output.is_empty() {
         return Ok(DiffResponse {
@@ -34,7 +36,22 @@ fn get_local_diff() -> Result<DiffResponse> {
     Ok(DiffResponse { files, git_root })
 }
 
-fn get_git_root() -> Result<String> {
+pub(crate) fn get_pr_review_files(
+    base_sha: &str,
+    head_sha: &str,
+    ignore_whitespace: bool,
+) -> Result<Vec<ReviewFile>> {
+    let diff_target = build_pr_diff_target(base_sha, head_sha);
+    let diff_output = get_git_diff(&diff_target, ignore_whitespace)?;
+
+    if diff_output.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    parse_git_diff(&diff_output)
+}
+
+pub(crate) fn get_git_root() -> Result<String> {
     let output = Command::new("git")
         .args(["rev-parse", "--show-toplevel"])
         .output()?;
@@ -49,12 +66,35 @@ fn get_git_root() -> Result<String> {
     Ok(String::from_utf8(output.stdout)?.trim().to_string())
 }
 
-fn get_git_diff() -> Result<String> {
-    let output = Command::new("git").args(["diff", "HEAD"]).output()?;
+pub(crate) fn ensure_git_commit_available(commit_sha: &str) -> Result<()> {
+    let object = format!("{commit_sha}^{{commit}}");
+    let output = Command::new("git")
+        .args(["cat-file", "-e", &object])
+        .output()?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        let reason = if stderr.is_empty() {
+            "unknown error".to_string()
+        } else {
+            stderr
+        };
+        return Err(anyhow!(
+            "Git commit {commit_sha} is not available locally: {reason}"
+        ));
+    }
+
+    Ok(())
+}
+
+fn get_git_diff(diff_target: &str, ignore_whitespace: bool) -> Result<String> {
+    let args = build_git_diff_args(diff_target, ignore_whitespace);
+    let output = Command::new("git").args(&args).output()?;
 
     if !output.status.success() {
         return Err(anyhow!(
-            "Failed to get git diff: {}",
+            "Failed to get git diff (git {}): {}",
+            args.join(" "),
             String::from_utf8_lossy(&output.stderr)
         ));
     }
@@ -62,7 +102,20 @@ fn get_git_diff() -> Result<String> {
     Ok(String::from_utf8(output.stdout)?)
 }
 
-fn parse_git_diff(diff_output: &str) -> Result<Vec<ReviewFile>> {
+fn build_git_diff_args(diff_target: &str, ignore_whitespace: bool) -> Vec<String> {
+    let mut args = vec!["diff".to_string()];
+    if ignore_whitespace {
+        args.push("-w".to_string());
+    }
+    args.push(diff_target.to_string());
+    args
+}
+
+fn build_pr_diff_target(base_sha: &str, head_sha: &str) -> String {
+    format!("{base_sha}...{head_sha}")
+}
+
+pub(crate) fn parse_git_diff(diff_output: &str) -> Result<Vec<ReviewFile>> {
     let mut files = Vec::new();
 
     let file_header_re = Regex::new(r"^diff --git a/(.+) b/(.+)$")?;
@@ -139,6 +192,30 @@ fn parse_git_diff(diff_output: &str) -> Result<Vec<ReviewFile>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_build_git_diff_args_with_ignore_whitespace() {
+        let args = build_git_diff_args("HEAD", true);
+        assert_eq!(args, vec!["diff", "-w", "HEAD"]);
+    }
+
+    #[test]
+    fn test_build_git_diff_args_without_ignore_whitespace() {
+        let args = build_git_diff_args("HEAD", false);
+        assert_eq!(args, vec!["diff", "HEAD"]);
+    }
+
+    #[test]
+    fn test_build_pr_diff_target_uses_three_dot_notation() {
+        let target = build_pr_diff_target("base123", "head456");
+        assert_eq!(target, "base123...head456");
+    }
+
+    #[test]
+    fn test_ensure_git_commit_available_errors_for_unknown_commit() {
+        let result = ensure_git_commit_available("definitely-not-a-real-commit");
+        assert!(result.is_err());
+    }
 
     #[test]
     fn test_parse_single_file_diff() {

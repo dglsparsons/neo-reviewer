@@ -23,6 +23,10 @@
 - Filter `ReviewDiff` files before `state.set_local_review()` and before optional AI analysis so navigation, change counts, and AI walkthrough inputs stay consistent.
 - Basename-based skipping is sufficient for lockfiles: matching both exact path and `"/" .. basename` suffix excludes nested lockfiles without adding glob parsing complexity.
 
+## Learned while implementing PR local diff sourcing
+
+- `fetch` now builds PR change blocks from local git (`git diff -w <base_sha>...<head_sha>`) instead of GitHub file patches, so PR review startup must fail early when the base commit is missing locally.
+
 ## Project Overview
 
 `neo-reviewer` is a Neovim plugin for reviewing GitHub PRs. Hybrid architecture: Rust CLI for GitHub API/diff parsing, Lua plugin for UI.
