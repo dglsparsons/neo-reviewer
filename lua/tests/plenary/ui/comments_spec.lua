@@ -14,10 +14,28 @@ describe("neo_reviewer.ui.comments", function()
         package.loaded["neo_reviewer.state"] = nil
         package.loaded["neo_reviewer.config"] = nil
         package.loaded["neo_reviewer.cli"] = nil
+        package.loaded["neo_reviewer.ui.comments_file"] = nil
 
         state = require("neo_reviewer.state")
         comments = require("neo_reviewer.ui.comments")
     end)
+
+    ---@return table<string, function>
+    ---@return fun()
+    local function capture_thread_mappings()
+        local mappings = {}
+        local original_keymap_set = vim.keymap.set
+        vim.keymap.set = function(mode, lhs, rhs, opts)
+            if opts and opts.buffer then
+                mappings[lhs] = rhs
+                return
+            end
+            return original_keymap_set(mode, lhs, rhs, opts)
+        end
+        return mappings, function()
+            vim.keymap.set = original_keymap_set
+        end
+    end
 
     after_each(function()
         state.clear_review()
@@ -175,6 +193,234 @@ describe("neo_reviewer.ui.comments", function()
                     assert.are.equal(root_comment.id, reply.in_reply_to_id)
                 end
             end
+        end)
+
+        it("edits local comments and rewrites REVIEW_COMMENTS.md", function()
+            state.set_local_review({
+                git_root = "/tmp/test-repo",
+                files = {
+                    {
+                        path = "test.lua",
+                        status = "modified",
+                        content = "line 1\nline 2\nline 3",
+                        change_blocks = {},
+                    },
+                },
+            })
+
+            state.add_comment({
+                id = 101,
+                path = "test.lua",
+                line = 2,
+                side = "RIGHT",
+                body = "original local comment",
+                author = "you",
+                created_at = "2024-01-01T12:00:00Z",
+            })
+
+            local review = state.get_review()
+            local file = review.files[1]
+            local bufnr = helpers.create_test_buffer({ "line 1", "line 2", "line 3" })
+            vim.api.nvim_buf_set_var(bufnr, "nr_file", file)
+            helpers.set_cursor(2)
+
+            local wrote_comments = nil
+            package.loaded["neo_reviewer.ui.comments_file"] = {
+                write_all = function(comment_list)
+                    wrote_comments = comment_list
+                    return true
+                end,
+            }
+
+            local mappings, restore_mappings = capture_thread_mappings()
+            comments.show_thread()
+            restore_mappings()
+
+            local original_input = comments.open_multiline_input
+            comments.open_multiline_input = function(_, callback)
+                callback("updated local comment")
+            end
+
+            assert.is_function(mappings.e)
+            mappings.e()
+
+            comments.open_multiline_input = original_input
+            package.loaded["neo_reviewer.ui.comments_file"] = nil
+
+            local file_comments = state.get_comments_for_file("test.lua")
+            assert.are.equal("updated local comment", file_comments[1].body)
+            assert.is_not_nil(wrote_comments)
+            if wrote_comments then
+                assert.are.equal("updated local comment", wrote_comments[1].body)
+            end
+        end)
+
+        it("edits PR comments through CLI", function()
+            state.set_review({
+                pr = { number = 123, title = "Test PR", author = "author" },
+                files = {
+                    {
+                        path = "src/foo.lua",
+                        status = "modified",
+                        content = "line 1\nline 2\nline 3",
+                        change_blocks = {},
+                    },
+                },
+                comments = {
+                    {
+                        id = 1,
+                        path = "src/foo.lua",
+                        line = 2,
+                        side = "RIGHT",
+                        body = "original pr comment",
+                        author = "reviewer",
+                        created_at = "2024-01-01T12:00:00Z",
+                    },
+                },
+                viewer = "reviewer",
+            })
+
+            local review = state.get_review()
+            local file = review.files[1]
+            local bufnr = helpers.create_test_buffer({ "line 1", "line 2", "line 3" })
+            vim.api.nvim_buf_set_var(bufnr, "nr_file", file)
+            vim.api.nvim_buf_set_var(bufnr, "nr_pr_url", "https://github.com/owner/repo/pull/123")
+            helpers.set_cursor(2)
+
+            local edited = false
+            package.loaded["neo_reviewer.cli"] = {
+                edit_comment = function(_, comment_id, body, callback)
+                    edited = (comment_id == 1 and body == "updated pr comment")
+                    callback({ success = true, comment_id = comment_id }, nil)
+                end,
+                delete_comment = function() end,
+                reply_to_comment = function() end,
+                add_comment = function() end,
+                fetch_comments = function() end,
+            }
+
+            local mappings, restore_mappings = capture_thread_mappings()
+            comments.show_thread()
+            restore_mappings()
+
+            local original_input = comments.open_multiline_input
+            comments.open_multiline_input = function(_, callback)
+                callback("updated pr comment")
+            end
+
+            assert.is_function(mappings.e)
+            mappings.e()
+
+            comments.open_multiline_input = original_input
+            package.loaded["neo_reviewer.cli"] = nil
+
+            assert.is_true(edited)
+            local file_comments = state.get_comments_for_file("src/foo.lua")
+            assert.are.equal("updated pr comment", file_comments[1].body)
+        end)
+
+        it("deletes comments in local and PR flows", function()
+            local original_confirm = vim.fn.confirm
+            vim.fn.confirm = function()
+                return 1
+            end
+
+            -- Local flow
+            state.set_local_review({
+                git_root = "/tmp/test-repo",
+                files = {
+                    {
+                        path = "local.lua",
+                        status = "modified",
+                        content = "line 1\nline 2",
+                        change_blocks = {},
+                    },
+                },
+            })
+            state.add_comment({
+                id = 201,
+                path = "local.lua",
+                line = 2,
+                side = "RIGHT",
+                body = "delete me local",
+                author = "you",
+                created_at = "2024-01-01T12:00:00Z",
+            })
+
+            package.loaded["neo_reviewer.ui.comments_file"] = {
+                write_all = function()
+                    return true
+                end,
+            }
+
+            local local_file = state.get_review().files[1]
+            local local_buf = helpers.create_test_buffer({ "line 1", "line 2" })
+            vim.api.nvim_buf_set_var(local_buf, "nr_file", local_file)
+            helpers.set_cursor(2)
+
+            local local_mappings, restore_local_mappings = capture_thread_mappings()
+            comments.show_thread()
+            restore_local_mappings()
+            assert.is_function(local_mappings.d)
+            local_mappings.d()
+
+            assert.are.equal(0, #state.get_comments_for_file("local.lua"))
+            package.loaded["neo_reviewer.ui.comments_file"] = nil
+
+            -- PR flow
+            state.set_review({
+                pr = { number = 124, title = "Delete PR", author = "author" },
+                files = {
+                    {
+                        path = "src/delete.lua",
+                        status = "modified",
+                        content = "line 1\nline 2",
+                        change_blocks = {},
+                    },
+                },
+                comments = {
+                    {
+                        id = 301,
+                        path = "src/delete.lua",
+                        line = 2,
+                        side = "RIGHT",
+                        body = "delete me pr",
+                        author = "reviewer",
+                        created_at = "2024-01-01T12:00:00Z",
+                    },
+                },
+                viewer = "reviewer",
+            })
+
+            local deleted = false
+            package.loaded["neo_reviewer.cli"] = {
+                delete_comment = function(_, comment_id, callback)
+                    deleted = comment_id == 301
+                    callback({ success = true, comment_id = comment_id }, nil)
+                end,
+                edit_comment = function() end,
+                reply_to_comment = function() end,
+                add_comment = function() end,
+                fetch_comments = function() end,
+            }
+
+            local pr_file = state.get_review().files[1]
+            local pr_buf = helpers.create_test_buffer({ "line 1", "line 2" })
+            vim.api.nvim_buf_set_var(pr_buf, "nr_file", pr_file)
+            vim.api.nvim_buf_set_var(pr_buf, "nr_pr_url", "https://github.com/owner/repo/pull/124")
+            helpers.set_cursor(2)
+
+            local pr_mappings, restore_pr_mappings = capture_thread_mappings()
+            comments.show_thread()
+            restore_pr_mappings()
+            assert.is_function(pr_mappings.d)
+            pr_mappings.d()
+
+            assert.is_true(deleted)
+            assert.are.equal(0, #state.get_comments_for_file("src/delete.lua"))
+
+            package.loaded["neo_reviewer.cli"] = nil
+            vim.fn.confirm = original_confirm
         end)
     end)
 
@@ -495,6 +741,87 @@ describe("neo_reviewer.ui.comments", function()
             local extmarks = helpers.get_extmarks(bufnr, "nr_comments")
             assert.are.equal(1, #extmarks)
             assert.are.equal(2, extmarks[1][2])
+        end)
+    end)
+
+    describe("comments_file persistence", function()
+        it("writes local comments in markdown format", function()
+            local comments_file = require("neo_reviewer.ui.comments_file")
+            local tempdir = vim.fn.tempname()
+            vim.fn.mkdir(tempdir, "p")
+
+            state.set_local_review({ git_root = tempdir, files = {} })
+
+            local ok = comments_file.write_all({
+                {
+                    id = 1,
+                    path = "src/main.lua",
+                    line = 42,
+                    side = "RIGHT",
+                    body = "Single line comment",
+                    author = "you",
+                },
+                {
+                    id = 2,
+                    path = "src/main.lua",
+                    start_line = 100,
+                    line = 105,
+                    side = "RIGHT",
+                    body = "Range comment",
+                    author = "you",
+                },
+            })
+
+            assert.is_true(ok)
+
+            local file = io.open(comments_file.get_path(), "r")
+            assert.is_not_nil(file)
+            ---@cast file file*
+            local content = file:read("*a")
+            file:close()
+
+            assert.is_not_nil(content:find("# Review Comments", 1, true))
+            assert.is_not_nil(content:find("## file=src/main.lua:line=42", 1, true))
+            assert.is_not_nil(content:find("## file=src/main.lua:line=100-105", 1, true))
+
+            vim.fn.delete(tempdir, "rf")
+        end)
+
+        it("skips malformed comments when writing file", function()
+            local comments_file = require("neo_reviewer.ui.comments_file")
+            local tempdir = vim.fn.tempname()
+            vim.fn.mkdir(tempdir, "p")
+
+            state.set_local_review({ git_root = tempdir, files = {} })
+
+            local ok = comments_file.write_all({
+                {
+                    id = 1,
+                    body = "missing path and line",
+                    author = "you",
+                },
+                {
+                    id = 2,
+                    path = "src/valid.lua",
+                    line = 5,
+                    side = "RIGHT",
+                    body = "valid",
+                    author = "you",
+                },
+            })
+
+            assert.is_true(ok)
+
+            local file = io.open(comments_file.get_path(), "r")
+            assert.is_not_nil(file)
+            ---@cast file file*
+            local content = file:read("*a")
+            file:close()
+
+            assert.is_nil(content:find("missing path and line", 1, true))
+            assert.is_not_nil(content:find("src/valid.lua", 1, true))
+
+            vim.fn.delete(tempdir, "rf")
         end)
     end)
 end)

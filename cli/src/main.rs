@@ -79,6 +79,32 @@ enum Commands {
         body: String,
     },
 
+    /// Edit an existing review comment
+    EditComment {
+        /// GitHub PR URL
+        #[arg(short, long)]
+        url: String,
+
+        /// ID of the comment to edit
+        #[arg(short, long)]
+        comment_id: u64,
+
+        /// Updated comment body
+        #[arg(short, long)]
+        body: String,
+    },
+
+    /// Delete an existing review comment
+    DeleteComment {
+        /// GitHub PR URL
+        #[arg(short, long)]
+        url: String,
+
+        /// ID of the comment to delete
+        #[arg(short, long)]
+        comment_id: u64,
+    },
+
     /// Submit a review (approve or request changes)
     Submit {
         /// GitHub PR URL
@@ -142,6 +168,16 @@ async fn main() -> Result<()> {
             body,
         } => {
             commands::reply::run(&url, comment_id, &body).await?;
+        }
+        Commands::EditComment {
+            url,
+            comment_id,
+            body,
+        } => {
+            commands::comment::run_edit(&url, comment_id, &body).await?;
+        }
+        Commands::DeleteComment { url, comment_id } => {
+            commands::comment::run_delete(&url, comment_id).await?;
         }
         Commands::Submit { url, event, body } => {
             commands::submit::run(&url, &event, body.as_deref()).await?;

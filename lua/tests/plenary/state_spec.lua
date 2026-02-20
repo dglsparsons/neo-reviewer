@@ -458,6 +458,66 @@ describe("neo_reviewer.state", function()
                 state.add_comment({ id = 1, body = "test" })
             end)
         end)
+
+        it("set_comments replaces comment list", function()
+            local data = helpers.deep_copy(fixtures.multi_file_pr)
+            state.set_review(data)
+
+            state.set_comments({
+                {
+                    id = 101,
+                    path = "src/foo.lua",
+                    line = 1,
+                    side = "RIGHT",
+                    body = "Replaced",
+                    author = "tester",
+                },
+            })
+
+            local comments = state.get_comments_for_file("src/foo.lua")
+            assert.are.equal(1, #comments)
+            assert.are.equal("Replaced", comments[1].body)
+        end)
+
+        it("update_comment updates body when comment exists", function()
+            local data = helpers.deep_copy(fixtures.multi_file_pr)
+            state.set_review(data)
+
+            local updated = state.update_comment(1, "Updated body")
+
+            assert.is_true(updated)
+            local comments = state.get_comments_for_file("src/foo.lua")
+            assert.are.equal("Updated body", comments[1].body)
+        end)
+
+        it("update_comment returns false when comment does not exist", function()
+            local data = helpers.deep_copy(fixtures.multi_file_pr)
+            state.set_review(data)
+
+            local updated = state.update_comment(9999, "Nope")
+
+            assert.is_false(updated)
+        end)
+
+        it("remove_comment removes a root comment and its replies", function()
+            local data = helpers.deep_copy(fixtures.multi_file_pr)
+            state.set_review(data)
+
+            local removed = state.remove_comment(1)
+
+            assert.is_true(removed)
+            local comments = state.get_comments_for_file("src/foo.lua")
+            assert.are.equal(0, #comments)
+        end)
+
+        it("remove_comment returns false when comment does not exist", function()
+            local data = helpers.deep_copy(fixtures.multi_file_pr)
+            state.set_review(data)
+
+            local removed = state.remove_comment(9999)
+
+            assert.is_false(removed)
+        end)
     end)
 
     describe("set_local_review", function()

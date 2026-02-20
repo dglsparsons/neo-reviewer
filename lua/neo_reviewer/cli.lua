@@ -287,6 +287,69 @@ function M.reply_to_comment(url, comment_id, body, callback)
     }):start()
 end
 
+---@param url string
+---@param comment_id integer
+---@param body string
+---@param callback fun(data: NRCommentResponse?, err: string?)
+function M.edit_comment(url, comment_id, body, callback)
+    Job:new({
+        command = config.values.cli_path,
+        args = {
+            "edit-comment",
+            "--url",
+            url,
+            "--comment-id",
+            tostring(comment_id),
+            "--body",
+            body,
+        },
+        on_exit = vim.schedule_wrap(function(j, code)
+            if code == 0 then
+                local output = table.concat(j:result(), "\n")
+                local ok, data = pcall(vim.json.decode, output)
+                if ok and data.success then
+                    callback(data, nil)
+                else
+                    callback(nil, data and data.error or "Unknown error")
+                end
+            else
+                local stderr = table.concat(j:stderr_result(), "\n")
+                callback(nil, stderr)
+            end
+        end),
+    }):start()
+end
+
+---@param url string
+---@param comment_id integer
+---@param callback fun(data: NRCommentResponse?, err: string?)
+function M.delete_comment(url, comment_id, callback)
+    Job:new({
+        command = config.values.cli_path,
+        args = {
+            "delete-comment",
+            "--url",
+            url,
+            "--comment-id",
+            tostring(comment_id),
+        },
+        on_exit = vim.schedule_wrap(function(j, code)
+            if code == 0 then
+                local output = table.concat(j:result(), "\n")
+                local ok, data = pcall(vim.json.decode, output)
+                if ok and data.success then
+                    callback(data, nil)
+                else
+                    callback(nil, data and data.error or "Unknown error")
+                end
+            else
+                local stderr = table.concat(j:stderr_result(), "\n")
+                callback(nil, stderr)
+            end
+        end),
+    }):start()
+end
+
 ---@param callback fun(ok: boolean, output: string)
 function M.check_auth(callback)
     Job:new({

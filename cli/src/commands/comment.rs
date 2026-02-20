@@ -52,3 +52,59 @@ pub async fn run(
 
     Ok(())
 }
+
+pub async fn run_edit(url: &str, comment_id: u64, body: &str) -> Result<()> {
+    let client = GitHubClient::new()?;
+    let pr_ref = GitHubClient::parse_pr_url(url)?;
+
+    match client.edit_review_comment(&pr_ref, comment_id, body).await {
+        Ok(comment) => {
+            let response = CommentResponse {
+                success: true,
+                comment_id: Some(comment.id),
+                html_url: Some(comment.html_url),
+                error: None,
+            };
+            println!("{}", serde_json::to_string(&response)?);
+        }
+        Err(e) => {
+            let response = CommentResponse {
+                success: false,
+                comment_id: None,
+                html_url: None,
+                error: Some(e.to_string()),
+            };
+            println!("{}", serde_json::to_string(&response)?);
+        }
+    }
+
+    Ok(())
+}
+
+pub async fn run_delete(url: &str, comment_id: u64) -> Result<()> {
+    let client = GitHubClient::new()?;
+    let pr_ref = GitHubClient::parse_pr_url(url)?;
+
+    match client.delete_review_comment(&pr_ref, comment_id).await {
+        Ok(()) => {
+            let response = CommentResponse {
+                success: true,
+                comment_id: Some(comment_id),
+                html_url: None,
+                error: None,
+            };
+            println!("{}", serde_json::to_string(&response)?);
+        }
+        Err(e) => {
+            let response = CommentResponse {
+                success: false,
+                comment_id: None,
+                html_url: None,
+                error: Some(e.to_string()),
+            };
+            println!("{}", serde_json::to_string(&response)?);
+        }
+    }
+
+    Ok(())
+}

@@ -24,6 +24,7 @@ local state = require("neo_reviewer.state")
 
 ---@class NRMultilineInputOpts
 ---@field title? string Title for the input window
+---@field initial_text? string Initial text for the input window
 
 ---@class NRCommentsModule
 local M = {}
@@ -37,6 +38,52 @@ local thread_buf = nil
 local input_win = nil
 ---@type integer?
 local input_buf = nil
+
+---@return string
+local function get_viewer_display_name()
+    local review = state.get_review()
+    if review and type(review.viewer) == "string" and review.viewer ~= "" then
+        return review.viewer
+    end
+    return "you"
+end
+
+---@param source_bufnr integer
+---@param file_path string
+local function refresh_comment_overlays(source_bufnr, file_path)
+    M.clear(source_bufnr)
+    M.show_existing(source_bufnr, file_path)
+end
+
+---@return NRComment[]
+local function get_local_root_comments()
+    local review = state.get_review()
+    if not review then
+        return {}
+    end
+
+    ---@type NRComment[]
+    local comments = {}
+    for _, comment in ipairs(review.comments or {}) do
+        if type(comment.in_reply_to_id) ~= "number" then
+            table.insert(comments, comment)
+        end
+    end
+    return comments
+end
+
+local function persist_local_comments()
+    local comments_file = require("neo_reviewer.ui.comments_file")
+    return comments_file.write_all(get_local_root_comments())
+end
+
+---@return integer
+local function generate_local_comment_id()
+    if vim.uv and vim.uv.hrtime then
+        return math.floor(vim.uv.hrtime() / 1000)
+    end
+    return math.floor(os.time() * 1000000 + vim.fn.rand())
+end
 
 local function close_input_window()
     if input_win and vim.api.nvim_win_is_valid(input_win) then
@@ -87,6 +134,11 @@ function M.open_multiline_input(opts, callback)
 
     vim.api.nvim_set_option_value("wrap", true, { win = input_win })
 
+    if opts.initial_text and opts.initial_text ~= "" then
+        local initial_lines = vim.split(opts.initial_text, "\n", { plain = true })
+        vim.api.nvim_buf_set_lines(input_buf, 0, -1, false, initial_lines)
+    end
+
     local function submit()
         local lines = vim.api.nvim_buf_get_lines(input_buf, 0, -1, false)
         local body = table.concat(lines, "\n")
@@ -105,7 +157,14 @@ function M.open_multiline_input(opts, callback)
     vim.keymap.set("i", keys.submit, submit, { buffer = input_buf, nowait = true })
     vim.keymap.set("n", keys.cancel, cancel, { buffer = input_buf, nowait = true })
 
-    vim.cmd("startinsert")
+    if opts.initial_text and opts.initial_text ~= "" then
+        local last_line = vim.api.nvim_buf_line_count(input_buf)
+        local last_text = vim.api.nvim_buf_get_lines(input_buf, last_line - 1, last_line, false)[1] or ""
+        vim.api.nvim_win_set_cursor(input_win, { last_line, #last_text })
+        vim.cmd("startinsert!")
+    else
+        vim.cmd("startinsert")
+    end
 end
 
 local function define_highlights()
@@ -239,28 +298,26 @@ end
 ---@param end_line integer
 ---@param body string
 function M.add_local_comment(file, start_line, end_line, body)
-    local comments_file = require("neo_reviewer.ui.comments_file")
-
-    local success = comments_file.write(file.path, start_line or end_line, end_line, body)
-    if not success then
-        vim.notify("Failed to write comment", vim.log.levels.ERROR)
-        return
-    end
-
-    vim.notify("Comment added to REVIEW_COMMENTS.md", vim.log.levels.INFO)
-
     ---@type NRComment
     local comment = {
-        id = os.time(),
+        id = generate_local_comment_id(),
         path = file.path,
         line = end_line,
         start_line = start_line,
         side = "RIGHT",
         body = body,
-        author = "you",
+        author = get_viewer_display_name(),
         created_at = os.date("%Y-%m-%dT%H:%M:%S") --[[@as string]],
     }
     state.add_comment(comment)
+
+    if not persist_local_comments() then
+        state.remove_comment(comment.id)
+        vim.notify("Failed to write comment", vim.log.levels.ERROR)
+        return
+    end
+
+    vim.notify("Comment added to REVIEW_COMMENTS.md", vim.log.levels.INFO)
 
     local bufnr = vim.api.nvim_get_current_buf()
     M.show_comment(bufnr, comment)
@@ -307,7 +364,7 @@ function M.add_pr_comment(file, pr_url, start_line, end_line, end_pos, start_pos
             side = end_pos.side,
             start_side = start_pos and start_pos.side or nil,
             body = body,
-            author = "you",
+            author = get_viewer_display_name(),
             created_at = os.date("%Y-%m-%dT%H:%M:%S") --[[@as string]],
             html_url = data.html_url or "",
         }
@@ -748,16 +805,19 @@ local function build_thread_lines(threads, is_local_review)
     local config = require("neo_reviewer.config")
     local keys = config.values.thread_window.keys
     local close_key = type(keys.close) == "table" and keys.close[1] or keys.close
+    local edit_key = type(keys.edit) == "table" and keys.edit[1] or keys.edit
+    local delete_key = type(keys.delete) == "table" and keys.delete[1] or keys.delete
     local toggle_key = type(keys.toggle_old) == "table" and keys.toggle_old[1] or keys.toggle_old
     local apply_key = type(keys.apply) == "table" and keys.apply[1] or keys.apply
 
     table.insert(lines, "")
     local help_line
     if is_local_review then
-        help_line = string.format("[%s] Close", close_key)
+        help_line = string.format("[%s] Edit  [%s] Delete  [%s] Close", edit_key, delete_key, close_key)
     else
         local reply_key = type(keys.reply) == "table" and keys.reply[1] or keys.reply
-        help_line = string.format("[%s] Reply  [%s] Close", reply_key, close_key)
+        help_line =
+            string.format("[%s] Reply  [%s] Edit  [%s] Delete  [%s] Close", reply_key, edit_key, delete_key, close_key)
     end
     if #suggestions > 0 then
         help_line = string.format("[%s] Toggle old  [%s] Apply  ", toggle_key, apply_key) .. help_line
@@ -833,13 +893,143 @@ local function prompt_reply(comment, pr_url)
                 line = comment.line,
                 side = comment.side or "RIGHT",
                 body = body,
-                author = "you",
+                author = get_viewer_display_name(),
                 created_at = os.date("%Y-%m-%dT%H:%M:%S") --[[@as string]],
                 html_url = data.html_url or "",
                 in_reply_to_id = comment.id,
             }
             state.add_comment(reply)
         end)
+    end)
+end
+
+---@class NRThreadActionContext
+---@field is_local_review boolean
+---@field source_bufnr integer
+---@field file_path string
+---@field pr_url? string
+
+---@param comment NRComment
+---@param is_local_review boolean
+---@return boolean
+---@return string?
+local function can_mutate_comment(comment, is_local_review)
+    if is_local_review then
+        return true, nil
+    end
+
+    local review = state.get_review()
+    local viewer = review and review.viewer or nil
+    if viewer and viewer ~= "" and comment.author ~= viewer and comment.author ~= "you" then
+        return false, "You can only edit/delete your own comments"
+    end
+    return true, nil
+end
+
+---@param comment NRComment
+---@param ctx NRThreadActionContext
+local function prompt_edit(comment, ctx)
+    local allowed, reason = can_mutate_comment(comment, ctx.is_local_review)
+    if not allowed then
+        vim.notify(reason or "Comment cannot be edited", vim.log.levels.WARN)
+        return
+    end
+
+    close_thread_window()
+
+    local old_body = comment.body or ""
+    M.open_multiline_input({ title = " Edit Comment ", initial_text = old_body }, function(body)
+        if body == old_body then
+            vim.notify("Comment unchanged", vim.log.levels.INFO)
+            return
+        end
+
+        if ctx.is_local_review then
+            if not state.update_comment(comment.id, body) then
+                vim.notify("Failed to update comment", vim.log.levels.ERROR)
+                return
+            end
+            if not persist_local_comments() then
+                state.update_comment(comment.id, old_body)
+                vim.notify("Failed to update REVIEW_COMMENTS.md", vim.log.levels.ERROR)
+                return
+            end
+
+            refresh_comment_overlays(ctx.source_bufnr, ctx.file_path)
+            vim.notify("Comment updated in REVIEW_COMMENTS.md", vim.log.levels.INFO)
+            return
+        end
+
+        if not ctx.pr_url then
+            vim.notify("PR URL not found", vim.log.levels.ERROR)
+            return
+        end
+
+        vim.notify("Updating comment...", vim.log.levels.INFO)
+        local cli = require("neo_reviewer.cli")
+        cli.edit_comment(ctx.pr_url, comment.id, body, function(_, err)
+            if err then
+                vim.notify("Failed to edit comment: " .. err, vim.log.levels.ERROR)
+                return
+            end
+
+            state.update_comment(comment.id, body)
+            refresh_comment_overlays(ctx.source_bufnr, ctx.file_path)
+            vim.notify("Comment updated!", vim.log.levels.INFO)
+        end)
+    end)
+end
+
+---@param comment NRComment
+---@param ctx NRThreadActionContext
+local function prompt_delete(comment, ctx)
+    local allowed, reason = can_mutate_comment(comment, ctx.is_local_review)
+    if not allowed then
+        vim.notify(reason or "Comment cannot be deleted", vim.log.levels.WARN)
+        return
+    end
+
+    local confirmed = vim.fn.confirm("Delete this comment?", "&y\n&n", 2)
+    if confirmed ~= 1 then
+        return
+    end
+
+    if ctx.is_local_review then
+        local review = state.get_review()
+        local previous_comments = vim.deepcopy(review and review.comments or {})
+        if not state.remove_comment(comment.id) then
+            vim.notify("Failed to delete comment", vim.log.levels.ERROR)
+            return
+        end
+        if not persist_local_comments() then
+            state.set_comments(previous_comments)
+            vim.notify("Failed to update REVIEW_COMMENTS.md", vim.log.levels.ERROR)
+            return
+        end
+
+        close_thread_window()
+        refresh_comment_overlays(ctx.source_bufnr, ctx.file_path)
+        vim.notify("Comment deleted from REVIEW_COMMENTS.md", vim.log.levels.INFO)
+        return
+    end
+
+    if not ctx.pr_url then
+        vim.notify("PR URL not found", vim.log.levels.ERROR)
+        return
+    end
+
+    vim.notify("Deleting comment...", vim.log.levels.INFO)
+    local cli = require("neo_reviewer.cli")
+    cli.delete_comment(ctx.pr_url, comment.id, function(_, err)
+        if err then
+            vim.notify("Failed to delete comment: " .. err, vim.log.levels.ERROR)
+            return
+        end
+
+        state.remove_comment(comment.id)
+        close_thread_window()
+        refresh_comment_overlays(ctx.source_bufnr, ctx.file_path)
+        vim.notify("Comment deleted!", vim.log.levels.INFO)
     end)
 end
 
@@ -943,10 +1133,7 @@ local function apply_suggestion(source_bufnr, suggestions, file_path)
     vim.api.nvim_buf_set_lines(source_bufnr, start_line - 1, end_line, false, sugg.suggestion_lines)
 
     close_thread_window()
-
-    local comments = require("neo_reviewer.ui.comments")
-    comments.clear(source_bufnr)
-    comments.show_existing(source_bufnr, file_path)
+    refresh_comment_overlays(source_bufnr, file_path)
 
     local signs = require("neo_reviewer.ui.signs")
     local file = state.get_file_by_path(file_path)
@@ -1035,6 +1222,13 @@ function M.show_thread()
 
     local config = require("neo_reviewer.config")
     local keys = config.values.thread_window.keys
+    ---@type NRThreadActionContext
+    local action_ctx = {
+        is_local_review = is_local,
+        source_bufnr = source_bufnr,
+        file_path = file.path,
+        pr_url = pr_url,
+    }
 
     ---@param key_config string|string[]
     ---@return string[]
@@ -1047,6 +1241,28 @@ function M.show_thread()
 
     for _, key in ipairs(normalize_keys(keys.close)) do
         vim.keymap.set("n", key, close_thread_window, { buffer = thread_buf, nowait = true })
+    end
+
+    for _, key in ipairs(normalize_keys(keys.edit)) do
+        vim.keymap.set("n", key, function()
+            local comment = get_comment_at_cursor(comment_positions)
+            if comment then
+                prompt_edit(comment, action_ctx)
+            else
+                vim.notify("No comment found at cursor", vim.log.levels.WARN)
+            end
+        end, { buffer = thread_buf, nowait = true })
+    end
+
+    for _, key in ipairs(normalize_keys(keys.delete)) do
+        vim.keymap.set("n", key, function()
+            local comment = get_comment_at_cursor(comment_positions)
+            if comment then
+                prompt_delete(comment, action_ctx)
+            else
+                vim.notify("No comment found at cursor", vim.log.levels.WARN)
+            end
+        end, { buffer = thread_buf, nowait = true })
     end
 
     if not is_local and pr_url then

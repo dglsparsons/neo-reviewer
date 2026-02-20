@@ -303,6 +303,111 @@ impl GitHubClient {
         })
     }
 
+    pub async fn edit_review_comment(
+        &self,
+        pr_ref: &PrRef,
+        comment_id: u64,
+        body: &str,
+    ) -> Result<ReviewComment> {
+        let url = format!(
+            "https://api.github.com/repos/{}/{}/pulls/comments/{}",
+            pr_ref.owner, pr_ref.repo, comment_id
+        );
+
+        #[derive(serde::Serialize)]
+        struct EditRequest {
+            body: String,
+        }
+
+        #[derive(serde::Deserialize)]
+        struct EditResponseRaw {
+            id: u64,
+            path: Option<String>,
+            line: Option<u32>,
+            start_line: Option<u32>,
+            side: Option<String>,
+            start_side: Option<String>,
+            body: Option<String>,
+            user: Option<UserRaw>,
+            created_at: Option<String>,
+            html_url: Option<String>,
+            in_reply_to_id: Option<u64>,
+        }
+
+        #[derive(serde::Deserialize)]
+        struct UserRaw {
+            login: String,
+        }
+
+        let client = reqwest::Client::new();
+        let response = client
+            .patch(&url)
+            .header("Authorization", format!("Bearer {}", self.token))
+            .header("Accept", "application/vnd.github+json")
+            .header("User-Agent", "neo-reviewer")
+            .header("X-GitHub-Api-Version", "2022-11-28")
+            .json(&EditRequest {
+                body: body.to_string(),
+            })
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_body = response.text().await.unwrap_or_default();
+            return Err(anyhow!(
+                "Failed to edit comment: {} - {}",
+                status,
+                error_body
+            ));
+        }
+
+        let raw: EditResponseRaw = response.json().await?;
+
+        Ok(ReviewComment {
+            id: raw.id,
+            path: raw.path.unwrap_or_default(),
+            line: raw.line,
+            start_line: raw.start_line,
+            side: raw.side.unwrap_or_default(),
+            start_side: raw.start_side,
+            body: raw.body.unwrap_or_default(),
+            author: raw.user.map(|u| u.login).unwrap_or_default(),
+            created_at: raw.created_at.unwrap_or_default(),
+            html_url: raw.html_url.unwrap_or_default(),
+            in_reply_to_id: raw.in_reply_to_id,
+        })
+    }
+
+    pub async fn delete_review_comment(&self, pr_ref: &PrRef, comment_id: u64) -> Result<()> {
+        let url = format!(
+            "https://api.github.com/repos/{}/{}/pulls/comments/{}",
+            pr_ref.owner, pr_ref.repo, comment_id
+        );
+
+        let client = reqwest::Client::new();
+        let response = client
+            .delete(&url)
+            .header("Authorization", format!("Bearer {}", self.token))
+            .header("Accept", "application/vnd.github+json")
+            .header("User-Agent", "neo-reviewer")
+            .header("X-GitHub-Api-Version", "2022-11-28")
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_body = response.text().await.unwrap_or_default();
+            return Err(anyhow!(
+                "Failed to delete comment: {} - {}",
+                status,
+                error_body
+            ));
+        }
+
+        Ok(())
+    }
+
     pub async fn submit_review(
         &self,
         pr_ref: &PrRef,

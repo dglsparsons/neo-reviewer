@@ -8,6 +8,7 @@ A Neovim plugin for reviewing GitHub pull requests directly in your editor.
 - **Expandable old code preview** - Toggle to see what code looked like before
 - **Change navigation** - Jump between changes with customizable keybinds
 - **Review comments** - Add comments directly from Neovim
+- **Thread actions** - View, reply, edit, and delete comments from the thread window
 - **View existing comments** - See PR comments inline
 - **Telescope integration** - Quick file switching with Telescope
 
@@ -75,6 +76,13 @@ require("neo_reviewer").setup({
     },
     wrap_navigation = true,      -- Wrap at file boundaries
     auto_expand_deletes = false, -- Auto-expand deleted lines
+    thread_window = {
+        keys = {
+            reply = "r",
+            edit = "e",
+            delete = "d",
+        },
+    },
     review_diff = {
         skip_noise_files = true,  -- Skip common lock/noise files by default
         noise_files = {

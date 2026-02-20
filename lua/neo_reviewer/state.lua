@@ -351,6 +351,70 @@ function M.add_comment(comment)
     end
 end
 
+---@param comments NRComment[]
+function M.set_comments(comments)
+    if state.active_review then
+        state.active_review.comments = comments
+    end
+end
+
+---@param comment_id integer
+---@param body string
+---@return boolean
+function M.update_comment(comment_id, body)
+    if not state.active_review then
+        return false
+    end
+
+    for _, comment in ipairs(state.active_review.comments) do
+        if comment.id == comment_id then
+            comment.body = body
+            return true
+        end
+    end
+
+    return false
+end
+
+---@param comment_id integer
+---@return boolean
+function M.remove_comment(comment_id)
+    if not state.active_review then
+        return false
+    end
+
+    ---@type table<integer, boolean>
+    local removed = {
+        [comment_id] = true,
+    }
+    local changed = true
+    while changed do
+        changed = false
+        for _, comment in ipairs(state.active_review.comments) do
+            if comment.in_reply_to_id and removed[comment.in_reply_to_id] and not removed[comment.id] then
+                removed[comment.id] = true
+                changed = true
+            end
+        end
+    end
+
+    local next_comments = {}
+    local removed_any = false
+    for _, comment in ipairs(state.active_review.comments) do
+        if removed[comment.id] then
+            removed_any = true
+        else
+            table.insert(next_comments, comment)
+        end
+    end
+
+    if removed_any then
+        state.active_review.comments = next_comments
+    end
+
+    return removed_any
+end
+
 ---@return boolean
 function M.are_overlays_visible()
     if state.active_review then

@@ -12,9 +12,11 @@
 
 ---@class NRThreadWindowKeys
 ---@field close string|string[] Key(s) to close the thread window
----@field reply string Key to reply to a comment
----@field toggle_old string Key to toggle old code display
----@field apply string Key to apply a suggestion
+---@field reply string|string[] Key(s) to reply to a comment
+---@field edit string|string[] Key(s) to edit a comment
+---@field delete string|string[] Key(s) to delete a comment
+---@field toggle_old string|string[] Key(s) to toggle old code display
+---@field apply string|string[] Key(s) to apply a suggestion
 
 ---@class NRThreadWindow
 ---@field keys NRThreadWindowKeys
@@ -51,9 +53,11 @@
 
 ---@class NRPartialThreadWindowKeys
 ---@field close? string|string[] Key(s) to close the thread window
----@field reply? string Key to reply to a comment
----@field toggle_old? string Key to toggle old code display
----@field apply? string Key to apply a suggestion
+---@field reply? string|string[] Key(s) to reply to a comment
+---@field edit? string|string[] Key(s) to edit a comment
+---@field delete? string|string[] Key(s) to delete a comment
+---@field toggle_old? string|string[] Key(s) to toggle old code display
+---@field apply? string|string[] Key(s) to apply a suggestion
 
 ---@class NRPartialThreadWindow
 ---@field keys? NRPartialThreadWindowKeys
@@ -109,6 +113,8 @@ M.values = {
         keys = {
             close = { "q", "<Esc>" },
             reply = "r",
+            edit = "e",
+            delete = "d",
             toggle_old = "o",
             apply = "a",
         },

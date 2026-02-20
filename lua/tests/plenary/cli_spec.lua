@@ -385,6 +385,98 @@ describe("neo_reviewer.cli", function()
         end)
     end)
 
+    describe("edit_comment", function()
+        it("calls CLI with correct command and args", function()
+            local callback = spy.new(function() end)
+            cli.edit_comment("https://github.com/owner/repo/pull/123", 77, "Updated body", callback)
+
+            assert.stub(Job.new).was_called(1)
+            local opts = job_instance._opts
+            assert.are.equal("test-cli", opts.command)
+            assert.are.same({
+                "edit-comment",
+                "--url",
+                "https://github.com/owner/repo/pull/123",
+                "--comment-id",
+                "77",
+                "--body",
+                "Updated body",
+            }, opts.args)
+        end)
+
+        it("calls callback with data on success", function()
+            local received_data, received_err
+            local callback = function(data, err)
+                received_data = data
+                received_err = err
+            end
+
+            cli.edit_comment("url", 77, "body", callback)
+
+            job_instance.result = function()
+                return { '{"success": true, "comment_id": 77}' }
+            end
+
+            local on_exit = job_instance._opts.on_exit
+            vim.schedule(function()
+                on_exit({ result = job_instance.result, stderr_result = job_instance.stderr_result }, 0)
+            end)
+
+            vim.wait(100, function()
+                return received_data ~= nil or received_err ~= nil
+            end)
+
+            assert.is_not_nil(received_data)
+            assert.is_nil(received_err)
+            assert.are.equal(77, received_data.comment_id)
+        end)
+    end)
+
+    describe("delete_comment", function()
+        it("calls CLI with correct command and args", function()
+            local callback = spy.new(function() end)
+            cli.delete_comment("https://github.com/owner/repo/pull/123", 88, callback)
+
+            assert.stub(Job.new).was_called(1)
+            local opts = job_instance._opts
+            assert.are.equal("test-cli", opts.command)
+            assert.are.same({
+                "delete-comment",
+                "--url",
+                "https://github.com/owner/repo/pull/123",
+                "--comment-id",
+                "88",
+            }, opts.args)
+        end)
+
+        it("calls callback with data on success", function()
+            local received_data, received_err
+            local callback = function(data, err)
+                received_data = data
+                received_err = err
+            end
+
+            cli.delete_comment("url", 88, callback)
+
+            job_instance.result = function()
+                return { '{"success": true, "comment_id": 88}' }
+            end
+
+            local on_exit = job_instance._opts.on_exit
+            vim.schedule(function()
+                on_exit({ result = job_instance.result, stderr_result = job_instance.stderr_result }, 0)
+            end)
+
+            vim.wait(100, function()
+                return received_data ~= nil or received_err ~= nil
+            end)
+
+            assert.is_not_nil(received_data)
+            assert.is_nil(received_err)
+            assert.are.equal(88, received_data.comment_id)
+        end)
+    end)
+
     describe("check_auth", function()
         it("calls CLI with auth command", function()
             local callback = spy.new(function() end)

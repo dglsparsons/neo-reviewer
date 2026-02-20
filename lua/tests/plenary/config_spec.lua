@@ -21,6 +21,12 @@ describe("neo_reviewer.config", function()
             assert.is_false(config.values.auto_expand_deletes)
         end)
 
+        it("has default thread window keys for reply/edit/delete", function()
+            assert.are.equal("r", config.values.thread_window.keys.reply)
+            assert.are.equal("e", config.values.thread_window.keys.edit)
+            assert.are.equal("d", config.values.thread_window.keys.delete)
+        end)
+
         it("skips noise files in review_diff by default", function()
             assert.is_true(config.values.review_diff.skip_noise_files)
             assert.is_true(vim.tbl_contains(config.values.review_diff.noise_files, "pnpm-lock.yaml"))
@@ -79,6 +85,21 @@ describe("neo_reviewer.config", function()
 
             assert.is_false(config.values.review_diff.skip_noise_files)
             assert.are.same({ "custom.lock" }, config.values.review_diff.noise_files)
+        end)
+
+        it("overrides thread window edit and delete keys", function()
+            config.setup({
+                thread_window = {
+                    keys = {
+                        edit = "E",
+                        delete = "D",
+                    },
+                },
+            })
+
+            assert.are.equal("E", config.values.thread_window.keys.edit)
+            assert.are.equal("D", config.values.thread_window.keys.delete)
+            assert.are.equal("r", config.values.thread_window.keys.reply)
         end)
 
         it("handles nil opts", function()
