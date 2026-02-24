@@ -16,8 +16,27 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Parse local git diff (staged + unstaged changes)
-    Diff,
+    /// Parse local git diff for review
+    Diff {
+        /// Optional revision target (commit/branch/tag), defaults to HEAD
+        target: Option<String>,
+
+        /// Only include staged changes
+        #[arg(long, conflicts_with = "uncached_only")]
+        cached_only: bool,
+
+        /// Only include unstaged changes (cannot be combined with a target)
+        #[arg(long, conflicts_with = "cached_only", conflicts_with = "target")]
+        uncached_only: bool,
+
+        /// Diff against merge-base(HEAD, target) instead of target directly
+        #[arg(long, requires = "target")]
+        merge_base: bool,
+
+        /// Exclude untracked files from local diff reviews
+        #[arg(long)]
+        tracked_only: bool,
+    },
 
     /// Fetch PR data including files, change blocks, and content
     Fetch {
@@ -133,8 +152,20 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Diff => {
-            commands::diff::run()?;
+        Commands::Diff {
+            target,
+            cached_only,
+            uncached_only,
+            merge_base,
+            tracked_only,
+        } => {
+            commands::diff::run(commands::diff::LocalDiffCliOpts {
+                target,
+                cached_only,
+                uncached_only,
+                merge_base,
+                tracked_only,
+            })?;
         }
         Commands::Fetch { url } => {
             commands::fetch::run(&url).await?;

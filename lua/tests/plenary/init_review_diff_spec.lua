@@ -57,7 +57,7 @@ describe("neo_reviewer review_diff noise filtering", function()
     end)
 
     it("skips default noise files in local diff reviews", function()
-        cli.get_local_diff = function(callback)
+        cli.get_local_diff = function(_, callback)
             callback({
                 git_root = "/tmp/test-repo",
                 files = {
@@ -78,7 +78,7 @@ describe("neo_reviewer review_diff noise filtering", function()
     end)
 
     it("warns and aborts when all changed files are noise files", function()
-        cli.get_local_diff = function(callback)
+        cli.get_local_diff = function(_, callback)
             callback({
                 git_root = "/tmp/test-repo",
                 files = {
@@ -96,7 +96,7 @@ describe("neo_reviewer review_diff noise filtering", function()
     end)
 
     it("runs AI analysis using the filtered local diff files", function()
-        cli.get_local_diff = function(callback)
+        cli.get_local_diff = function(_, callback)
             callback({
                 git_root = "/tmp/test-repo",
                 files = {
@@ -123,5 +123,46 @@ describe("neo_reviewer review_diff noise filtering", function()
         assert.is_not_nil(analyzed_review)
         assert.are.equal(1, #analyzed_review.files)
         assert.are.equal("src/main.lua", analyzed_review.files[1].path)
+    end)
+
+    it("passes diff selection options to the CLI", function()
+        local received_opts
+
+        cli.get_local_diff = function(opts, callback)
+            received_opts = opts
+            callback({
+                git_root = "/tmp/test-repo",
+                files = {
+                    { path = "src/main.lua", status = "modified", change_blocks = {} },
+                },
+            }, nil)
+        end
+
+        neo_reviewer.review_diff({
+            analyze = false,
+            target = "main",
+            cached_only = true,
+            merge_base = true,
+            tracked_only = true,
+        })
+
+        assert.are.same({
+            target = "main",
+            cached_only = true,
+            merge_base = true,
+            tracked_only = true,
+        }, received_opts)
+    end)
+
+    it("rejects invalid option combinations passed via Lua API", function()
+        neo_reviewer.review_diff({ uncached_only = true, target = "main" })
+
+        assert.is_true(
+            has_notification(
+                "Cannot use a revision target with %-%-uncached%-only for :ReviewDiff",
+                vim.log.levels.ERROR
+            )
+        )
+        assert.is_nil(state.get_review())
     end)
 end)

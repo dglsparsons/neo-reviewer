@@ -23,6 +23,10 @@
 - Filter `ReviewDiff` files before `state.set_local_review()` and before optional AI analysis so navigation, change counts, and AI walkthrough inputs stay consistent.
 - Basename-based skipping is sufficient for lockfiles: matching both exact path and `"/" .. basename` suffix excludes nested lockfiles without adding glob parsing complexity.
 
+## Learned while implementing ReviewDiff target modes
+
+- Local diff review now combines tracked diffs and untracked-file patches in the Rust CLI (`git diff ...` plus `git ls-files --others --exclude-standard`); keep `--tracked-only` and `--cached-only` semantics in CLI, then apply Lua noise filtering after fetch as usual.
+
 ## Learned while implementing PR local diff sourcing
 
 - `fetch` builds PR change blocks from local git (`git diff -w <base_sha>...<head_sha>`) instead of GitHub file patches; when commits are missing locally it attempts a targeted `git fetch` of base/head refs before failing.

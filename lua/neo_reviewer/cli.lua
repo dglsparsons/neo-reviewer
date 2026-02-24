@@ -30,6 +30,13 @@ local config = require("neo_reviewer.config")
 ---@class NRCommentsResponse
 ---@field comments NRComment[]
 
+---@class NRLocalDiffOpts
+---@field target? string Revision target (commit/branch/tag)
+---@field cached_only? boolean Include only staged changes
+---@field uncached_only? boolean Include only unstaged changes
+---@field merge_base? boolean Compare against merge-base(HEAD, target)
+---@field tracked_only? boolean Exclude untracked files
+
 ---@class NRCLIModule
 local M = {}
 
@@ -393,11 +400,44 @@ function M.submit_review(url, event, body, callback)
     }):start()
 end
 
----@param callback fun(data: NRDiffData?, err: string?)
-function M.get_local_diff(callback)
+---@param opts NRLocalDiffOpts|fun(data: NRDiffData?, err: string?)
+---@param callback? fun(data: NRDiffData?, err: string?)
+function M.get_local_diff(opts, callback)
+    if type(opts) == "function" then
+        ---@cast opts fun(data: NRDiffData?, err: string?)
+        callback = opts
+        opts = {}
+    end
+
+    opts = opts or {}
+
+    ---@cast opts NRLocalDiffOpts
+    ---@cast callback fun(data: NRDiffData?, err: string?)
+    local args = { "diff" }
+
+    if opts.target then
+        table.insert(args, opts.target)
+    end
+
+    if opts.cached_only then
+        table.insert(args, "--cached-only")
+    end
+
+    if opts.uncached_only then
+        table.insert(args, "--uncached-only")
+    end
+
+    if opts.merge_base then
+        table.insert(args, "--merge-base")
+    end
+
+    if opts.tracked_only then
+        table.insert(args, "--tracked-only")
+    end
+
     Job:new({
         command = config.values.cli_path,
-        args = { "diff" },
+        args = args,
         on_exit = vim.schedule_wrap(function(j, code)
             if code == 0 then
                 local output = table.concat(j:result(), "\n")

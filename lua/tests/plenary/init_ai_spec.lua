@@ -25,7 +25,7 @@ describe("neo_reviewer init AI auto-open", function()
         config.setup({ ai = { enabled = true } })
 
         local review_data = helpers.deep_copy(fixtures.navigation_pr)
-        cli.get_local_diff = function(callback)
+        cli.get_local_diff = function(_, callback)
             callback({ git_root = "/tmp", files = review_data.files }, nil)
         end
         cli.get_git_root = function()

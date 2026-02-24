@@ -5,6 +5,14 @@
 ---@class NRReviewOpts
 ---@field analyze? boolean Whether to run AI analysis (nil = use config default)
 
+---@class NRReviewDiffOpts
+---@field analyze? boolean Whether to run AI analysis (nil = use config default)
+---@field target? string Revision target (commit/branch/tag)
+---@field cached_only? boolean Include only staged changes
+---@field uncached_only? boolean Include only unstaged changes
+---@field merge_base? boolean Compare against merge-base(HEAD, target)
+---@field tracked_only? boolean Exclude untracked files
+
 ---@class NRAskOpts
 ---@field prompt? string Prompt text (nil = request input)
 ---@field line1? integer Start line from visual selection
@@ -66,6 +74,61 @@ local function filter_local_diff_files(files, review_diff_cfg)
     return filtered_files, skipped_count
 end
 
+---@param opts NRReviewDiffOpts
+---@return string? err
+local function validate_review_diff_opts(opts)
+    if opts.cached_only and opts.uncached_only then
+        return "Cannot combine --cached-only and --uncached-only for :ReviewDiff"
+    end
+
+    if opts.uncached_only and opts.target then
+        return "Cannot use a revision target with --uncached-only for :ReviewDiff"
+    end
+
+    if opts.merge_base and not opts.target then
+        return "--merge-base requires a revision target for :ReviewDiff"
+    end
+
+    return nil
+end
+
+---@param args string
+---@return NRReviewDiffOpts? opts
+---@return string? err
+local function parse_review_diff_args(args)
+    ---@type NRReviewDiffOpts
+    local opts = {}
+
+    for part in args:gmatch("%S+") do
+        if part == "--analyze" then
+            opts.analyze = true
+        elseif part == "--no-analyze" then
+            opts.analyze = false
+        elseif part == "--cached-only" then
+            opts.cached_only = true
+        elseif part == "--uncached-only" then
+            opts.uncached_only = true
+        elseif part == "--merge-base" then
+            opts.merge_base = true
+        elseif part == "--tracked-only" then
+            opts.tracked_only = true
+        elseif part:sub(1, 2) == "--" then
+            return nil, "Unknown flag for :ReviewDiff: " .. part
+        elseif opts.target == nil then
+            opts.target = part
+        else
+            return nil, "Only one revision target can be provided to :ReviewDiff"
+        end
+    end
+
+    local err = validate_review_diff_opts(opts)
+    if err then
+        return nil, err
+    end
+
+    return opts, nil
+end
+
 ---@param review NRReview
 ---@return boolean
 local function restore_previous_branch(review)
@@ -114,19 +177,14 @@ function M.setup(opts)
     end, { nargs = "?", desc = "Open PR review" })
 
     vim.api.nvim_create_user_command("ReviewDiff", function(ctx)
-        local args = ctx.args or ""
-        local analyze = nil
-
-        for part in args:gmatch("%S+") do
-            if part == "--analyze" then
-                analyze = true
-            elseif part == "--no-analyze" then
-                analyze = false
-            end
+        local parsed_opts, parse_err = parse_review_diff_args(ctx.args or "")
+        if parse_err then
+            vim.notify(parse_err, vim.log.levels.ERROR)
+            return
         end
 
-        M.review_diff({ analyze = analyze })
-    end, { nargs = "?", desc = "Review local git diff (staged + unstaged changes)" })
+        M.review_diff(parsed_opts)
+    end, { nargs = "?", desc = "Review local git diff (tracked + untracked changes)" })
 
     vim.api.nvim_create_user_command("Ask", function(ctx)
         M.ask({ line1 = ctx.line1, line2 = ctx.line2, range = ctx.range })
@@ -335,7 +393,7 @@ function M.open_with_branch(branch_name, opts)
     end)
 end
 
----@param opts? NRReviewOpts
+---@param opts? NRReviewDiffOpts
 function M.review_diff(opts)
     local cli = require("neo_reviewer.cli")
     local state = require("neo_reviewer.state")
@@ -350,10 +408,24 @@ function M.review_diff(opts)
     end
 
     opts = opts or {}
+    local opts_err = validate_review_diff_opts(opts)
+    if opts_err then
+        vim.notify(opts_err, vim.log.levels.ERROR)
+        return
+    end
+
+    ---@type NRLocalDiffOpts
+    local diff_opts = {
+        target = opts.target,
+        cached_only = opts.cached_only,
+        uncached_only = opts.uncached_only,
+        merge_base = opts.merge_base,
+        tracked_only = opts.tracked_only,
+    }
 
     vim.notify("Getting local diff...", vim.log.levels.INFO)
 
-    cli.get_local_diff(function(data, err)
+    cli.get_local_diff(diff_opts, function(data, err)
         if err then
             vim.notify("Failed to get diff: " .. err, vim.log.levels.ERROR)
             return

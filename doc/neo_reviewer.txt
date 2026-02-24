@@ -195,19 +195,34 @@ These user commands are created when you call `setup()`.
         :ReviewPR --analyze https://...  " URL with AI analysis
 <
 
-:ReviewDiff [--analyze|--no-analyze]                               *:ReviewDiff*
-    Review local git diff (both staged and unstaged changes). Comments are
-    written to `REVIEW_COMMENTS.md` in the project root. By default, common
-    lock/noise files (for example `pnpm-lock.yaml`, `Cargo.lock`) are skipped.
-    Configure this via `review_diff.skip_noise_files` and
+:ReviewDiff [target] [flags]                                       *:ReviewDiff*
+    Review local git diff. By default this includes tracked staged/unstaged
+    changes against `HEAD` plus untracked files:
+        `git diff -w HEAD` + `git ls-files --others --exclude-standard`
+    Common lock/noise files (for example `pnpm-lock.yaml`, `Cargo.lock`) are
+    skipped by default. Configure this via `review_diff.skip_noise_files` and
     `review_diff.noise_files`.
-    Whitespace-only changes are excluded (`git diff -w HEAD`).
+
+    Optional `target` may be a commit, branch, or tag (for example `main`).
+    When set, tracked changes are diffed against that target.
+
     - `--analyze`: Force AI analysis on (overrides config)
     - `--no-analyze`: Force AI analysis off (overrides config)
+    - `--cached-only`: Include only staged changes
+    - `--uncached-only`: Include only unstaged changes (cannot be combined with
+      a `target`)
+    - `--merge-base`: Diff against `merge-base(HEAD, target)` instead of target
+      directly (requires `target`)
+    - `--tracked-only`: Exclude untracked files from local diff review
 
     Examples: >
-        :ReviewDiff              " Local diff, default AI setting
-        :ReviewDiff --analyze    " Local diff with AI analysis
+        :ReviewDiff                            " HEAD + untracked
+        :ReviewDiff --analyze                  " Default diff with AI analysis
+        :ReviewDiff main                       " Diff tracked changes vs main + untracked
+        :ReviewDiff main --merge-base          " Diff since branch point from main
+        :ReviewDiff --cached-only              " Review staged changes only
+        :ReviewDiff --uncached-only            " Review unstaged + untracked changes
+        :ReviewDiff --tracked-only             " Ignore untracked files
 <
 
 :Ask                                                               *:Ask*
@@ -265,11 +280,18 @@ require("neo_reviewer").review_pr({arg})                   *neo_reviewer.review_
     whitespace ignored (`-w`).
 
 require("neo_reviewer").review_diff({opts})               *neo_reviewer.review_diff()*
-    Review local git diff (both staged and unstaged changes). This allows
-    you to review code changes before committing. By default, common lock/noise
-    files are skipped using `review_diff.skip_noise_files` and
-    `review_diff.noise_files`. Accepts optional {opts}:
+    Review local git diff before committing. By default this includes
+    tracked staged/unstaged changes against `HEAD` plus untracked files.
+    Common lock/noise files are skipped using `review_diff.skip_noise_files`
+    and `review_diff.noise_files`. Accepts optional {opts}:
     - `analyze`: boolean to force AI analysis on/off (overrides config)
+    - `target`: string commit/branch/tag to diff tracked changes against
+    - `cached_only`: boolean to review staged changes only
+    - `uncached_only`: boolean to review unstaged changes only
+      (cannot be combined with `target`)
+    - `merge_base`: boolean to diff against `merge-base(HEAD, target)`
+      (requires `target`)
+    - `tracked_only`: boolean to exclude untracked files
 
     Comments are written to `REVIEW_COMMENTS.md` in the project root with
     the format:

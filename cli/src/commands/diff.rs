@@ -8,30 +8,52 @@ use crate::github::types::{FileStatus, ReviewFile};
 
 const IGNORE_WHITESPACE_CHANGES: bool = true;
 
+#[derive(Debug, Clone, Default)]
+pub struct LocalDiffCliOpts {
+    pub target: Option<String>,
+    pub cached_only: bool,
+    pub uncached_only: bool,
+    pub merge_base: bool,
+    pub tracked_only: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LocalDiffMode {
+    All,
+    CachedOnly,
+    UncachedOnly,
+}
+
 #[derive(Debug, Serialize)]
 pub struct DiffResponse {
     pub files: Vec<ReviewFile>,
     pub git_root: String,
 }
 
-pub fn run() -> Result<()> {
-    let response = get_local_diff(IGNORE_WHITESPACE_CHANGES)?;
+pub fn run(opts: LocalDiffCliOpts) -> Result<()> {
+    let response = get_local_diff(opts, IGNORE_WHITESPACE_CHANGES)?;
     println!("{}", serde_json::to_string(&response)?);
     Ok(())
 }
 
-pub(crate) fn get_local_diff(ignore_whitespace: bool) -> Result<DiffResponse> {
+pub(crate) fn get_local_diff(
+    opts: LocalDiffCliOpts,
+    ignore_whitespace: bool,
+) -> Result<DiffResponse> {
     let git_root = get_git_root()?;
-    let diff_output = get_git_diff("HEAD", ignore_whitespace)?;
+    let mode = parse_local_diff_mode(opts.cached_only, opts.uncached_only)?;
+    let diff_target = resolve_local_diff_target(opts.target.as_deref(), mode, opts.merge_base)?;
+    let tracked_diff_output = get_git_diff(diff_target.as_deref(), ignore_whitespace, mode)?;
 
-    if diff_output.is_empty() {
-        return Ok(DiffResponse {
-            files: Vec::new(),
-            git_root,
-        });
+    let mut files = if tracked_diff_output.is_empty() {
+        Vec::new()
+    } else {
+        parse_git_diff(&tracked_diff_output)?
+    };
+
+    if should_include_untracked(mode, opts.tracked_only) {
+        files.extend(get_untracked_review_files(ignore_whitespace)?);
     }
-
-    let files = parse_git_diff(&diff_output)?;
 
     Ok(DiffResponse { files, git_root })
 }
@@ -42,7 +64,7 @@ pub(crate) fn get_pr_review_files(
     ignore_whitespace: bool,
 ) -> Result<Vec<ReviewFile>> {
     let diff_target = build_pr_diff_target(base_sha, head_sha);
-    let diff_output = get_git_diff(&diff_target, ignore_whitespace)?;
+    let diff_output = get_git_diff(Some(&diff_target), ignore_whitespace, LocalDiffMode::All)?;
 
     if diff_output.is_empty() {
         return Ok(Vec::new());
@@ -87,8 +109,12 @@ pub(crate) fn ensure_git_commit_available(commit_sha: &str) -> Result<()> {
     Ok(())
 }
 
-fn get_git_diff(diff_target: &str, ignore_whitespace: bool) -> Result<String> {
-    let args = build_git_diff_args(diff_target, ignore_whitespace);
+fn get_git_diff(
+    diff_target: Option<&str>,
+    ignore_whitespace: bool,
+    mode: LocalDiffMode,
+) -> Result<String> {
+    let args = build_git_diff_args(diff_target, ignore_whitespace, mode);
     let output = Command::new("git").args(&args).output()?;
 
     if !output.status.success() {
@@ -102,13 +128,150 @@ fn get_git_diff(diff_target: &str, ignore_whitespace: bool) -> Result<String> {
     Ok(String::from_utf8(output.stdout)?)
 }
 
-fn build_git_diff_args(diff_target: &str, ignore_whitespace: bool) -> Vec<String> {
+fn build_git_diff_args(
+    diff_target: Option<&str>,
+    ignore_whitespace: bool,
+    mode: LocalDiffMode,
+) -> Vec<String> {
     let mut args = vec!["diff".to_string()];
     if ignore_whitespace {
         args.push("-w".to_string());
     }
-    args.push(diff_target.to_string());
+
+    if matches!(mode, LocalDiffMode::CachedOnly) {
+        args.push("--cached".to_string());
+    }
+
+    if let Some(target) = diff_target {
+        args.push(target.to_string());
+    }
+
     args
+}
+
+fn parse_local_diff_mode(cached_only: bool, uncached_only: bool) -> Result<LocalDiffMode> {
+    if cached_only && uncached_only {
+        return Err(anyhow!(
+            "Cannot combine --cached-only and --uncached-only for local diff"
+        ));
+    }
+
+    if cached_only {
+        Ok(LocalDiffMode::CachedOnly)
+    } else if uncached_only {
+        Ok(LocalDiffMode::UncachedOnly)
+    } else {
+        Ok(LocalDiffMode::All)
+    }
+}
+
+fn resolve_local_diff_target(
+    target: Option<&str>,
+    mode: LocalDiffMode,
+    merge_base: bool,
+) -> Result<Option<String>> {
+    if matches!(mode, LocalDiffMode::UncachedOnly) {
+        if target.is_some() {
+            return Err(anyhow!(
+                "Cannot use a revision target with --uncached-only (use --cached-only or default mode)"
+            ));
+        }
+        if merge_base {
+            return Err(anyhow!(
+                "Cannot use --merge-base with --uncached-only (requires a revision target)"
+            ));
+        }
+        return Ok(None);
+    }
+
+    let selected_target = target.unwrap_or("HEAD");
+    if merge_base {
+        return Ok(Some(get_merge_base(selected_target)?));
+    }
+    Ok(Some(selected_target.to_string()))
+}
+
+fn should_include_untracked(mode: LocalDiffMode, tracked_only: bool) -> bool {
+    !tracked_only && !matches!(mode, LocalDiffMode::CachedOnly)
+}
+
+fn get_merge_base(target: &str) -> Result<String> {
+    let output = Command::new("git")
+        .args(["merge-base", "HEAD", target])
+        .output()?;
+
+    if !output.status.success() {
+        return Err(anyhow!(
+            "Failed to compute merge-base with {target}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+
+    Ok(String::from_utf8(output.stdout)?.trim().to_string())
+}
+
+fn get_untracked_review_files(ignore_whitespace: bool) -> Result<Vec<ReviewFile>> {
+    let paths = get_untracked_paths()?;
+    if paths.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut files = Vec::new();
+    for path in paths {
+        let patch = get_untracked_file_patch(&path, ignore_whitespace)?;
+        if patch.is_empty() {
+            continue;
+        }
+        files.extend(parse_git_diff(&patch)?);
+    }
+
+    Ok(files)
+}
+
+fn get_untracked_paths() -> Result<Vec<String>> {
+    let output = Command::new("git")
+        .args(["ls-files", "--others", "--exclude-standard"])
+        .output()?;
+
+    if !output.status.success() {
+        return Err(anyhow!(
+            "Failed to list untracked files: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+
+    Ok(String::from_utf8(output.stdout)?
+        .lines()
+        .filter(|line| !line.is_empty())
+        .map(str::to_string)
+        .collect())
+}
+
+fn get_untracked_file_patch(path: &str, ignore_whitespace: bool) -> Result<String> {
+    let mut args = vec![
+        "diff".to_string(),
+        "--no-index".to_string(),
+        "--".to_string(),
+        "/dev/null".to_string(),
+        path.to_string(),
+    ];
+
+    if ignore_whitespace {
+        args.insert(1, "-w".to_string());
+    }
+
+    let output = Command::new("git").args(&args).output()?;
+    let status = output.status.code().unwrap_or(-1);
+
+    if status != 0 && status != 1 {
+        return Err(anyhow!(
+            "Failed to get untracked file patch (git {}): {}",
+            args.join(" "),
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+
+    Ok(String::from_utf8(output.stdout)?)
 }
 
 fn build_pr_diff_target(base_sha: &str, head_sha: &str) -> String {
@@ -195,14 +358,56 @@ mod tests {
 
     #[test]
     fn test_build_git_diff_args_with_ignore_whitespace() {
-        let args = build_git_diff_args("HEAD", true);
+        let args = build_git_diff_args(Some("HEAD"), true, LocalDiffMode::All);
         assert_eq!(args, vec!["diff", "-w", "HEAD"]);
     }
 
     #[test]
     fn test_build_git_diff_args_without_ignore_whitespace() {
-        let args = build_git_diff_args("HEAD", false);
+        let args = build_git_diff_args(Some("HEAD"), false, LocalDiffMode::All);
         assert_eq!(args, vec!["diff", "HEAD"]);
+    }
+
+    #[test]
+    fn test_build_git_diff_args_cached_mode() {
+        let args = build_git_diff_args(Some("main"), true, LocalDiffMode::CachedOnly);
+        assert_eq!(args, vec!["diff", "-w", "--cached", "main"]);
+    }
+
+    #[test]
+    fn test_build_git_diff_args_uncached_mode_has_no_target() {
+        let args = build_git_diff_args(None, true, LocalDiffMode::UncachedOnly);
+        assert_eq!(args, vec!["diff", "-w"]);
+    }
+
+    #[test]
+    fn test_parse_local_diff_mode_conflict_errors() {
+        let result = parse_local_diff_mode(true, true);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_resolve_local_diff_target_defaults_to_head() {
+        let target = resolve_local_diff_target(None, LocalDiffMode::All, false).unwrap();
+        assert_eq!(target, Some("HEAD".to_string()));
+    }
+
+    #[test]
+    fn test_resolve_local_diff_target_errors_for_uncached_with_target() {
+        let result = resolve_local_diff_target(Some("main"), LocalDiffMode::UncachedOnly, false);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_should_include_untracked_defaults_to_true() {
+        assert!(should_include_untracked(LocalDiffMode::All, false));
+        assert!(should_include_untracked(LocalDiffMode::UncachedOnly, false));
+    }
+
+    #[test]
+    fn test_should_include_untracked_false_when_disabled_or_cached_only() {
+        assert!(!should_include_untracked(LocalDiffMode::All, true));
+        assert!(!should_include_untracked(LocalDiffMode::CachedOnly, false));
     }
 
     #[test]

@@ -385,6 +385,39 @@ describe("neo_reviewer.cli", function()
         end)
     end)
 
+    describe("get_local_diff", function()
+        it("calls CLI diff command with default args", function()
+            local callback = spy.new(function() end)
+            cli.get_local_diff(callback)
+
+            assert.stub(Job.new).was_called(1)
+            local opts = job_instance._opts
+            assert.are.equal("test-cli", opts.command)
+            assert.are.same({ "diff" }, opts.args)
+        end)
+
+        it("passes target and selector flags to CLI diff command", function()
+            local callback = spy.new(function() end)
+            cli.get_local_diff({
+                target = "main",
+                cached_only = true,
+                merge_base = true,
+                tracked_only = true,
+            }, callback)
+
+            assert.stub(Job.new).was_called(1)
+            local opts = job_instance._opts
+            assert.are.equal("test-cli", opts.command)
+            assert.are.same({
+                "diff",
+                "main",
+                "--cached-only",
+                "--merge-base",
+                "--tracked-only",
+            }, opts.args)
+        end)
+    end)
+
     describe("edit_comment", function()
         it("calls CLI with correct command and args", function()
             local callback = spy.new(function() end)
