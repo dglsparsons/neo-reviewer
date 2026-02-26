@@ -31,6 +31,10 @@
 
 - `fetch` builds PR change blocks from local git (`git diff -w <base_sha>...<head_sha>`) instead of GitHub file patches; when commits are missing locally it attempts a targeted `git fetch` of base/head refs before failing.
 
+## Learned while implementing ReviewSync for local diffs
+
+- Store `ReviewDiff` selector options (`target`, `--cached-only`, `--uncached-only`, `--merge-base`, `--tracked-only`) on the active local review so `ReviewSync` can re-run the same diff mode instead of silently falling back to default `diff`.
+
 ## Project Overview
 
 `neo-reviewer` is a Neovim plugin for reviewing GitHub PRs. Hybrid architecture: Rust CLI for GitHub API/diff parsing, Lua plugin for UI.

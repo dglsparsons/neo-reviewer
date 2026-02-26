@@ -129,6 +129,18 @@ local function parse_review_diff_args(args)
     return opts, nil
 end
 
+---@param opts NRReviewDiffOpts
+---@return NRLocalDiffOpts
+local function to_local_diff_opts(opts)
+    return {
+        target = opts.target,
+        cached_only = opts.cached_only,
+        uncached_only = opts.uncached_only,
+        merge_base = opts.merge_base,
+        tracked_only = opts.tracked_only,
+    }
+end
+
 ---@param review NRReview
 ---@return boolean
 local function restore_previous_branch(review)
@@ -208,7 +220,7 @@ function M.setup(opts)
 
     vim.api.nvim_create_user_command("ReviewSync", function()
         M.sync()
-    end, { desc = "Sync PR review with GitHub" })
+    end, { desc = "Sync active review" })
 end
 
 ---@param url_or_number? string|integer
@@ -414,14 +426,7 @@ function M.review_diff(opts)
         return
     end
 
-    ---@type NRLocalDiffOpts
-    local diff_opts = {
-        target = opts.target,
-        cached_only = opts.cached_only,
-        uncached_only = opts.uncached_only,
-        merge_base = opts.merge_base,
-        tracked_only = opts.tracked_only,
-    }
+    local diff_opts = to_local_diff_opts(opts)
 
     vim.notify("Getting local diff...", vim.log.levels.INFO)
 
@@ -459,7 +464,7 @@ function M.review_diff(opts)
         }
 
         state.clear_review()
-        local review = state.set_local_review(filtered_data)
+        local review = state.set_local_review(filtered_data, diff_opts)
 
         local comments_file = require("neo_reviewer.ui.comments_file")
         comments_file.clear()
@@ -1112,6 +1117,75 @@ function M.sync()
     local review = state.get_review()
     if not review then
         vim.notify("No active review to sync", vim.log.levels.WARN)
+        return
+    end
+
+    if review.review_type == "local" then
+        local config = require("neo_reviewer.config")
+        local preserved = {
+            diff_opts = review.local_diff_opts or {},
+            expanded_changes = review.expanded_changes,
+            show_old_code = review.show_old_code,
+        }
+        local cursor_pos = vim.api.nvim_win_get_cursor(0)
+
+        vim.notify("Syncing local diff...", vim.log.levels.INFO)
+
+        cli.get_local_diff(preserved.diff_opts, function(data, err)
+            if err then
+                vim.notify("Failed to sync local diff: " .. err, vim.log.levels.ERROR)
+                return
+            end
+
+            local filtered_files, skipped_count = filter_local_diff_files(data.files, config.values.review_diff)
+
+            state.clear_review()
+
+            if #filtered_files == 0 then
+                if #data.files == 0 then
+                    vim.notify("No changes to review", vim.log.levels.WARN)
+                else
+                    vim.notify(
+                        string.format("No reviewable changes after skipping %d noise files", skipped_count),
+                        vim.log.levels.WARN
+                    )
+                end
+                return
+            end
+
+            if skipped_count > 0 then
+                vim.notify(
+                    string.format("[neo-reviewer] Skipped %d noise file(s) in local diff review", skipped_count),
+                    vim.log.levels.INFO
+                )
+            end
+
+            ---@type NRDiffData
+            local filtered_data = {
+                git_root = data.git_root,
+                files = filtered_files,
+            }
+            local new_review = state.set_local_review(filtered_data, preserved.diff_opts)
+            new_review.expanded_changes = preserved.expanded_changes
+            new_review.show_old_code = preserved.show_old_code
+
+            M.enable_overlay()
+
+            pcall(vim.api.nvim_win_set_cursor, 0, cursor_pos)
+
+            if skipped_count > 0 then
+                vim.notify(
+                    string.format(
+                        "Synced local diff (%d files changed, %d noise files skipped)",
+                        #filtered_files,
+                        skipped_count
+                    ),
+                    vim.log.levels.INFO
+                )
+            else
+                vim.notify(string.format("Synced local diff (%d files changed)", #filtered_files), vim.log.levels.INFO)
+            end
+        end)
         return
     end
 

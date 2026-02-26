@@ -260,11 +260,13 @@ These user commands are created when you call `setup()`.
     and pops any stashed changes.
 
 :ReviewSync                                                        *:ReviewSync*
-    Sync the current PR review with GitHub. Fetches the latest comments and
-    rebuilds diff changes from local git (same base/head commit range and
-    whitespace filtering as |:ReviewPR|). Preserves cursor position and
-    expanded change block state.
-    Only works during an active PR review (not local diff reviews).
+    Sync the current active review.
+    - During PR review: fetches latest comments/metadata from GitHub and
+      rebuilds diff changes from local git (same base/head commit range and
+      whitespace filtering as |:ReviewPR|).
+    - During local diff review: re-runs local `git diff` sourcing with the
+      same target/selector options used by |:ReviewDiff| and reapplies markers.
+    Preserves cursor position and expanded change block state when possible.
 
 ==============================================================================
 6. FUNCTIONS                                            *neo_reviewer-functions*
@@ -402,10 +404,12 @@ require("neo_reviewer").done()                                   *neo_reviewer.d
     the previous branch and pops any stashed changes.
 
 require("neo_reviewer").sync()                                   *neo_reviewer.sync()*
-    Sync the current PR review with GitHub. Re-fetches PR metadata/comments and
-    rebuilds diff changes from local git (`base...head`, `-w`). Preserves
-    cursor position, expanded change block state, and checkout state. Only
-    works during an active PR review.
+    Sync the current active review.
+    - During PR review: re-fetches PR metadata/comments and rebuilds diff
+      changes from local git (`base...head`, `-w`).
+    - During local diff review: re-runs local diff sourcing with the same
+      selection options used by |neo_reviewer.review_diff()|.
+    Preserves cursor position and expanded change block state when possible.
     See |:ReviewSync|.
 
 require("neo_reviewer").toggle_ai_feedback()     *neo_reviewer.toggle_ai_feedback()*

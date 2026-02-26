@@ -532,6 +532,22 @@ describe("neo_reviewer.state", function()
             assert.are.equal(2, #review.files)
         end)
 
+        it("stores local diff selector options for sync", function()
+            local data = helpers.deep_copy(fixtures.local_diff)
+            state.set_local_review(data, {
+                target = "main",
+                cached_only = true,
+                merge_base = true,
+            })
+
+            local review = state.get_review()
+            assert.are.same({
+                target = "main",
+                cached_only = true,
+                merge_base = true,
+            }, review.local_diff_opts)
+        end)
+
         it("normalizes missing change_blocks for local review", function()
             local data = {
                 git_root = "/tmp/test-repo",

@@ -92,6 +92,7 @@
 ---@field url? string PR URL (for PR reviews)
 ---@field viewer? string Current authenticated user
 ---@field git_root? string Git root directory (for local reviews)
+---@field local_diff_opts? NRLocalDiffOpts Local diff selector options used to fetch current review
 ---@field files NRFile[] Changed files
 ---@field files_by_path table<string, NRFile> Files indexed by path
 ---@field comments NRComment[] Comments on the PR
@@ -163,8 +164,9 @@ function M.set_review(review_data, git_root)
 end
 
 ---@param diff_data NRDiffData
+---@param diff_opts? NRLocalDiffOpts
 ---@return NRReview
-function M.set_local_review(diff_data)
+function M.set_local_review(diff_data, diff_opts)
     local files_by_path = {}
     for _, file in ipairs(diff_data.files) do
         if not file.change_blocks then
@@ -176,6 +178,7 @@ function M.set_local_review(diff_data)
     state.active_review = {
         review_type = "local",
         git_root = diff_data.git_root,
+        local_diff_opts = diff_opts or {},
         files = diff_data.files,
         files_by_path = files_by_path,
         comments = {},

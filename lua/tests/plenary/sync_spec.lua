@@ -18,6 +18,7 @@ describe("neo_reviewer.sync", function()
         cli = require("neo_reviewer.cli")
 
         stub(cli, "fetch_pr")
+        stub(cli, "get_local_diff")
 
         neo_reviewer = require("neo_reviewer")
 
@@ -26,6 +27,7 @@ describe("neo_reviewer.sync", function()
 
     after_each(function()
         cli.fetch_pr:revert()
+        cli.get_local_diff:revert()
 
         notifications.restore()
         state.clear_review()
@@ -42,15 +44,75 @@ describe("neo_reviewer.sync", function()
             assert.are.equal(vim.log.levels.WARN, notifs[1].level)
         end)
 
-        it("warns when trying to sync local diff review", function()
+        it("syncs local diff review by re-running diff with saved options", function()
+            state.set_local_review(mock_data.local_diff, {
+                target = "main",
+                tracked_only = true,
+            })
+
+            cli.get_local_diff.invokes(function(_, callback)
+                callback({
+                    git_root = "/tmp/test",
+                    files = {
+                        { path = "src/synced.lua", status = "modified", change_blocks = {} },
+                    },
+                }, nil)
+            end)
+
+            neo_reviewer.sync()
+
+            assert.stub(cli.get_local_diff).was_called(1)
+            assert.stub(cli.get_local_diff).was_called_with({
+                target = "main",
+                tracked_only = true,
+            }, match._)
+
+            local review = state.get_review()
+            assert.is_not_nil(review)
+            assert.are.equal("local", review.review_type)
+            assert.are.equal(1, #review.files)
+            assert.are.equal("src/synced.lua", review.files[1].path)
+        end)
+
+        it("notifies user when local diff sync is in progress", function()
             state.set_local_review(mock_data.local_diff)
 
             neo_reviewer.sync()
 
             local notifs = notifications.get()
-            assert.are.equal(1, #notifs)
-            assert.matches("Sync only works for PR reviews", notifs[1].msg)
-            assert.are.equal(vim.log.levels.WARN, notifs[1].level)
+            local found = false
+            for _, n in ipairs(notifs) do
+                if n.msg:match("Syncing local diff") then
+                    found = true
+                    break
+                end
+            end
+            assert.is_true(found, "Expected 'Syncing local diff...' notification")
+        end)
+
+        it("ends local review when sync finds no changes", function()
+            state.set_local_review(mock_data.local_diff)
+
+            cli.get_local_diff.invokes(function(_, callback)
+                callback({
+                    git_root = "/tmp/test",
+                    files = {},
+                }, nil)
+            end)
+
+            neo_reviewer.sync()
+
+            assert.is_nil(state.get_review())
+
+            local notifs = notifications.get()
+            local found = false
+            for _, n in ipairs(notifs) do
+                if n.msg:match("No changes to review") and n.level == vim.log.levels.WARN then
+                    found = true
+                    break
+                end
+            end
+            assert.is_true(found, "Expected 'No changes to review' warning")
         end)
 
         it("warns when PR review has no url", function()
