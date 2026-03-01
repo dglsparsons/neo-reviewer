@@ -57,7 +57,7 @@ function M.get_git_remote()
         return nil, nil
     end
     local url = result[1]
-    local owner, repo = url:match("github%.com[:/]([^/]+)/([^/%.]+)")
+    local owner, repo = url:match("github%.com[:/]([^/]+)/([^/]+)")
     if repo then
         repo = repo:gsub("%.git$", "")
     end

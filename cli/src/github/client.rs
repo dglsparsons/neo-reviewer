@@ -11,6 +11,21 @@ pub struct GitHubClient {
     token: String,
 }
 
+fn extract_next_page_url(link_header: &str) -> Option<String> {
+    for segment in link_header.split(',') {
+        let part = segment.trim();
+        if !part.contains("rel=\"next\"") {
+            continue;
+        }
+
+        let start = part.find('<')?;
+        let end = part[start + 1..].find('>')? + start + 1;
+        return Some(part[start + 1..end].to_string());
+    }
+
+    None
+}
+
 impl GitHubClient {
     /// Create a new authenticated GitHub client
     pub fn new() -> Result<Self> {
@@ -66,8 +81,8 @@ impl GitHubClient {
 
     /// Fetch review comments for the PR
     pub async fn get_review_comments(&self, pr_ref: &PrRef) -> Result<Vec<ReviewComment>> {
-        let url = format!(
-            "https://api.github.com/repos/{}/{}/pulls/{}/comments",
+        let initial_url = format!(
+            "https://api.github.com/repos/{}/{}/pulls/{}/comments?per_page=100",
             pr_ref.owner, pr_ref.repo, pr_ref.number
         );
 
@@ -92,26 +107,39 @@ impl GitHubClient {
         }
 
         let client = reqwest::Client::new();
-        let response = client
-            .get(&url)
-            .header("Authorization", format!("Bearer {}", self.token))
-            .header("Accept", "application/vnd.github+json")
-            .header("User-Agent", "neo-reviewer")
-            .header("X-GitHub-Api-Version", "2022-11-28")
-            .send()
-            .await?;
+        let mut next_page_url = Some(initial_url);
+        let mut raw_comments = Vec::new();
 
-        if !response.status().is_success() {
-            let status = response.status();
-            let error_body = response.text().await.unwrap_or_default();
-            return Err(anyhow!(
-                "Failed to fetch comments: {} - {}",
-                status,
-                error_body
-            ));
+        while let Some(page_url) = next_page_url {
+            let response = client
+                .get(&page_url)
+                .header("Authorization", format!("Bearer {}", self.token))
+                .header("Accept", "application/vnd.github+json")
+                .header("User-Agent", "neo-reviewer")
+                .header("X-GitHub-Api-Version", "2022-11-28")
+                .send()
+                .await?;
+
+            if !response.status().is_success() {
+                let status = response.status();
+                let error_body = response.text().await.unwrap_or_default();
+                return Err(anyhow!(
+                    "Failed to fetch comments: {} - {}",
+                    status,
+                    error_body
+                ));
+            }
+
+            let next_from_link_header = response
+                .headers()
+                .get(reqwest::header::LINK)
+                .and_then(|value| value.to_str().ok())
+                .and_then(extract_next_page_url);
+
+            let mut page_comments: Vec<CommentRaw> = response.json().await?;
+            raw_comments.append(&mut page_comments);
+            next_page_url = next_from_link_header;
         }
-
-        let raw_comments: Vec<CommentRaw> = response.json().await?;
 
         let review_comments: Vec<ReviewComment> = raw_comments
             .into_iter()
@@ -465,6 +493,40 @@ impl GitHubClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    mod extract_next_page_url {
+        use super::*;
+
+        #[test]
+        fn finds_next_page_url() {
+            let link_header = concat!(
+                "<https://api.github.com/repos/o/r/pulls/1/comments?per_page=100&page=2>; rel=\"next\", ",
+                "<https://api.github.com/repos/o/r/pulls/1/comments?per_page=100&page=4>; rel=\"last\""
+            );
+
+            let result = extract_next_page_url(link_header);
+            assert_eq!(
+                result.as_deref(),
+                Some("https://api.github.com/repos/o/r/pulls/1/comments?per_page=100&page=2")
+            );
+        }
+
+        #[test]
+        fn returns_none_without_next_relation() {
+            let link_header =
+                "<https://api.github.com/repos/o/r/pulls/1/comments?page=4>; rel=\"last\"";
+            let result = extract_next_page_url(link_header);
+            assert_eq!(result, None);
+        }
+
+        #[test]
+        fn returns_none_for_malformed_next_segment() {
+            let link_header =
+                "https://api.github.com/repos/o/r/pulls/1/comments?page=2; rel=\"next\"";
+            let result = extract_next_page_url(link_header);
+            assert_eq!(result, None);
+        }
+    }
 
     mod parse_pr_url {
         use super::*;

@@ -34,6 +34,12 @@
 ## Learned while implementing ReviewSync for local diffs
 
 - Store `ReviewDiff` selector options (`target`, `--cached-only`, `--uncached-only`, `--merge-base`, `--tracked-only`) on the active local review so `ReviewSync` can re-run the same diff mode instead of silently falling back to default `diff`.
+- Do not carry `expanded_changes` extmark IDs across `ReviewSync`; extmarks are buffer-local and cleared by `state.clear_review()`, so stale IDs prevent old-code expansion from reapplying.
+
+## Learned while fixing PR comment pagination and LEFT-side rendering
+
+- `GET /pulls/{number}/comments` is paginated; `get_review_comments()` must follow `Link` header `rel="next"` (and should request `per_page=100`) or comments silently truncate on larger PRs.
+- LEFT-side old-to-new mappings can legitimately resolve to `0` on full-file deletions; clamp mapped display lines into `[1, line_count]` before extmark placement to avoid out-of-range row errors.
 
 ## Project Overview
 

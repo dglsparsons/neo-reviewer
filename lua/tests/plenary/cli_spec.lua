@@ -81,6 +81,36 @@ describe("neo_reviewer.cli", function()
         end)
     end)
 
+    describe("get_git_remote", function()
+        it("parses repo names containing dots from ssh remotes", function()
+            local systemlist_stub = stub(vim.fn, "systemlist", function()
+                return { "git@github.com:owner/my.repo.nvim.git" }
+            end)
+            vim.fn.system("true")
+
+            local owner, repo = cli.get_git_remote()
+
+            systemlist_stub:revert()
+
+            assert.are.equal("owner", owner)
+            assert.are.equal("my.repo.nvim", repo)
+        end)
+
+        it("parses repo names containing dots from https remotes", function()
+            local systemlist_stub = stub(vim.fn, "systemlist", function()
+                return { "https://github.com/owner/my.repo.nvim.git" }
+            end)
+            vim.fn.system("true")
+
+            local owner, repo = cli.get_git_remote()
+
+            systemlist_stub:revert()
+
+            assert.are.equal("owner", owner)
+            assert.are.equal("my.repo.nvim", repo)
+        end)
+    end)
+
     describe("is_worktree_dirty", function()
         it("returns true when there are uncommitted changes", function()
             local systemlist_stub = stub(vim.fn, "systemlist", function()

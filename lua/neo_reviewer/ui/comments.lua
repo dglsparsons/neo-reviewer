@@ -288,7 +288,7 @@ function M.add_at_cursor(opts)
             M.add_local_comment(file, start_line, end_line --[[@as integer]], body)
         else
             ---@cast pr_url string
-            M.add_pr_comment(file, pr_url, start_line, end_line --[[@as integer]], end_pos, start_pos, body)
+            M.add_pr_comment(file, pr_url, start_line, end_pos, start_pos, body)
         end
     end)
 end
@@ -326,11 +326,10 @@ end
 ---@param file NRFile
 ---@param pr_url string
 ---@param start_line? integer
----@param end_line integer
 ---@param end_pos NRCommentPosition
 ---@param start_pos? NRCommentPosition
 ---@param body string
-function M.add_pr_comment(file, pr_url, start_line, end_line, end_pos, start_pos, body)
+function M.add_pr_comment(file, pr_url, start_line, end_pos, start_pos, body)
     vim.notify("Submitting comment...", vim.log.levels.INFO)
 
     local cli = require("neo_reviewer.cli")
@@ -359,8 +358,8 @@ function M.add_pr_comment(file, pr_url, start_line, end_line, end_pos, start_pos
         local comment = {
             id = data.comment_id,
             path = file.path,
-            line = end_line,
-            start_line = start_line,
+            line = end_pos.line,
+            start_line = start_pos and start_pos.line or start_line,
             side = end_pos.side,
             start_side = start_pos and start_pos.side or nil,
             body = body,
@@ -371,7 +370,7 @@ function M.add_pr_comment(file, pr_url, start_line, end_line, end_pos, start_pos
         state.add_comment(comment)
 
         local bufnr = vim.api.nvim_get_current_buf()
-        M.show_comment(bufnr, comment)
+        M.show_comment(bufnr, comment, file.change_blocks)
     end)
 end
 
@@ -387,6 +386,19 @@ local function map_old_line_to_new(change_blocks, old_line)
         end
     end
     return nil
+end
+
+---@param line integer
+---@param line_count? integer
+---@return integer
+local function clamp_line_for_display(line, line_count)
+    if line_count and line_count > 0 and line > line_count then
+        line = line_count
+    end
+    if line < 1 then
+        line = 1
+    end
+    return line
 end
 
 ---@param change_blocks? NRChangeBlock[]
@@ -463,15 +475,18 @@ function M.show_comment(bufnr, comment, change_blocks, reply_count)
         return
     end
 
-    if mapped_end and display_end_line > line_count then
-        display_end_line = line_count
+    if mapped_end then
+        display_end_line = clamp_line_for_display(display_end_line, line_count)
     end
     if display_start_line and display_start_line > line_count then
         display_start_line = line_count
     end
+    if display_start_line and display_start_line < 1 then
+        display_start_line = 1
+    end
 
     local end_row = display_end_line - 1
-    if end_row >= line_count then
+    if end_row < 0 or end_row >= line_count then
         return
     end
 
@@ -572,8 +587,9 @@ end
 ---@param comment NRComment
 ---@param line integer
 ---@param change_blocks? NRChangeBlock[]
+---@param line_count? integer
 ---@return boolean
-local function comment_matches_line(comment, line, change_blocks)
+local function comment_matches_line(comment, line, change_blocks, line_count)
     local end_line = comment.line
     if type(end_line) ~= "number" then
         return false
@@ -586,11 +602,17 @@ local function comment_matches_line(comment, line, change_blocks)
     end
 
     if comment.side == "LEFT" then
-        end_line = map_old_line_to_new(change_blocks, comment.line) or end_line
+        local mapped_end_line = map_old_line_to_new(change_blocks, comment.line)
+        if mapped_end_line then
+            end_line = clamp_line_for_display(mapped_end_line, line_count)
+        end
     end
 
     if start_line and comment.start_side == "LEFT" then
-        start_line = map_old_line_to_new(change_blocks, comment.start_line) or start_line
+        local mapped_start_line = map_old_line_to_new(change_blocks, comment.start_line)
+        if mapped_start_line then
+            start_line = clamp_line_for_display(mapped_start_line, line_count)
+        end
     end
 
     if start_line and start_line < end_line then
@@ -603,14 +625,15 @@ end
 ---@param file_path string
 ---@param line integer
 ---@param change_blocks? NRChangeBlock[]
+---@param line_count? integer
 ---@return NRComment[][]
-local function get_threads_for_line(file_path, line, change_blocks)
+local function get_threads_for_line(file_path, line, change_blocks, line_count)
     local comments = state.get_comments_for_file(file_path)
     ---@type NRComment[][]
     local threads = {}
 
     for _, comment in ipairs(comments) do
-        if comment_matches_line(comment, line, change_blocks) and not is_reply(comment) then
+        if comment_matches_line(comment, line, change_blocks, line_count) and not is_reply(comment) then
             ---@type NRComment[]
             local thread = { comment }
             for _, reply in ipairs(comments) do
@@ -627,7 +650,7 @@ local function get_threads_for_line(file_path, line, change_blocks)
 
     if #threads == 0 then
         for _, comment in ipairs(comments) do
-            if comment_matches_line(comment, line, change_blocks) then
+            if comment_matches_line(comment, line, change_blocks, line_count) then
                 table.insert(threads, { comment })
             end
         end
@@ -1171,7 +1194,8 @@ function M.show_thread()
 
     local source_bufnr = vim.api.nvim_get_current_buf()
     local line = vim.api.nvim_win_get_cursor(0)[1]
-    local threads = get_threads_for_line(file.path, line, file.change_blocks)
+    local line_count = vim.api.nvim_buf_line_count(source_bufnr)
+    local threads = get_threads_for_line(file.path, line, file.change_blocks, line_count)
 
     if #threads == 0 then
         vim.notify("No comments on this line", vim.log.levels.INFO)

@@ -1124,8 +1124,8 @@ function M.sync()
         local config = require("neo_reviewer.config")
         local preserved = {
             diff_opts = review.local_diff_opts or {},
-            expanded_changes = review.expanded_changes,
             show_old_code = review.show_old_code,
+            ai_analysis = review.ai_analysis,
         }
         local cursor_pos = vim.api.nvim_win_get_cursor(0)
 
@@ -1166,8 +1166,8 @@ function M.sync()
                 files = filtered_files,
             }
             local new_review = state.set_local_review(filtered_data, preserved.diff_opts)
-            new_review.expanded_changes = preserved.expanded_changes
             new_review.show_old_code = preserved.show_old_code
+            new_review.ai_analysis = preserved.ai_analysis
 
             M.enable_overlay()
 
@@ -1197,9 +1197,9 @@ function M.sync()
     local preserved = {
         url = review.url,
         git_root = review.git_root,
-        expanded_changes = review.expanded_changes,
         did_checkout = review.did_checkout,
         prev_branch = review.prev_branch,
+        ai_analysis = review.ai_analysis,
     }
     local old_comment_count = #review.comments
     local cursor_pos = vim.api.nvim_win_get_cursor(0)
@@ -1232,9 +1232,9 @@ function M.sync()
         end
 
         new_review.url = preserved.url
-        new_review.expanded_changes = preserved.expanded_changes
         new_review.did_checkout = preserved.did_checkout
         new_review.prev_branch = preserved.prev_branch
+        new_review.ai_analysis = preserved.ai_analysis
 
         M.enable_overlay()
 

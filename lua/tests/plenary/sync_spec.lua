@@ -74,6 +74,59 @@ describe("neo_reviewer.sync", function()
             assert.are.equal("src/synced.lua", review.files[1].path)
         end)
 
+        it("clears stale expanded change extmarks when syncing local diff review", function()
+            local review = state.set_local_review(mock_data.local_diff, {
+                target = "main",
+            })
+            review.expanded_changes["src/feature.lua:10"] = { 99, 100 }
+
+            cli.get_local_diff.invokes(function(_, callback)
+                callback({
+                    git_root = "/tmp/test",
+                    files = {
+                        { path = "src/synced.lua", status = "modified", change_blocks = {} },
+                    },
+                }, nil)
+            end)
+
+            neo_reviewer.sync()
+
+            local synced_review = state.get_review()
+            assert.is_not_nil(synced_review)
+            if synced_review then
+                assert.are.same({}, synced_review.expanded_changes)
+            end
+        end)
+
+        it("preserves AI analysis when syncing local diff review", function()
+            state.set_local_review(mock_data.local_diff, {
+                target = "main",
+            })
+            local analysis = {
+                overview = "Local sync analysis",
+                steps = {
+                    {
+                        title = "Check local changes",
+                        summary = "Review important changes first.",
+                    },
+                },
+            }
+            state.set_ai_analysis(analysis)
+
+            cli.get_local_diff.invokes(function(_, callback)
+                callback({
+                    git_root = "/tmp/test",
+                    files = {
+                        { path = "src/synced.lua", status = "modified", change_blocks = {} },
+                    },
+                }, nil)
+            end)
+
+            neo_reviewer.sync()
+
+            assert.are.same(analysis, state.get_ai_analysis())
+        end)
+
         it("notifies user when local diff sync is in progress", function()
             state.set_local_review(mock_data.local_diff)
 
@@ -134,6 +187,47 @@ describe("neo_reviewer.sync", function()
 
             assert.stub(cli.fetch_pr).was_called(1)
             assert.stub(cli.fetch_pr).was_called_with("https://github.com/owner/repo/pull/123", match._)
+        end)
+
+        it("preserves AI analysis when syncing PR review", function()
+            local review = state.set_review(mock_data.simple_pr, "/tmp/test")
+            review.url = "https://github.com/owner/repo/pull/123"
+            local analysis = {
+                overview = "PR sync analysis",
+                steps = {
+                    {
+                        title = "Check API updates",
+                        summary = "Confirm backward compatibility.",
+                    },
+                },
+            }
+            state.set_ai_analysis(analysis)
+
+            cli.fetch_pr.invokes(function(_, callback)
+                callback(mock_data.simple_pr, nil)
+            end)
+
+            neo_reviewer.sync()
+
+            assert.are.same(analysis, state.get_ai_analysis())
+        end)
+
+        it("clears stale expanded change extmarks when syncing PR review", function()
+            local review = state.set_review(mock_data.simple_pr, "/tmp/test")
+            review.url = "https://github.com/owner/repo/pull/123"
+            review.expanded_changes["src/main.lua:2"] = { 55 }
+
+            cli.fetch_pr.invokes(function(_, callback)
+                callback(mock_data.simple_pr, nil)
+            end)
+
+            neo_reviewer.sync()
+
+            local synced_review = state.get_review()
+            assert.is_not_nil(synced_review)
+            if synced_review then
+                assert.are.same({}, synced_review.expanded_changes)
+            end
         end)
 
         it("notifies user that sync is in progress", function()

@@ -168,6 +168,71 @@ describe("neo_reviewer.ui.comments", function()
             assert.is_true(notified)
         end)
 
+        it("matches LEFT comments clamped before first line", function()
+            state.set_local_review({
+                git_root = "/tmp/test-repo",
+                files = {
+                    {
+                        path = "test.lua",
+                        status = "modified",
+                        content = "line 1\nline 2\nline 3",
+                        change_blocks = {
+                            {
+                                start_line = 1,
+                                end_line = 1,
+                                kind = "delete",
+                                added_lines = {},
+                                changed_lines = {},
+                                deletion_groups = {
+                                    {
+                                        anchor_line = 0,
+                                        old_lines = { "old line 4" },
+                                        old_line_numbers = { 4 },
+                                    },
+                                },
+                                old_to_new = {
+                                    { old_line = 4, new_line = 0 },
+                                },
+                            },
+                        },
+                    },
+                },
+            })
+
+            state.add_comment({
+                id = 101,
+                path = "test.lua",
+                line = 4,
+                side = "LEFT",
+                body = "Comment on deleted line",
+                author = "you",
+                created_at = "2024-01-01T12:00:00Z",
+            })
+
+            local file = state.get_review().files[1]
+            local bufnr = helpers.create_test_buffer({ "line 1", "line 2", "line 3" })
+            vim.api.nvim_buf_set_var(bufnr, "nr_file", file)
+            helpers.set_cursor(1)
+
+            local no_comments_notified = false
+            local original_notify = vim.notify
+            vim.notify = function(msg, level, opts)
+                if msg == "No comments on this line" then
+                    no_comments_notified = true
+                    return
+                end
+                return original_notify(msg, level, opts)
+            end
+
+            local mappings, restore_mappings = capture_thread_mappings()
+            comments.show_thread()
+            restore_mappings()
+            vim.notify = original_notify
+
+            assert.is_false(no_comments_notified)
+            assert.is_not_nil(next(mappings))
+        end)
+
         it("handles threaded comments with in_reply_to_id", function()
             local data = helpers.deep_copy(fixtures.multi_file_pr)
             state.set_review(data)
@@ -533,7 +598,7 @@ describe("neo_reviewer.ui.comments", function()
             comments.open_multiline_input = function(_, callback)
                 callback("Test comment")
             end
-            comments.add_pr_comment = function(_, _, _, _, end_pos, _, _)
+            comments.add_pr_comment = function(_, _, _, end_pos, _, _)
                 captured = end_pos
             end
 
@@ -547,6 +612,120 @@ describe("neo_reviewer.ui.comments", function()
             ---@cast captured NRCommentPosition
             assert.are.equal("RIGHT", captured.side)
             assert.are.equal(2, captured.line)
+        end)
+    end)
+
+    describe("add_pr_comment", function()
+        it("stores LEFT comment coordinates on diff side and renders immediately", function()
+            local data = {
+                pr = { number = 102, title = "Left comment PR" },
+                viewer = "reviewer",
+                files = {
+                    {
+                        path = "test.lua",
+                        status = "modified",
+                        content = table.concat({
+                            "line 1",
+                            "line 2",
+                            "line 3",
+                            "line 4",
+                            "line 5",
+                        }, "\n"),
+                        change_blocks = {
+                            {
+                                start_line = 3,
+                                end_line = 3,
+                                kind = "delete",
+                                added_lines = {},
+                                changed_lines = {},
+                                deletion_groups = {
+                                    {
+                                        anchor_line = 3,
+                                        old_lines = { "old line 5" },
+                                        old_line_numbers = { 5 },
+                                    },
+                                },
+                                old_to_new = {
+                                    { old_line = 5, new_line = 3 },
+                                },
+                            },
+                        },
+                    },
+                },
+                comments = {},
+            }
+            state.set_review(data)
+            local file = data.files[1]
+            local bufnr = helpers.create_test_buffer(vim.split(file.content, "\n"))
+
+            package.loaded["neo_reviewer.cli"] = {
+                add_comment = function(_, _, callback)
+                    callback({ success = true, comment_id = 7001 }, nil)
+                end,
+            }
+
+            comments.add_pr_comment(
+                file,
+                "https://github.com/owner/repo/pull/102",
+                3,
+                { line = 5, side = "LEFT" },
+                nil,
+                "Comment on deleted line"
+            )
+
+            package.loaded["neo_reviewer.cli"] = nil
+
+            local file_comments = state.get_comments_for_file("test.lua")
+            assert.are.equal(1, #file_comments)
+            assert.are.equal(5, file_comments[1].line)
+            assert.are.equal("LEFT", file_comments[1].side)
+
+            local extmarks = helpers.get_extmarks(bufnr, "nr_comments")
+            assert.are.equal(1, #extmarks)
+            assert.are.equal(2, extmarks[1][2])
+        end)
+
+        it("stores LEFT range start_line on diff side coordinates", function()
+            local data = {
+                pr = { number = 103, title = "Left range PR" },
+                viewer = "reviewer",
+                files = {
+                    {
+                        path = "range.lua",
+                        status = "modified",
+                        content = "line 1\nline 2\nline 3",
+                        change_blocks = {},
+                    },
+                },
+                comments = {},
+            }
+            state.set_review(data)
+            local file = data.files[1]
+            helpers.create_test_buffer(vim.split(file.content, "\n"))
+
+            package.loaded["neo_reviewer.cli"] = {
+                add_comment = function(_, _, callback)
+                    callback({ success = true, comment_id = 7002 }, nil)
+                end,
+            }
+
+            comments.add_pr_comment(
+                file,
+                "https://github.com/owner/repo/pull/103",
+                2,
+                { line = 20, side = "LEFT" },
+                { line = 18, side = "LEFT" },
+                "Range comment"
+            )
+
+            package.loaded["neo_reviewer.cli"] = nil
+
+            local file_comments = state.get_comments_for_file("range.lua")
+            assert.are.equal(1, #file_comments)
+            assert.are.equal(20, file_comments[1].line)
+            assert.are.equal(18, file_comments[1].start_line)
+            assert.are.equal("LEFT", file_comments[1].side)
+            assert.are.equal("LEFT", file_comments[1].start_side)
         end)
     end)
 
@@ -741,6 +920,43 @@ describe("neo_reviewer.ui.comments", function()
             local extmarks = helpers.get_extmarks(bufnr, "nr_comments")
             assert.are.equal(1, #extmarks)
             assert.are.equal(2, extmarks[1][2])
+        end)
+
+        it("clamps mapped LEFT side comment before first line", function()
+            local bufnr = helpers.create_test_buffer({ "line 1", "line 2", "line 3" })
+
+            local change_blocks = {
+                {
+                    start_line = 1,
+                    end_line = 1,
+                    kind = "delete",
+                    added_lines = {},
+                    changed_lines = {},
+                    deletion_groups = {
+                        {
+                            anchor_line = 0,
+                            old_lines = { "deleted line 4" },
+                            old_line_numbers = { 4 },
+                        },
+                    },
+                    old_to_new = {
+                        { old_line = 4, new_line = 0 },
+                    },
+                },
+            }
+
+            assert.has_no_errors(function()
+                comments.show_comment(bufnr, {
+                    line = 4,
+                    side = "LEFT",
+                    body = "Comment on deleted line",
+                    author = "user",
+                }, change_blocks)
+            end)
+
+            local extmarks = helpers.get_extmarks(bufnr, "nr_comments")
+            assert.are.equal(1, #extmarks)
+            assert.are.equal(0, extmarks[1][2])
         end)
     end)
 
