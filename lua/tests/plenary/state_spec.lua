@@ -190,6 +190,37 @@ describe("neo_reviewer.state", function()
 
             assert.is_nil(find_ai_window())
         end)
+
+        it("keeps AI walkthrough window open when keep_ai_ui=true", function()
+            local data = helpers.deep_copy(fixtures.simple_pr)
+            state.set_review(data)
+            state.set_ai_analysis({
+                overview = "Test overview",
+                steps = {},
+            })
+
+            helpers.create_test_buffer({ "line 1", "line 2" })
+
+            local ai_ui = require("neo_reviewer.ui.ai")
+            ai_ui.open()
+
+            local function find_ai_window()
+                for _, win in ipairs(vim.api.nvim_list_wins()) do
+                    local buf = vim.api.nvim_win_get_buf(win)
+                    if vim.bo[buf].filetype == "neo-reviewer-ai" then
+                        return win
+                    end
+                end
+                return nil
+            end
+
+            assert.is_not_nil(find_ai_window())
+
+            state.clear_review({ keep_ai_ui = true })
+
+            assert.is_not_nil(find_ai_window())
+            ai_ui.close()
+        end)
     end)
 
     describe("get_current_file / set_current_file_idx", function()

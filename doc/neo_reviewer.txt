@@ -98,6 +98,13 @@ Call setup() with your options: >lua
                 "Cargo.lock",
             },
         },
+        sync = {
+            on_save = true,              -- Auto-sync after saving reviewed files
+            save_debounce_ms = 400,      -- Debounce save-triggered sync
+            periodic_enabled = true,     -- Periodic background sync
+            periodic_interval_ms = 120000, -- 2 minutes
+            cooldown_ms = 1500,          -- Min spacing between sync starts
+        },
         ai = {
             enabled = false,                      -- Run AI analysis by default
             model = "gpt-5.3-codex", -- Model for Codex CLI (default)
@@ -136,6 +143,22 @@ review_diff ~
       (default: true).
     - `noise_files`: Basenames to skip when `skip_noise_files` is enabled.
       Any file with a matching basename is excluded from local diff review.
+
+                                                        *neo_reviewer-config-sync*
+sync ~
+    Configure automatic review synchronization.
+    - `on_save`: Trigger sync after saving a file in the active review
+      (default: true). Applies to both PR and local diff reviews.
+    - `save_debounce_ms`: Debounce window for save-triggered sync
+      (default: 400).
+    - `periodic_enabled`: Enable periodic background sync
+      (default: true).
+    - `periodic_interval_ms`: Periodic sync interval in milliseconds
+      (default: 120000 / 2 minutes).
+    - `cooldown_ms`: Minimum time between sync starts in milliseconds
+      (default: 1500). This guards against stacked sync runs.
+    Automatic save/periodic sync runs silently on success (no "Synced"
+    notifications). Errors still notify.
 
                                                            *neo_reviewer-config-ai*
 ai ~
@@ -268,6 +291,10 @@ These user commands are created when you call `setup()`.
       same target/selector options used by |:ReviewDiff| and reapplies markers.
     Preserves cursor position, expanded change block state, and AI summary when
     possible.
+    By default, sync also runs automatically on save for reviewed files and as
+    a periodic background refresh every 2 minutes. Save-triggered PR sync skips
+    comment refresh (diff/highlights only). Automatic sync keeps the AI
+    walkthrough window open if it is already open. Configure via `sync.*`.
 
 ==============================================================================
 6. FUNCTIONS                                            *neo_reviewer-functions*
@@ -411,6 +438,9 @@ require("neo_reviewer").sync()                                   *neo_reviewer.s
     - During local diff review: re-runs local diff sourcing with the same
       selection options used by |neo_reviewer.review_diff()|.
     Preserves cursor position and expanded change block state when possible.
+    Manual sync (`:ReviewSync`) always refreshes comments for PR reviews.
+    Automatic save-triggered sync refreshes diff/highlights but skips comment
+    refresh for PR reviews.
     See |:ReviewSync|.
 
 require("neo_reviewer").toggle_ai_feedback()     *neo_reviewer.toggle_ai_feedback()*

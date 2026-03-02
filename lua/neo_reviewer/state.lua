@@ -124,6 +124,9 @@
 ---@class NRStateModule
 local M = {}
 
+---@class NRClearReviewOpts
+---@field keep_ai_ui? boolean Keep AI walkthrough window open while clearing review overlays/state
+
 ---@type NRState
 local state = {
     active_review = nil,
@@ -257,8 +260,15 @@ function M.get_review()
     return state.active_review
 end
 
-function M.clear_review()
+---@param opts? NRClearReviewOpts
+function M.clear_review(opts)
+    opts = opts or {}
     if state.active_review then
+        local neo_reviewer = package.loaded["neo_reviewer"]
+        if type(neo_reviewer) == "table" and type(neo_reviewer._stop_autosync) == "function" then
+            neo_reviewer._stop_autosync()
+        end
+
         if state.active_review.autocmd_id then
             vim.api.nvim_del_autocmd(state.active_review.autocmd_id)
         end
@@ -268,7 +278,9 @@ function M.clear_review()
         local ai_ui = require("neo_reviewer.ui.ai")
         local buffer = require("neo_reviewer.ui.buffer")
 
-        ai_ui.close()
+        if not opts.keep_ai_ui then
+            ai_ui.close()
+        end
 
         for bufnr, _ in pairs(state.active_review.applied_buffers) do
             if vim.api.nvim_buf_is_valid(bufnr) then

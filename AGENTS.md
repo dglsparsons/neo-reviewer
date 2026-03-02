@@ -41,6 +41,12 @@
 - `GET /pulls/{number}/comments` is paginated; `get_review_comments()` must follow `Link` header `rel="next"` (and should request `per_page=100`) or comments silently truncate on larger PRs.
 - LEFT-side old-to-new mappings can legitimately resolve to `0` on full-file deletions; clamp mapped display lines into `[1, line_count]` before extmark placement to avoid out-of-range row errors.
 
+## Learned while implementing autosync triggers
+
+- Save-triggered PR sync should call CLI fetch with `--skip-comments` and preserve in-memory `review.comments`; this refreshes diff/highlights without comment API churn.
+- Auto-sync timers are owned by `init.lua`; `state.clear_review()` should call `neo_reviewer._stop_autosync()` when available to avoid leaking periodic timers across teardown paths and tests.
+- To keep the AI walkthrough panel stable during sync, plumb `keep_ai_ui` through `state.clear_review()` and re-render with `ai_ui.open()` after rebuilding review state.
+
 ## Project Overview
 
 `neo-reviewer` is a Neovim plugin for reviewing GitHub PRs. Hybrid architecture: Rust CLI for GitHub API/diff parsing, Lua plugin for UI.

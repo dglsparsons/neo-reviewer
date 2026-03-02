@@ -37,6 +37,9 @@ local config = require("neo_reviewer.config")
 ---@field merge_base? boolean Compare against merge-base(HEAD, target)
 ---@field tracked_only? boolean Exclude untracked files
 
+---@class NRFetchPROpts
+---@field skip_comments? boolean Skip fetching review comments
+
 ---@class NRCLIModule
 local M = {}
 
@@ -169,10 +172,17 @@ end
 
 ---@param url string
 ---@param callback fun(data: NRReviewData?, err: string?)
-function M.fetch_pr(url, callback)
+---@param opts? NRFetchPROpts
+function M.fetch_pr(url, callback, opts)
+    opts = opts or {}
+    local args = { "fetch", "--url", url }
+    if opts.skip_comments then
+        table.insert(args, "--skip-comments")
+    end
+
     Job:new({
         command = config.values.cli_path,
-        args = { "fetch", "--url", url },
+        args = args,
         on_exit = vim.schedule_wrap(function(j, code)
             if code == 0 then
                 local output = table.concat(j:result(), "\n")

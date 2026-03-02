@@ -43,6 +43,10 @@ enum Commands {
         /// GitHub PR URL (e.g., https://github.com/owner/repo/pull/123)
         #[arg(short, long)]
         url: String,
+
+        /// Skip fetching review comments (diff/metadata only)
+        #[arg(long)]
+        skip_comments: bool,
     },
 
     /// Add a review comment to a PR
@@ -167,8 +171,8 @@ async fn main() -> Result<()> {
                 tracked_only,
             })?;
         }
-        Commands::Fetch { url } => {
-            commands::fetch::run(&url).await?;
+        Commands::Fetch { url, skip_comments } => {
+            commands::fetch::run(&url, skip_comments).await?;
         }
         Commands::Comment {
             url,

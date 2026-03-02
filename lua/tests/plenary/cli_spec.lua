@@ -237,6 +237,19 @@ describe("neo_reviewer.cli", function()
             assert.are.same({ "fetch", "--url", "https://github.com/owner/repo/pull/123" }, opts.args)
         end)
 
+        it("passes --skip-comments when requested", function()
+            local callback = spy.new(function() end)
+            cli.fetch_pr("https://github.com/owner/repo/pull/123", callback, { skip_comments = true })
+
+            assert.stub(Job.new).was_called(1)
+            local opts = job_instance._opts
+            assert.are.equal("test-cli", opts.command)
+            assert.are.same(
+                { "fetch", "--url", "https://github.com/owner/repo/pull/123", "--skip-comments" },
+                opts.args
+            )
+        end)
+
         it("calls callback with parsed data on success", function()
             local received_data, received_err
             local callback = function(data, err)

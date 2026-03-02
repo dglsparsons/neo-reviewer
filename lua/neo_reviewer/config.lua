@@ -36,6 +36,13 @@
 ---@field skip_noise_files boolean Whether to skip common lock/noise files in local diff reviews
 ---@field noise_files string[] Basenames to skip in local diff reviews when skip_noise_files is enabled
 
+---@class NRSync
+---@field on_save boolean Whether to trigger sync after saving a reviewed file
+---@field save_debounce_ms integer Debounce window for save-triggered sync
+---@field periodic_enabled boolean Whether to run periodic background sync
+---@field periodic_interval_ms integer Periodic sync interval in milliseconds
+---@field cooldown_ms integer Minimum time between sync starts in milliseconds
+
 ---@class NRConfig
 ---@field cli_path string Path to the neo-reviewer CLI binary
 ---@field signs NRSigns
@@ -44,6 +51,7 @@
 ---@field thread_window NRThreadWindow
 ---@field input_window NRInputWindow
 ---@field review_diff NRReviewDiff
+---@field sync NRSync
 ---@field ai NRAI AI analysis configuration
 
 ---@class NRPartialSigns
@@ -77,6 +85,13 @@
 ---@field skip_noise_files? boolean Whether to skip common lock/noise files in local diff reviews
 ---@field noise_files? string[] Basenames to skip in local diff reviews when skip_noise_files is enabled
 
+---@class NRPartialSync
+---@field on_save? boolean Whether to trigger sync after saving a reviewed file
+---@field save_debounce_ms? integer Debounce window for save-triggered sync
+---@field periodic_enabled? boolean Whether to run periodic background sync
+---@field periodic_interval_ms? integer Periodic sync interval in milliseconds
+---@field cooldown_ms? integer Minimum time between sync starts in milliseconds
+
 ---@class NRPartialAI
 ---@field enabled? boolean Whether AI analysis is enabled by default
 ---@field model? string Model for AI CLI
@@ -92,6 +107,7 @@
 ---@field thread_window? NRPartialThreadWindow
 ---@field input_window? NRPartialInputWindow
 ---@field review_diff? NRPartialReviewDiff
+---@field sync? NRPartialSync
 ---@field ai? NRPartialAI AI analysis configuration
 
 ---@class NRConfigModule
@@ -159,6 +175,13 @@ M.values = {
             "flake.lock",
             ".terraform.lock.hcl",
         },
+    },
+    sync = {
+        on_save = true,
+        save_debounce_ms = 400,
+        periodic_enabled = true,
+        periodic_interval_ms = 120000,
+        cooldown_ms = 1500,
     },
     ai = {
         enabled = false,

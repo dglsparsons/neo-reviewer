@@ -6,7 +6,7 @@ use crate::commands::diff::{ensure_git_commit_available, get_pr_review_files};
 use crate::github::client::GitHubClient;
 use crate::github::types::{FetchResponse, PrRef};
 
-pub async fn run(url: &str) -> Result<()> {
+pub async fn run(url: &str, skip_comments: bool) -> Result<()> {
     let client = GitHubClient::new()?;
     let pr_ref = GitHubClient::parse_pr_url(url)?;
 
@@ -20,8 +20,11 @@ pub async fn run(url: &str) -> Result<()> {
     // Fetch change blocks from local git using the PR commit range.
     let files = get_pr_review_files(&pr.base_sha, &pr.head_sha, true)?;
 
-    // Fetch existing comments
-    let comments = client.get_review_comments(&pr_ref).await?;
+    let comments = if skip_comments {
+        Vec::new()
+    } else {
+        client.get_review_comments(&pr_ref).await?
+    };
 
     let response = FetchResponse {
         pr,

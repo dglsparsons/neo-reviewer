@@ -25,6 +25,107 @@ local M = {}
 ---@type "both"|"hidden"|nil
 local stacked_feedback_anchor = nil
 
+---@alias NRSyncReason "manual"|"save"|"periodic"
+
+---@class NRSyncOpts
+---@field reason? NRSyncReason Sync trigger reason
+---@field include_comments? boolean Override whether PR comment data should be refreshed
+
+---@type integer|nil
+local save_sync_timer = nil
+
+---@type integer|nil
+local periodic_sync_timer = nil
+
+local sync_in_flight = false
+local last_sync_started_at_ms = 0
+
+---@return integer
+local function monotonic_ms()
+    local uv = vim.uv or vim.loop
+    return math.floor(uv.hrtime() / 1000000)
+end
+
+---@param timer_id integer|nil
+---@return integer|nil
+local function stop_timer(timer_id)
+    if not timer_id then
+        return nil
+    end
+
+    vim.fn.timer_stop(timer_id)
+    return nil
+end
+
+local function stop_autosync()
+    save_sync_timer = stop_timer(save_sync_timer)
+    periodic_sync_timer = stop_timer(periodic_sync_timer)
+end
+
+function M._stop_autosync()
+    stop_autosync()
+end
+
+---@param opts? { keep_ai_ui?: boolean }
+local function clear_active_review(opts)
+    local state = require("neo_reviewer.state")
+    stop_autosync()
+    state.clear_review(opts)
+end
+
+---@param bufnr integer
+---@return NRFile?
+local function resolve_file_for_buffer(bufnr)
+    local state = require("neo_reviewer.state")
+    local review = state.get_review()
+    if not review then
+        return nil
+    end
+
+    local bufname = vim.api.nvim_buf_get_name(bufnr)
+    if bufname == "" then
+        return nil
+    end
+
+    local git_root = state.get_git_root()
+    local relative_path = bufname
+    if git_root and bufname:sub(1, #git_root) == git_root then
+        relative_path = bufname:sub(#git_root + 2)
+    end
+
+    return state.get_file_by_path(relative_path)
+end
+
+local function schedule_save_sync()
+    local config = require("neo_reviewer.config")
+    local debounce_ms = config.values.sync.save_debounce_ms
+    if debounce_ms < 0 then
+        debounce_ms = 0
+    end
+
+    save_sync_timer = stop_timer(save_sync_timer)
+    save_sync_timer = vim.fn.timer_start(debounce_ms, function()
+        save_sync_timer = nil
+        vim.schedule(function()
+            M.sync({ reason = "save" })
+        end)
+    end)
+end
+
+local function start_periodic_sync()
+    local config = require("neo_reviewer.config")
+    local interval_ms = config.values.sync.periodic_interval_ms
+    if not config.values.sync.periodic_enabled or interval_ms <= 0 then
+        return
+    end
+
+    periodic_sync_timer = vim.fn.timer_start(interval_ms, function()
+        vim.schedule(function()
+            M.sync({ reason = "periodic" })
+        end)
+    end, { ["repeat"] = -1 })
+end
+
 ---@param input string
 ---@return boolean
 local function is_github_url(input)
@@ -463,7 +564,7 @@ function M.review_diff(opts)
             files = filtered_files,
         }
 
-        state.clear_review()
+        clear_active_review()
         local review = state.set_local_review(filtered_data, diff_opts)
 
         local comments_file = require("neo_reviewer.ui.comments_file")
@@ -549,7 +650,7 @@ function M.fetch_and_enable(url, on_ready, opts)
             return
         end
 
-        state.clear_review()
+        clear_active_review()
         local git_root = cli.get_git_root()
         local review = state.set_review(data, git_root)
         review.url = url
@@ -621,12 +722,29 @@ function M.enable_overlay()
         return
     end
 
-    local autocmd_id = vim.api.nvim_create_autocmd({ "BufEnter", "BufWinEnter" }, {
+    stop_autosync()
+
+    local autocmd_id = vim.api.nvim_create_autocmd({ "BufEnter", "BufWinEnter", "BufWritePost" }, {
         callback = function(args)
+            if args.event == "BufWritePost" then
+                local config = require("neo_reviewer.config")
+                if not config.values.sync.on_save then
+                    return
+                end
+
+                if not resolve_file_for_buffer(args.buf) then
+                    return
+                end
+
+                schedule_save_sync()
+                return
+            end
+
             M.apply_overlay_to_buffer(args.buf)
         end,
     })
     state.set_autocmd_id(autocmd_id)
+    start_periodic_sync()
 
     for _, buf in ipairs(vim.api.nvim_list_bufs()) do
         if vim.api.nvim_buf_is_loaded(buf) then
@@ -647,18 +765,7 @@ function M.apply_overlay_to_buffer(bufnr)
         return
     end
 
-    local bufname = vim.api.nvim_buf_get_name(bufnr)
-    if bufname == "" then
-        return
-    end
-
-    local git_root = state.get_git_root()
-    local relative_path = bufname
-    if git_root and bufname:sub(1, #git_root) == git_root then
-        relative_path = bufname:sub(#git_root + 2)
-    end
-
-    local file = state.get_file_by_path(relative_path)
+    local file = resolve_file_for_buffer(bufnr)
     if not file then
         return
     end
@@ -1023,7 +1130,7 @@ function M.approve()
 
     cli.submit_review(review.url, "APPROVE", nil, function(ok, err)
         if ok then
-            state.clear_review()
+            clear_active_review()
             vim.notify("Review approved", vim.log.levels.INFO)
             restore_previous_branch(review)
         else
@@ -1057,7 +1164,7 @@ function M.request_changes(message)
         vim.notify("Submitting review...", vim.log.levels.INFO)
         cli.submit_review(review.url, "REQUEST_CHANGES", body, function(ok, err)
             if ok then
-                state.clear_review()
+                clear_active_review()
                 vim.notify("Changes requested", vim.log.levels.INFO)
                 restore_previous_branch(review)
             else
@@ -1086,7 +1193,7 @@ function M.done()
     end
 
     if review then
-        state.clear_review()
+        clear_active_review()
 
         if not restore_previous_branch(review) then
             vim.notify("Review closed", vim.log.levels.INFO)
@@ -1107,44 +1214,85 @@ function M.done()
     vim.notify("No active review", vim.log.levels.WARN)
 end
 
-function M.sync()
+---@param opts? NRSyncOpts
+function M.sync(opts)
     local state = require("neo_reviewer.state")
     local cli = require("neo_reviewer.cli")
-    local signs = require("neo_reviewer.ui.signs")
-    local virtual = require("neo_reviewer.ui.virtual")
-    local comments_ui = require("neo_reviewer.ui.comments")
+    local config = require("neo_reviewer.config")
+    opts = opts or {}
+
+    local reason = opts.reason or "manual"
+    local include_comments = opts.include_comments
+    if include_comments == nil then
+        include_comments = reason ~= "save"
+    end
+    local is_manual = reason == "manual"
 
     local review = state.get_review()
     if not review then
-        vim.notify("No active review to sync", vim.log.levels.WARN)
+        if is_manual then
+            vim.notify("No active review to sync", vim.log.levels.WARN)
+        end
         return
     end
 
+    if sync_in_flight then
+        if is_manual then
+            vim.notify("Sync already in progress", vim.log.levels.WARN)
+        end
+        return
+    end
+
+    local cooldown_ms = config.values.sync.cooldown_ms
+    if cooldown_ms < 0 then
+        cooldown_ms = 0
+    end
+
+    local now_ms = monotonic_ms()
+    if last_sync_started_at_ms > 0 and now_ms - last_sync_started_at_ms < cooldown_ms then
+        if is_manual then
+            vim.notify("Sync skipped: cooldown active", vim.log.levels.WARN)
+        end
+        return
+    end
+
+    sync_in_flight = true
+    last_sync_started_at_ms = now_ms
+
+    local function finish_sync()
+        sync_in_flight = false
+    end
+
     if review.review_type == "local" then
-        local config = require("neo_reviewer.config")
         local preserved = {
             diff_opts = review.local_diff_opts or {},
             show_old_code = review.show_old_code,
             ai_analysis = review.ai_analysis,
         }
+        local ai_ui = require("neo_reviewer.ui.ai")
+        local keep_ai_ui_open = ai_ui.is_open() and preserved.ai_analysis ~= nil
         local cursor_pos = vim.api.nvim_win_get_cursor(0)
 
-        vim.notify("Syncing local diff...", vim.log.levels.INFO)
+        if is_manual then
+            vim.notify("Syncing local diff...", vim.log.levels.INFO)
+        end
 
         cli.get_local_diff(preserved.diff_opts, function(data, err)
             if err then
+                finish_sync()
                 vim.notify("Failed to sync local diff: " .. err, vim.log.levels.ERROR)
                 return
             end
 
             local filtered_files, skipped_count = filter_local_diff_files(data.files, config.values.review_diff)
 
-            state.clear_review()
+            clear_active_review({ keep_ai_ui = keep_ai_ui_open })
 
             if #filtered_files == 0 then
-                if #data.files == 0 then
+                finish_sync()
+                if is_manual and #data.files == 0 then
                     vim.notify("No changes to review", vim.log.levels.WARN)
-                else
+                elseif is_manual then
                     vim.notify(
                         string.format("No reviewable changes after skipping %d noise files", skipped_count),
                         vim.log.levels.WARN
@@ -1153,7 +1301,7 @@ function M.sync()
                 return
             end
 
-            if skipped_count > 0 then
+            if skipped_count > 0 and is_manual then
                 vim.notify(
                     string.format("[neo-reviewer] Skipped %d noise file(s) in local diff review", skipped_count),
                     vim.log.levels.INFO
@@ -1170,27 +1318,40 @@ function M.sync()
             new_review.ai_analysis = preserved.ai_analysis
 
             M.enable_overlay()
+            if keep_ai_ui_open then
+                ai_ui.open()
+            end
 
             pcall(vim.api.nvim_win_set_cursor, 0, cursor_pos)
 
-            if skipped_count > 0 then
-                vim.notify(
-                    string.format(
-                        "Synced local diff (%d files changed, %d noise files skipped)",
-                        #filtered_files,
-                        skipped_count
-                    ),
-                    vim.log.levels.INFO
-                )
-            else
-                vim.notify(string.format("Synced local diff (%d files changed)", #filtered_files), vim.log.levels.INFO)
+            if is_manual then
+                if skipped_count > 0 then
+                    vim.notify(
+                        string.format(
+                            "Synced local diff (%d files changed, %d noise files skipped)",
+                            #filtered_files,
+                            skipped_count
+                        ),
+                        vim.log.levels.INFO
+                    )
+                else
+                    vim.notify(
+                        string.format("Synced local diff (%d files changed)", #filtered_files),
+                        vim.log.levels.INFO
+                    )
+                end
             end
+
+            finish_sync()
         end)
         return
     end
 
     if review.review_type ~= "pr" or not review.url then
-        vim.notify("Sync only works for PR reviews", vim.log.levels.WARN)
+        finish_sync()
+        if is_manual then
+            vim.notify("Sync only works for PR reviews", vim.log.levels.WARN)
+        end
         return
     end
 
@@ -1201,32 +1362,31 @@ function M.sync()
         prev_branch = review.prev_branch,
         ai_analysis = review.ai_analysis,
     }
+    local ai_ui = require("neo_reviewer.ui.ai")
+    local keep_ai_ui_open = ai_ui.is_open() and preserved.ai_analysis ~= nil
     local old_comment_count = #review.comments
     local cursor_pos = vim.api.nvim_win_get_cursor(0)
 
-    vim.notify("Syncing PR data...", vim.log.levels.INFO)
+    if is_manual then
+        vim.notify("Syncing PR data...", vim.log.levels.INFO)
+    end
 
     cli.fetch_pr(preserved.url, function(data, err)
         if err then
+            finish_sync()
             vim.notify("Failed to sync PR: " .. err, vim.log.levels.ERROR)
             return
         end
 
-        for bufnr, _ in pairs(review.applied_buffers) do
-            if vim.api.nvim_buf_is_valid(bufnr) then
-                signs.clear(bufnr)
-                virtual.clear(bufnr)
-                comments_ui.clear(bufnr)
-            end
+        if not include_comments then
+            data.comments = review.comments
         end
 
-        if review.autocmd_id then
-            vim.api.nvim_del_autocmd(review.autocmd_id)
-        end
-
+        clear_active_review({ keep_ai_ui = keep_ai_ui_open })
         state.set_review(data, preserved.git_root)
         local new_review = state.get_review()
         if not new_review then
+            finish_sync()
             vim.notify("Failed to sync: review state lost", vim.log.levels.ERROR)
             return
         end
@@ -1237,17 +1397,23 @@ function M.sync()
         new_review.ai_analysis = preserved.ai_analysis
 
         M.enable_overlay()
+        if keep_ai_ui_open then
+            ai_ui.open()
+        end
 
         pcall(vim.api.nvim_win_set_cursor, 0, cursor_pos)
 
         local new_comment_count = #(new_review.comments or {})
         local diff = new_comment_count - old_comment_count
-        if diff > 0 then
+
+        if is_manual and include_comments and diff > 0 then
             vim.notify(string.format("Synced: %d new comment%s", diff, diff == 1 and "" or "s"), vim.log.levels.INFO)
-        else
+        elseif is_manual then
             vim.notify("Synced: no new comments", vim.log.levels.INFO)
         end
-    end)
+
+        finish_sync()
+    end, { skip_comments = not include_comments })
 end
 
 return M

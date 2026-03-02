@@ -36,6 +36,14 @@ describe("neo_reviewer.config", function()
             assert.is_true(vim.tbl_contains(config.values.review_diff.noise_files, "packages.lock.json"))
             assert.is_true(vim.tbl_contains(config.values.review_diff.noise_files, ".terraform.lock.hcl"))
         end)
+
+        it("has sync automation enabled by default", function()
+            assert.is_true(config.values.sync.on_save)
+            assert.are.equal(400, config.values.sync.save_debounce_ms)
+            assert.is_true(config.values.sync.periodic_enabled)
+            assert.are.equal(120000, config.values.sync.periodic_interval_ms)
+            assert.are.equal(1500, config.values.sync.cooldown_ms)
+        end)
     end)
 
     describe("setup", function()
@@ -85,6 +93,24 @@ describe("neo_reviewer.config", function()
 
             assert.is_false(config.values.review_diff.skip_noise_files)
             assert.are.same({ "custom.lock" }, config.values.review_diff.noise_files)
+        end)
+
+        it("overrides sync automation settings", function()
+            config.setup({
+                sync = {
+                    on_save = false,
+                    save_debounce_ms = 900,
+                    periodic_enabled = false,
+                    periodic_interval_ms = 60000,
+                    cooldown_ms = 250,
+                },
+            })
+
+            assert.is_false(config.values.sync.on_save)
+            assert.are.equal(900, config.values.sync.save_debounce_ms)
+            assert.is_false(config.values.sync.periodic_enabled)
+            assert.are.equal(60000, config.values.sync.periodic_interval_ms)
+            assert.are.equal(250, config.values.sync.cooldown_ms)
         end)
 
         it("overrides thread window edit and delete keys", function()
