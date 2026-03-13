@@ -9,29 +9,43 @@ describe("neo_reviewer.sync", function()
     local cli
     local config
     local ai_ui
+    local neotree
     local ai_is_open_stub
     local ai_open_stub
     local ai_close_stub
+    local neotree_is_open_stub
+    local neotree_changed_stub
+    local neotree_cleared_stub
     local notifications
 
     before_each(function()
         package.loaded["neo_reviewer"] = nil
+        package.loaded["neo_reviewer.plugin"] = nil
         package.loaded["neo_reviewer.state"] = nil
         package.loaded["neo_reviewer.cli"] = nil
         package.loaded["neo_reviewer.config"] = nil
         package.loaded["neo_reviewer.ui.ai"] = nil
+        package.loaded["neo_reviewer.neotree"] = nil
 
+        require("neo_reviewer.plugin").register_preloads()
         state = require("neo_reviewer.state")
         cli = require("neo_reviewer.cli")
         config = require("neo_reviewer.config")
         ai_ui = require("neo_reviewer.ui.ai")
+        neotree = require("neo_reviewer.neotree")
 
         stub(cli, "fetch_pr")
         stub(cli, "get_local_diff")
         ai_is_open_stub = stub(ai_ui, "is_open")
         ai_open_stub = stub(ai_ui, "open")
         ai_close_stub = stub(ai_ui, "close")
+        neotree_is_open_stub = stub(neotree, "is_open")
+        neotree_changed_stub = stub(neotree, "on_review_changed")
+        neotree_cleared_stub = stub(neotree, "on_review_cleared")
         ai_is_open_stub.invokes(function()
+            return false
+        end)
+        neotree_is_open_stub.invokes(function()
             return false
         end)
 
@@ -46,6 +60,9 @@ describe("neo_reviewer.sync", function()
         ai_is_open_stub:revert()
         ai_open_stub:revert()
         ai_close_stub:revert()
+        neotree_is_open_stub:revert()
+        neotree_changed_stub:revert()
+        neotree_cleared_stub:revert()
 
         notifications.restore()
         state.clear_review()
@@ -199,6 +216,29 @@ describe("neo_reviewer.sync", function()
             assert.are.same(analysis, state.get_ai_analysis())
         end)
 
+        it("preserves the Neo-tree review source when syncing an open local review tree", function()
+            state.set_local_review(mock_data.local_diff, {
+                target = "main",
+            })
+            neotree_is_open_stub.invokes(function()
+                return true
+            end)
+
+            cli.get_local_diff.invokes(function(_, callback)
+                callback({
+                    git_root = "/tmp/test",
+                    files = {
+                        { path = "src/synced.lua", status = "modified", change_blocks = {} },
+                    },
+                }, nil)
+            end)
+
+            neo_reviewer.sync()
+
+            assert.stub(neotree_changed_stub).was_called_with({ open = true })
+            assert.stub(neotree_cleared_stub).was_not_called()
+        end)
+
         it("notifies user when local diff sync is in progress", function()
             state.set_local_review(mock_data.local_diff)
 
@@ -321,6 +361,72 @@ describe("neo_reviewer.sync", function()
             assert.are.same(analysis, state.get_ai_analysis())
         end)
 
+        it("skips default noise files when syncing PR review", function()
+            local review = state.set_review(mock_data.simple_pr, "/tmp/test")
+            review.url = "https://github.com/owner/repo/pull/123"
+
+            cli.fetch_pr.invokes(function(_, callback)
+                callback({
+                    pr = helpers.deep_copy(mock_data.simple_pr.pr),
+                    files = {
+                        { path = "src/main.lua", status = "modified", change_blocks = {} },
+                        { path = "Cargo.lock", status = "modified", change_blocks = {} },
+                    },
+                    comments = {},
+                }, nil)
+            end)
+
+            neo_reviewer.sync()
+
+            local synced_review = state.get_review()
+            assert.is_not_nil(synced_review)
+            if synced_review then
+                assert.are.equal(1, #synced_review.files)
+                assert.are.equal("src/main.lua", synced_review.files[1].path)
+            end
+
+            local found = false
+            for _, n in ipairs(notifications.get()) do
+                if n.msg:match("Skipped 1 noise file%(s%) in PR review") and n.level == vim.log.levels.INFO then
+                    found = true
+                    break
+                end
+            end
+            assert.is_true(found, "Expected skipped-noise notification during PR sync")
+        end)
+
+        it("ends PR review when sync finds only noise files", function()
+            local review = state.set_review(mock_data.simple_pr, "/tmp/test")
+            review.url = "https://github.com/owner/repo/pull/123"
+
+            cli.fetch_pr.invokes(function(_, callback)
+                callback({
+                    pr = helpers.deep_copy(mock_data.simple_pr.pr),
+                    files = {
+                        { path = "Cargo.lock", status = "modified", change_blocks = {} },
+                    },
+                    comments = {},
+                }, nil)
+            end)
+
+            neo_reviewer.sync()
+
+            assert.is_nil(state.get_review())
+            assert.stub(neotree_cleared_stub).was_called(1)
+
+            local found = false
+            for _, n in ipairs(notifications.get()) do
+                if
+                    n.msg:match("No reviewable changes after skipping 1 noise files")
+                    and n.level == vim.log.levels.WARN
+                then
+                    found = true
+                    break
+                end
+            end
+            assert.is_true(found, "Expected no-reviewable-changes warning during PR sync")
+        end)
+
         it("clears stale expanded change extmarks when syncing PR review", function()
             local review = state.set_review(mock_data.simple_pr, "/tmp/test")
             review.url = "https://github.com/owner/repo/pull/123"
@@ -408,5 +514,6 @@ describe("neo_reviewer.sync", function()
 
         assert.stub(ai_close_stub).was_not_called()
         assert.stub(ai_open_stub).was_called(1)
+        assert.stub(ai_open_stub).was_called_with({ preserve_layout = true })
     end)
 end)

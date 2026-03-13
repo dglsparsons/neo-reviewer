@@ -6,7 +6,7 @@ local M = {}
 local ns = vim.api.nvim_create_namespace("nr_virtual")
 
 local function define_highlights()
-    vim.api.nvim_set_hl(0, "NRVirtualDelete", { fg = "#e06c75", bg = "#3b2d2d", default = true })
+    vim.api.nvim_set_hl(0, "NRVirtualDelete", { fg = "#e06c75", bg = "#3a2c2e" })
 end
 
 local function expand_all_in_buffer(bufnr, file)
@@ -84,6 +84,8 @@ end
 ---@param block NRChangeBlock
 ---@param file_path string
 function M.expand(bufnr, block, file_path)
+    define_highlights()
+
     local groups = block.deletion_groups or {}
     if #groups == 0 then
         return

@@ -10,6 +10,7 @@ describe("neo_reviewer setup commands", function()
 
     before_each(function()
         package.loaded["neo_reviewer"] = nil
+        package.loaded["neo_reviewer.plugin"] = nil
         package.loaded["neo_reviewer.config"] = nil
 
         created = {}
@@ -32,6 +33,7 @@ describe("neo_reviewer setup commands", function()
         command_stub:revert()
         vim.fn.executable = original_executable
         notifications.restore()
+        package.loaded["neo_reviewer.plugin"] = nil
     end)
 
     it("registers Ask and drops Explore", function()
@@ -106,5 +108,21 @@ describe("neo_reviewer setup commands", function()
             end
         end
         assert.is_true(found, "Expected unknown flag parse error notification")
+    end)
+
+    it("tolerates neo_reviewer.plugin being partially initialized", function()
+        package.loaded["neo_reviewer"] = nil
+        package.loaded["neo_reviewer.plugin"] = {}
+        package.preload["neo_reviewer.neotree"] = nil
+        package.preload["neo_reviewer.sources.review"] = nil
+
+        local ok, err = pcall(require, "neo_reviewer")
+        if not ok then
+            error(err)
+        end
+
+        assert.is_true(ok)
+        assert.is_function(package.preload["neo_reviewer.neotree"])
+        assert.is_function(package.preload["neo_reviewer.sources.review"])
     end)
 end)

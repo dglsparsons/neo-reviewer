@@ -13,15 +13,22 @@
 ## Learned while implementing old-code preview behavior
 
 - `toggle_prev_code()` is a global review-mode toggle: it flips `show_old_code` and applies to all hunks in applied review buffers, not just the currently selected change block.
+- `ui/virtual.expand()` is used directly in tests and other call paths, so it must call `define_highlights()` itself; relying on `apply_mode_to_buffer()` or `toggle_review_mode()` leaves `NRVirtualDelete` undefined.
+- Plugin-owned highlight groups that need to refresh in the current session should not use `default = true`; stale existing groups otherwise survive and make UI changes appear to have no effect.
 
 ## Learned while implementing Ask walkthrough navigation
 
 - `next_change`/`prev_change` route through `ui/walkthrough.lua` when Ask is open, so anchor-level behavior must live in `next_step`/`prev_step`; changing `ui/nav.lua` alone will not affect Ask navigation.
+- Ask walkthrough highlight changes need updates in both `lua/tests/plenary/ui/walkthrough_spec.lua` and `lua/tests/plenary/init_walkthrough_controls_spec.lua`; the former should also fix `vim.o.columns`/`vim.o.lines` so long file names do not wrap and create false-negative detail-pane assertions.
 
 ## Learned while implementing local diff noise filtering
 
 - Filter `ReviewDiff` files before `state.set_local_review()` and before optional AI analysis so navigation, change counts, and AI walkthrough inputs stay consistent.
 - Basename-based skipping is sufficient for lockfiles: matching both exact path and `"/" .. basename` suffix excludes nested lockfiles without adding glob parsing complexity.
+
+## Learned while extending noise filtering to PR reviews
+
+- Reapply `review_diff` noise filtering in both `ReviewPR` fetch and PR `ReviewSync` before `state.set_review()`; otherwise the initial review, sync refresh, and AI analysis drift onto different file sets.
 
 ## Learned while implementing ReviewDiff target modes
 
@@ -46,6 +53,35 @@
 - Save-triggered PR sync should call CLI fetch with `--skip-comments` and preserve in-memory `review.comments`; this refreshes diff/highlights without comment API churn.
 - Auto-sync timers are owned by `init.lua`; `state.clear_review()` should call `neo_reviewer._stop_autosync()` when available to avoid leaking periodic timers across teardown paths and tests.
 - To keep the AI walkthrough panel stable during sync, plumb `keep_ai_ui` through `state.clear_review()` and re-render with `ai_ui.open()` after rebuilding review state.
+
+## Learned while implementing the Neo-tree review source and AI pane split
+
+- `nix flake check` only sees git-tracked paths; if a Lua module exists only as a new untracked file, Nix builds/tests fail with `module not found`. For temporary or optional modules, registering them through `package.preload` inside a tracked file keeps checks honest without needing git writes.
+- Neo-tree custom sources must expose `components` on the root module or provide a tracked `mod_root .. ".components"` module; preloading only the source and commands still fails during `setup()`.
+- If a custom source should look like Neo-tree filesystem output, render `{ root }` instead of `root.children` and populate source state such as `git_status_lookup`; borrowing filesystem components alone is not enough.
+- `topleft {width}vsplit` from the AI walkthrough pane creates a full-height column across the whole tab, not a split inside the bottom walkthrough area. Use `leftabove {width}vsplit` from the detail window to keep the navigator inside the walkthrough pane; otherwise the main editor window collapses and stacked walkthrough windows fail with `E36`.
+- Transient loading panes need the same split-base exclusions as AI/Ask walkthrough panes; if `find_split_base_window()` can target `neo-reviewer-loading`, the final navigator/detail splits open relative to the loading scratch window instead of the editor layout.
+
+## Learned while fixing preload registration startup ordering
+
+- `plugin/neo_reviewer.vim` and user config can both hit `require("neo_reviewer")` during startup, so `init.lua` cannot trust `package.loaded["neo_reviewer.plugin"]` to be complete. If preload handlers are required before the module cache stabilizes, load the tracked `lua/neo_reviewer/plugin.lua` runtime file directly and run its top-level registration instead of waiting on `require()` state.
+- When both the repo checkout and an installed plugin copy are on `runtimepath`, `vim.api.nvim_get_runtime_file("lua/neo_reviewer/plugin.lua", false)` can resolve the wrong `plugin.lua`. For preload recovery, derive the sibling tracked `plugin.lua` from the active source file path instead of asking runtimepath to choose.
+
+## Learned while improving the AI step navigator
+
+- `step_list_width` works better as a preferred width than a fixed one: cap the navigator against the available split width and wrap step titles across multiple navigator lines, otherwise larger defaults just crush the detail pane and single-line truncation makes reviewer-oriented step titles unreadable.
+- For navigator overview text, keep the full content in the scratch buffer by pre-wrapping it into shorter lines instead of pre-truncating with ellipses. The window can still stay `nowrap`; buffer-level truncation is what makes the overview effectively unreadable in narrow layouts.
+- The navigator overview wraps against `window width - 2`, so a default `step_list_width = 52` is what produces roughly 50 characters of overview text when the layout can spare the space. If the wrap point changes, update both the default and `get_target_nav_width()`.
+
+## Learned while simplifying AI PR analysis
+
+- The second AI coverage pass adds a full extra model roundtrip for marginal cleanup value. With a prompt that already asks for exact change-block coverage, a better tradeoff is one AI response plus local placeholder steps for any uncovered blocks, and prompt guidance should explicitly ban filler phrases like `"This matters because"` so the detail pane reads tightly.
+
+## Learned while smoothing ReviewSync UI refresh
+
+- `neo_reviewer.neotree.is_open()` cannot rely on `manager.get_state("review").winid` alone; Neo-tree source state can point at a valid sidebar window whose visible buffer belongs to another source. Confirm `vim.b[bufnr].neo_tree_source == "review"` before deciding the review tree is already open.
+- `neo_reviewer.neotree.on_review_changed({ open = true })` should still refresh, not re-open, when the review source buffer is already visible; otherwise autosync re-runs the Neo-tree open command and disturbs the layout.
+- For AI review panes, re-rendering existing split buffers during sync should preserve current window sizes; reusing `open()` without a layout-preserving option causes background refreshes to resize walkthrough splits.
 
 ## Project Overview
 
@@ -97,8 +133,11 @@ terraform fmt -recursive repo/
 cargo build -p neo-reviewer --release
 
 # Build via Nix
-nix build .#neo-reviewer
-nix build .#neo-reviewer-nvim
+nix build .#neo-reviewer --out-link result-cli
+nix build .#neo-reviewer-nvim --out-link result-nvim
+
+# Run a single Nix check without rewriting ./result
+./scripts/build-check lua-tests
 ```
 
 ## Key Patterns
@@ -164,6 +203,8 @@ Keep the docs in sync with `lua/neo_reviewer/init.lua` (commands/functions) and 
 - `lua-tests` - Plenary test suite
 - `rust-tests` - Rust test suite
 
+For a single check, prefer `./scripts/build-check <name>` or `nix build .#checks.<system>.<name> --no-link` so ad hoc check runs do not rewrite `./result`.
+
 **Always run `nix flake check` yourself before considering any change complete.** Do not recommend it to the user—execute it and report results. All checks MUST pass. This includes:
 - Zero Lua diagnostics (warnings are errors)
 - Zero Clippy warnings
@@ -178,7 +219,7 @@ If diagnostics fail, fix them before moving on. Common Lua diagnostic fixes:
 
 GitHub Actions use Nix for reproducible builds. When adding new CI jobs, prefer Nix over manual tool installation:
 - Use `DeterminateSystems/nix-installer-action` and `magic-nix-cache-action`
-- Add checks to `flake.nix` and run via `nix build .#checks...` or `nix flake check`
+- Add checks to `flake.nix` and run via `./scripts/build-check <name>` or `nix flake check`
 
 ## Lua Coding Standards
 

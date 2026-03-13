@@ -44,6 +44,12 @@ describe("neo_reviewer.config", function()
             assert.are.equal(120000, config.values.sync.periodic_interval_ms)
             assert.are.equal(1500, config.values.sync.cooldown_ms)
         end)
+
+        it("has walkthrough step list and Neo-tree defaults", function()
+            assert.are.equal(52, config.values.ai.walkthrough_window.step_list_width)
+            assert.is_false(config.values.neo_tree.open_on_review)
+            assert.are.equal("left", config.values.neo_tree.position)
+        end)
     end)
 
     describe("setup", function()
@@ -111,6 +117,24 @@ describe("neo_reviewer.config", function()
             assert.is_false(config.values.sync.periodic_enabled)
             assert.are.equal(60000, config.values.sync.periodic_interval_ms)
             assert.are.equal(250, config.values.sync.cooldown_ms)
+        end)
+
+        it("overrides walkthrough step list width and Neo-tree options", function()
+            config.setup({
+                ai = {
+                    walkthrough_window = {
+                        step_list_width = 36,
+                    },
+                },
+                neo_tree = {
+                    open_on_review = true,
+                    position = "right",
+                },
+            })
+
+            assert.are.equal(36, config.values.ai.walkthrough_window.step_list_width)
+            assert.is_true(config.values.neo_tree.open_on_review)
+            assert.are.equal("right", config.values.neo_tree.position)
         end)
 
         it("overrides thread window edit and delete keys", function()

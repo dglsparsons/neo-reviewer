@@ -13,12 +13,12 @@ local function define_highlights()
     end
     hl_groups_defined = true
 
-    vim.api.nvim_set_hl(0, "NRAdd", { fg = "#98c379", bold = true, default = true })
-    vim.api.nvim_set_hl(0, "NRDelete", { fg = "#e06c75", bold = true, default = true })
-    vim.api.nvim_set_hl(0, "NRChange", { fg = "#e5c07b", bold = true, default = true })
-    vim.api.nvim_set_hl(0, "NRAddLine", { bg = "#2d3b2d", default = true })
-    vim.api.nvim_set_hl(0, "NRDeleteLine", { bg = "#3b2d2d", default = true })
-    vim.api.nvim_set_hl(0, "NRChangeLine", { bg = "#3b3b2d", default = true })
+    vim.api.nvim_set_hl(0, "NRAdd", { fg = "#98c379", default = true })
+    vim.api.nvim_set_hl(0, "NRDelete", { fg = "#e06c75", default = true })
+    vim.api.nvim_set_hl(0, "NRChange", { fg = "#e5c07b", default = true })
+    vim.api.nvim_set_hl(0, "NRAddLine", { bg = "#1f2a21" })
+    vim.api.nvim_set_hl(0, "NRDeleteLine", { bg = "#2e2425" })
+    vim.api.nvim_set_hl(0, "NRChangeLine", { bg = "#2f2d24" })
 end
 
 ---@param bufnr integer
@@ -90,6 +90,7 @@ function M.place(bufnr, change_blocks)
                     vim.api.nvim_buf_set_extmark(bufnr, ns, row, 0, {
                         sign_text = config.values.signs.delete,
                         sign_hl_group = "NRDelete",
+                        line_hl_group = "NRDeleteLine",
                         priority = 10,
                     })
                 end

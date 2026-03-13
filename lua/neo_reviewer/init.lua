@@ -22,6 +22,80 @@
 ---@class NRModule
 local M = {}
 
+---@return NRPluginModule
+local function load_plugin_module()
+    local source = debug.getinfo(load_plugin_module, "S").source
+    if type(source) ~= "string" or source == "" then
+        error("neo_reviewer.init source path not found")
+    end
+    if source:sub(1, 1) == "@" then
+        source = source:sub(2)
+    end
+
+    local plugin_path = vim.fn.fnamemodify(source, ":h") .. "/plugin.lua"
+
+    local chunk, load_err = loadfile(plugin_path)
+    if not chunk then
+        error(load_err)
+    end
+
+    local ok, plugin = pcall(chunk)
+    if not ok then
+        error(plugin)
+    end
+
+    if type(plugin) ~= "table" then
+        error("neo_reviewer.plugin did not return a module table")
+    end
+
+    package.loaded["neo_reviewer.plugin"] = plugin
+    return plugin
+end
+
+---@param plugin unknown
+---@return boolean
+local function register_preloads_with(plugin)
+    if type(plugin) ~= "table" or type(plugin.register_preloads) ~= "function" then
+        return false
+    end
+
+    plugin.register_preloads()
+    return package.preload["neo_reviewer.ui.loading"] ~= nil
+        and package.preload["neo_reviewer.neotree"] ~= nil
+        and package.preload["neo_reviewer.sources.review"] ~= nil
+end
+
+---@return nil
+local function ensure_preloads()
+    if
+        package.preload["neo_reviewer.ui.loading"]
+        and package.preload["neo_reviewer.neotree"]
+        and package.preload["neo_reviewer.sources.review"]
+    then
+        return
+    end
+
+    local plugin = package.loaded["neo_reviewer.plugin"]
+    if register_preloads_with(plugin) then
+        return
+    end
+
+    plugin = load_plugin_module()
+    if register_preloads_with(plugin) then
+        return
+    end
+
+    error("neo_reviewer.plugin did not expose register_preloads")
+end
+
+ensure_preloads()
+
+---@return NRLoadingUIModule
+local function get_loading_ui()
+    ensure_preloads()
+    return require("neo_reviewer.ui.loading")
+end
+
 ---@type "both"|"hidden"|nil
 local stacked_feedback_anchor = nil
 
@@ -66,11 +140,15 @@ function M._stop_autosync()
     stop_autosync()
 end
 
----@param opts? { keep_ai_ui?: boolean }
+---@param opts? { keep_ai_ui?: boolean, keep_neotree?: boolean }
 local function clear_active_review(opts)
     local state = require("neo_reviewer.state")
     stop_autosync()
+    get_loading_ui().close()
     state.clear_review(opts)
+    if not (opts and opts.keep_neotree) then
+        require("neo_reviewer.neotree").on_review_cleared()
+    end
 end
 
 ---@param bufnr integer
@@ -148,7 +226,7 @@ end
 ---@param review_diff_cfg NRReviewDiff
 ---@return NRFile[] filtered_files
 ---@return integer skipped_count
-local function filter_local_diff_files(files, review_diff_cfg)
+local function filter_review_files(files, review_diff_cfg)
     if not review_diff_cfg.skip_noise_files then
         return files, 0
     end
@@ -542,7 +620,7 @@ function M.review_diff(opts)
             return
         end
 
-        local filtered_files, skipped_count = filter_local_diff_files(data.files, config.values.review_diff)
+        local filtered_files, skipped_count = filter_review_files(data.files, config.values.review_diff)
         if #filtered_files == 0 then
             vim.notify(
                 string.format("No reviewable changes after skipping %d noise files", skipped_count),
@@ -582,6 +660,7 @@ function M.review_diff(opts)
 
         local function finish_setup()
             M.enable_overlay()
+            require("neo_reviewer.neotree").on_review_changed()
 
             if skipped_count > 0 then
                 vim.notify(
@@ -604,17 +683,26 @@ function M.review_diff(opts)
         end
 
         if should_analyze then
-            vim.notify(
-                string.format(
-                    "[neo-reviewer] Local diff fetched (%d files, %d changes). Running AI analysis...",
+            local loading_ui = get_loading_ui()
+            loading_ui.show({
+                title = "Review: generating walkthrough",
+                message = string.format(
+                    "Analyzing %d file%s and %d change%s with AI",
                     #filtered_files,
-                    total_changes
+                    #filtered_files == 1 and "" or "s",
+                    total_changes,
+                    total_changes == 1 and "" or "s"
                 ),
-                vim.log.levels.INFO
-            )
+                focus = config.values.ai.walkthrough_window.focus_on_open,
+            })
 
             local ai = require("neo_reviewer.ai")
             ai.analyze_pr(review, function(analysis, ai_err)
+                loading_ui.close()
+                if state.get_review() ~= review then
+                    return
+                end
+
                 if ai_err then
                     vim.notify("[neo-reviewer] AI analysis failed: " .. ai_err, vim.log.levels.WARN)
                 elseif analysis then
@@ -650,9 +738,33 @@ function M.fetch_and_enable(url, on_ready, opts)
             return
         end
 
+        local filtered_files, skipped_count = filter_review_files(data.files, config.values.review_diff)
+        if #filtered_files == 0 then
+            if #data.files == 0 then
+                vim.notify("No changes to review", vim.log.levels.WARN)
+            else
+                vim.notify(
+                    string.format("No reviewable changes after skipping %d noise files", skipped_count),
+                    vim.log.levels.WARN
+                )
+            end
+            return
+        end
+
+        if skipped_count > 0 then
+            vim.notify(
+                string.format("[neo-reviewer] Skipped %d noise file(s) in PR review", skipped_count),
+                vim.log.levels.INFO
+            )
+        end
+
+        local filtered_data = vim.tbl_extend("force", {}, data, {
+            files = filtered_files,
+        })
+
         clear_active_review()
         local git_root = cli.get_git_root()
-        local review = state.set_review(data, git_root)
+        local review = state.set_review(filtered_data, git_root)
         review.url = url
 
         if on_ready then
@@ -665,29 +777,39 @@ function M.fetch_and_enable(url, on_ready, opts)
         end
 
         local total_changes = 0
-        for _, file in ipairs(data.files) do
+        for _, file in ipairs(filtered_files) do
             total_changes = total_changes + #(file.change_blocks or {})
         end
 
         local function finish_setup()
             M.enable_overlay()
+            require("neo_reviewer.neotree").on_review_changed()
 
             local nav = require("neo_reviewer.ui.nav")
             nav.first_change()
         end
 
         if should_analyze then
-            vim.notify(
-                string.format(
-                    "[neo-reviewer] PR fetched (%d files, %d changes). Running AI analysis...",
-                    #data.files,
-                    total_changes
+            local loading_ui = get_loading_ui()
+            loading_ui.show({
+                title = "Review: generating walkthrough",
+                message = string.format(
+                    "Analyzing %d file%s and %d change%s with AI",
+                    #filtered_files,
+                    #filtered_files == 1 and "" or "s",
+                    total_changes,
+                    total_changes == 1 and "" or "s"
                 ),
-                vim.log.levels.INFO
-            )
+                focus = config.values.ai.walkthrough_window.focus_on_open,
+            })
 
             local ai = require("neo_reviewer.ai")
             ai.analyze_pr(review, function(analysis, ai_err)
+                loading_ui.close()
+                if state.get_review() ~= review then
+                    return
+                end
+
                 if ai_err then
                     vim.notify("[neo-reviewer] AI analysis failed: " .. ai_err, vim.log.levels.WARN)
                 elseif analysis then
@@ -701,12 +823,20 @@ function M.fetch_and_enable(url, on_ready, opts)
             end)
         else
             vim.notify(
-                string.format(
-                    "[neo-reviewer] Review enabled for PR #%d: %s (%d files)",
-                    data.pr.number,
-                    data.pr.title,
-                    #data.files
-                ),
+                skipped_count > 0
+                        and string.format(
+                            "[neo-reviewer] Review enabled for PR #%d: %s (%d files, %d noise files skipped)",
+                            data.pr.number,
+                            data.pr.title,
+                            #filtered_files,
+                            skipped_count
+                        )
+                    or string.format(
+                        "[neo-reviewer] Review enabled for PR #%d: %s (%d files)",
+                        data.pr.number,
+                        data.pr.title,
+                        #filtered_files
+                    ),
                 vim.log.levels.INFO
             )
 
@@ -1270,7 +1400,9 @@ function M.sync(opts)
             ai_analysis = review.ai_analysis,
         }
         local ai_ui = require("neo_reviewer.ui.ai")
+        local neotree = require("neo_reviewer.neotree")
         local keep_ai_ui_open = ai_ui.is_open() and preserved.ai_analysis ~= nil
+        local keep_neotree_open = neotree.is_open()
         local cursor_pos = vim.api.nvim_win_get_cursor(0)
 
         if is_manual then
@@ -1284,11 +1416,14 @@ function M.sync(opts)
                 return
             end
 
-            local filtered_files, skipped_count = filter_local_diff_files(data.files, config.values.review_diff)
+            local filtered_files, skipped_count = filter_review_files(data.files, config.values.review_diff)
 
-            clear_active_review({ keep_ai_ui = keep_ai_ui_open })
+            clear_active_review({ keep_ai_ui = keep_ai_ui_open, keep_neotree = keep_neotree_open })
 
             if #filtered_files == 0 then
+                if keep_neotree_open then
+                    neotree.on_review_cleared()
+                end
                 finish_sync()
                 if is_manual and #data.files == 0 then
                     vim.notify("No changes to review", vim.log.levels.WARN)
@@ -1319,8 +1454,9 @@ function M.sync(opts)
 
             M.enable_overlay()
             if keep_ai_ui_open then
-                ai_ui.open()
+                ai_ui.open({ preserve_layout = true })
             end
+            neotree.on_review_changed({ open = keep_neotree_open })
 
             pcall(vim.api.nvim_win_set_cursor, 0, cursor_pos)
 
@@ -1363,7 +1499,9 @@ function M.sync(opts)
         ai_analysis = review.ai_analysis,
     }
     local ai_ui = require("neo_reviewer.ui.ai")
+    local neotree = require("neo_reviewer.neotree")
     local keep_ai_ui_open = ai_ui.is_open() and preserved.ai_analysis ~= nil
+    local keep_neotree_open = neotree.is_open()
     local old_comment_count = #review.comments
     local cursor_pos = vim.api.nvim_win_get_cursor(0)
 
@@ -1378,12 +1516,41 @@ function M.sync(opts)
             return
         end
 
+        local filtered_files, skipped_count = filter_review_files(data.files, config.values.review_diff)
+
         if not include_comments then
             data.comments = review.comments
         end
 
-        clear_active_review({ keep_ai_ui = keep_ai_ui_open })
-        state.set_review(data, preserved.git_root)
+        clear_active_review({ keep_ai_ui = keep_ai_ui_open, keep_neotree = keep_neotree_open })
+        if #filtered_files == 0 then
+            if keep_neotree_open then
+                neotree.on_review_cleared()
+            end
+            finish_sync()
+            if is_manual and #data.files == 0 then
+                vim.notify("No changes to review", vim.log.levels.WARN)
+            elseif is_manual then
+                vim.notify(
+                    string.format("No reviewable changes after skipping %d noise files", skipped_count),
+                    vim.log.levels.WARN
+                )
+            end
+            return
+        end
+
+        if skipped_count > 0 and is_manual then
+            vim.notify(
+                string.format("[neo-reviewer] Skipped %d noise file(s) in PR review", skipped_count),
+                vim.log.levels.INFO
+            )
+        end
+
+        local filtered_data = vim.tbl_extend("force", {}, data, {
+            files = filtered_files,
+        })
+
+        state.set_review(filtered_data, preserved.git_root)
         local new_review = state.get_review()
         if not new_review then
             finish_sync()
@@ -1398,8 +1565,9 @@ function M.sync(opts)
 
         M.enable_overlay()
         if keep_ai_ui_open then
-            ai_ui.open()
+            ai_ui.open({ preserve_layout = true })
         end
+        neotree.on_review_changed({ open = keep_neotree_open })
 
         pcall(vim.api.nvim_win_set_cursor, 0, cursor_pos)
 

@@ -56,6 +56,30 @@ describe("neo_reviewer.ui.virtual", function()
             assert.is_true(#extmarks > 0)
         end)
 
+        it("uses a muted old-code preview background highlight", function()
+            local bufnr, file = setup_review_buffer(fixtures.simple_pr)
+            local block = file.change_blocks[1]
+
+            virtual.expand(bufnr, block, file.path)
+
+            local hl = vim.api.nvim_get_hl(0, { name = "NRVirtualDelete", link = false })
+            assert.are.equal(tonumber("3a2c2e", 16), hl.bg)
+            assert.are.equal(tonumber("e06c75", 16), hl.fg)
+        end)
+
+        it("overrides a stale old-code preview highlight definition", function()
+            local bufnr, file = setup_review_buffer(fixtures.simple_pr)
+            local block = file.change_blocks[1]
+
+            vim.api.nvim_set_hl(0, "NRVirtualDelete", { fg = "#ffffff" })
+
+            virtual.expand(bufnr, block, file.path)
+
+            local hl = vim.api.nvim_get_hl(0, { name = "NRVirtualDelete", link = false })
+            assert.are.equal(tonumber("3a2c2e", 16), hl.bg)
+            assert.are.equal(tonumber("e06c75", 16), hl.fg)
+        end)
+
         it("updates state when expanding", function()
             local bufnr, file = setup_review_buffer(fixtures.simple_pr)
             local block = file.change_blocks[1]

@@ -1,7 +1,7 @@
 local stub = require("luassert.stub")
 local helpers = require("plenary.helpers")
 
-describe("neo_reviewer review_diff noise filtering", function()
+describe("neo_reviewer review noise filtering", function()
     local neo_reviewer
     local state
     local cli
@@ -9,6 +9,30 @@ describe("neo_reviewer review_diff noise filtering", function()
     local nav
     local comments_file
     local notifications
+
+    ---@return integer|nil
+    local function find_loading_buffer()
+        for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+            if vim.bo[buf].filetype == "neo-reviewer-loading" and vim.fn.bufwinid(buf) ~= -1 then
+                return buf
+            end
+        end
+        return nil
+    end
+
+    ---@param files table[]
+    ---@return table
+    local function pr_data(files)
+        return {
+            pr = {
+                number = 123,
+                title = "Test PR",
+                description = "Testing",
+            },
+            files = files,
+            comments = {},
+        }
+    end
 
     ---@param pattern string
     ---@param level? integer
@@ -123,6 +147,179 @@ describe("neo_reviewer review_diff noise filtering", function()
         assert.is_not_nil(analyzed_review)
         assert.are.equal(1, #analyzed_review.files)
         assert.are.equal("src/main.lua", analyzed_review.files[1].path)
+    end)
+
+    it("shows a loading scratch buffer while local diff analysis is running", function()
+        cli.get_local_diff = function(_, callback)
+            callback({
+                git_root = "/tmp/test-repo",
+                files = {
+                    {
+                        path = "src/main.lua",
+                        status = "modified",
+                        change_blocks = { { start_line = 1, end_line = 1 } },
+                    },
+                },
+            }, nil)
+        end
+
+        local pending_callback
+        local ai = require("neo_reviewer.ai")
+        ai.analyze_pr = function(_, callback)
+            pending_callback = callback
+        end
+
+        local opened = 0
+        local ai_ui = require("neo_reviewer.ui.ai")
+        ai_ui.open = function()
+            opened = opened + 1
+        end
+
+        package.preload["neo_reviewer.ui.loading"] = nil
+        package.loaded["neo_reviewer.ui.loading"] = nil
+        package.loaded["neo_reviewer.plugin"] = {
+            register_preloads = function() end,
+        }
+
+        config.setup({ ai = { enabled = true } })
+
+        neo_reviewer.review_diff({ analyze = true })
+
+        local loading_bufnr = assert(find_loading_buffer())
+        local rendered = table.concat(vim.api.nvim_buf_get_lines(loading_bufnr, 0, -1, false), "\n")
+        assert.is_truthy(rendered:find("Review: generating walkthrough", 1, true))
+        assert.is_truthy(rendered:find("Analyzing 1 file and 1 change with AI", 1, true))
+        assert.is_not_nil(pending_callback)
+        assert.are.equal(0, opened)
+
+        pending_callback({ overview = "ok", steps = {} }, nil)
+
+        assert.are.equal(1, opened)
+        assert.is_nil(find_loading_buffer())
+    end)
+
+    it("skips default noise files in PR reviews", function()
+        cli.fetch_pr = function(_, callback)
+            callback(
+                pr_data({
+                    { path = "src/main.lua", status = "modified", change_blocks = {} },
+                    { path = "pnpm-lock.yaml", status = "modified", change_blocks = {} },
+                    { path = "nested/Cargo.lock", status = "modified", change_blocks = {} },
+                }),
+                nil
+            )
+        end
+        cli.get_git_root = function()
+            return "/tmp/test-repo"
+        end
+
+        neo_reviewer.fetch_and_enable("https://github.com/owner/repo/pull/123", nil, { analyze = false })
+
+        local review = state.get_review()
+        assert.is_not_nil(review)
+        assert.are.equal(1, #review.files)
+        assert.are.equal("src/main.lua", review.files[1].path)
+        assert.is_true(has_notification("Skipped 2 noise file%(s%) in PR review", vim.log.levels.INFO))
+    end)
+
+    it("warns and aborts when all PR files are noise files", function()
+        cli.fetch_pr = function(_, callback)
+            callback(
+                pr_data({
+                    { path = "pnpm-lock.yaml", status = "modified", change_blocks = {} },
+                    { path = "Cargo.lock", status = "modified", change_blocks = {} },
+                }),
+                nil
+            )
+        end
+        cli.get_git_root = function()
+            return "/tmp/test-repo"
+        end
+
+        neo_reviewer.fetch_and_enable("https://github.com/owner/repo/pull/123", nil, { analyze = false })
+
+        assert.is_nil(state.get_review())
+        assert.is_true(has_notification("No reviewable changes after skipping 2 noise files", vim.log.levels.WARN))
+        assert.stub(neo_reviewer.enable_overlay).was_not_called()
+    end)
+
+    it("runs AI analysis using the filtered PR files", function()
+        cli.fetch_pr = function(_, callback)
+            callback(
+                pr_data({
+                    { path = "src/main.lua", status = "modified", change_blocks = {} },
+                    { path = "Cargo.lock", status = "modified", change_blocks = {} },
+                }),
+                nil
+            )
+        end
+        cli.get_git_root = function()
+            return "/tmp/test-repo"
+        end
+
+        local analyzed_review
+        local ai = require("neo_reviewer.ai")
+        ai.analyze_pr = function(review, callback)
+            analyzed_review = review
+            callback({ overview = "ok", steps = {} }, nil)
+        end
+
+        local ai_ui = require("neo_reviewer.ui.ai")
+        ai_ui.open = function() end
+
+        config.setup({ ai = { enabled = true } })
+
+        neo_reviewer.fetch_and_enable("https://github.com/owner/repo/pull/123", nil, { analyze = true })
+
+        assert.is_not_nil(analyzed_review)
+        assert.are.equal(1, #analyzed_review.files)
+        assert.are.equal("src/main.lua", analyzed_review.files[1].path)
+    end)
+
+    it("shows a loading scratch buffer while PR analysis is running", function()
+        cli.fetch_pr = function(_, callback)
+            callback(
+                pr_data({
+                    {
+                        path = "src/main.lua",
+                        status = "modified",
+                        change_blocks = { { start_line = 1, end_line = 1 } },
+                    },
+                }),
+                nil
+            )
+        end
+        cli.get_git_root = function()
+            return "/tmp/test-repo"
+        end
+
+        local pending_callback
+        local ai = require("neo_reviewer.ai")
+        ai.analyze_pr = function(_, callback)
+            pending_callback = callback
+        end
+
+        local opened = 0
+        local ai_ui = require("neo_reviewer.ui.ai")
+        ai_ui.open = function()
+            opened = opened + 1
+        end
+
+        config.setup({ ai = { enabled = true } })
+
+        neo_reviewer.fetch_and_enable("https://github.com/owner/repo/pull/123", nil, { analyze = true })
+
+        local loading_bufnr = assert(find_loading_buffer())
+        local rendered = table.concat(vim.api.nvim_buf_get_lines(loading_bufnr, 0, -1, false), "\n")
+        assert.is_truthy(rendered:find("Review: generating walkthrough", 1, true))
+        assert.is_truthy(rendered:find("Analyzing 1 file and 1 change with AI", 1, true))
+        assert.is_not_nil(pending_callback)
+        assert.are.equal(0, opened)
+
+        pending_callback({ overview = "ok", steps = {} }, nil)
+
+        assert.are.equal(1, opened)
+        assert.is_nil(find_loading_buffer())
     end)
 
     it("passes diff selection options to the CLI", function()

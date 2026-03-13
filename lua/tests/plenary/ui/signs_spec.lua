@@ -21,6 +21,30 @@ describe("neo_reviewer.ui.signs", function()
     end)
 
     describe("place", function()
+        it("applies muted row highlights for diff lines", function()
+            local bufnr = helpers.create_test_buffer({ "line 1", "line 2", "line 3" })
+
+            signs.place(bufnr, {
+                {
+                    start_line = 2,
+                    end_line = 3,
+                    kind = "change",
+                    added_lines = { 2, 3 },
+                    changed_lines = { 2 },
+                    deletion_groups = {
+                        { anchor_line = 2, old_lines = {}, old_line_numbers = {} },
+                    },
+                    old_to_new = {},
+                },
+            })
+
+            local extmarks = helpers.get_extmarks(bufnr, "nr_signs")
+            assert.are.equal(2, #extmarks)
+
+            assert.are.equal("NRChangeLine", extmarks[1][4].line_hl_group)
+            assert.are.equal("NRAddLine", extmarks[2][4].line_hl_group)
+        end)
+
         it("places add signs at added_lines positions", function()
             local bufnr = helpers.create_test_buffer({ "line 1", "line 2", "line 3", "line 4", "line 5" })
 
@@ -68,6 +92,7 @@ describe("neo_reviewer.ui.signs", function()
 
             local extmarks = helpers.get_extmarks(bufnr, "nr_signs")
             assert.are.equal(1, #extmarks)
+            assert.are.equal("NRDeleteLine", extmarks[1][4].line_hl_group)
 
             local found_delete_sign = false
             for _, mark in ipairs(extmarks) do
@@ -370,6 +395,66 @@ describe("neo_reviewer.ui.signs", function()
 
             local extmarks = helpers.get_extmarks(bufnr, "nr_signs")
             assert.are.equal(1, #extmarks)
+        end)
+
+        it("defines non-bold sign highlights", function()
+            local bufnr = helpers.create_test_buffer({ "line 1" })
+
+            signs.place(bufnr, {
+                {
+                    start_line = 1,
+                    end_line = 1,
+                    kind = "add",
+                    added_lines = { 1 },
+                    changed_lines = {},
+                    deletion_groups = {},
+                    old_to_new = {},
+                },
+            })
+
+            local add_hl = vim.api.nvim_get_hl(0, { name = "NRAdd", link = false })
+            local delete_hl = vim.api.nvim_get_hl(0, { name = "NRDelete", link = false })
+            local change_hl = vim.api.nvim_get_hl(0, { name = "NRChange", link = false })
+            local add_line_hl = vim.api.nvim_get_hl(0, { name = "NRAddLine", link = false })
+            local delete_line_hl = vim.api.nvim_get_hl(0, { name = "NRDeleteLine", link = false })
+            local change_line_hl = vim.api.nvim_get_hl(0, { name = "NRChangeLine", link = false })
+
+            assert.is_true(add_hl.bold ~= true)
+            assert.is_true(delete_hl.bold ~= true)
+            assert.is_true(change_hl.bold ~= true)
+            assert.are.equal(tonumber("1f2a21", 16), add_line_hl.bg)
+            assert.are.equal(tonumber("2e2425", 16), delete_line_hl.bg)
+            assert.are.equal(tonumber("2f2d24", 16), change_line_hl.bg)
+        end)
+
+        it("overrides stale row highlight definitions", function()
+            local bufnr = helpers.create_test_buffer({ "line 1" })
+
+            vim.api.nvim_set_hl(0, "NRAddLine", { fg = "#ffffff" })
+            vim.api.nvim_set_hl(0, "NRDeleteLine", { fg = "#ffffff" })
+            vim.api.nvim_set_hl(0, "NRChangeLine", { fg = "#ffffff" })
+
+            signs.place(bufnr, {
+                {
+                    start_line = 1,
+                    end_line = 1,
+                    kind = "change",
+                    added_lines = { 1 },
+                    changed_lines = { 1 },
+                    deletion_groups = {
+                        { anchor_line = 1, old_lines = {}, old_line_numbers = {} },
+                    },
+                    old_to_new = {},
+                },
+            })
+
+            local add_line_hl = vim.api.nvim_get_hl(0, { name = "NRAddLine", link = false })
+            local delete_line_hl = vim.api.nvim_get_hl(0, { name = "NRDeleteLine", link = false })
+            local change_line_hl = vim.api.nvim_get_hl(0, { name = "NRChangeLine", link = false })
+
+            assert.are.equal(tonumber("1f2a21", 16), add_line_hl.bg)
+            assert.are.equal(tonumber("2e2425", 16), delete_line_hl.bg)
+            assert.are.equal(tonumber("2f2d24", 16), change_line_hl.bg)
         end)
     end)
 

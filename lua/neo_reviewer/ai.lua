@@ -15,14 +15,15 @@ Rules:
 - Added lines and context lines in the diff are placeholders. Read the file contents to understand the new code.
 - Make sure you don't invent files, APIs, or behavior that are not present.
 - Watch out for formatting only changes. These do not actually do anything.
+- Think like a reviewer guide. Organize the walkthrough around meaningful concerns or themes, not a file-by-file dump.
 
 Return ONLY valid JSON (no markdown, no explanation):
 {
-  "overview": "Concise explanation of the PR in plain language. 1-3 short paragraphs.",
+  "overview": "Short explanation of the PR in plain language. 1-2 short paragraphs.",
   "steps": [
     {
       "title": "Short step title",
-      "explanation": "1-4 sentences explaining why this change exists and its implications.",
+      "explanation": "1-3 short sentences describing the change and what the reviewer should notice.",
       "change_blocks": [
         { "file": "path/to/file", "change_block_index": 0 }
       ]
@@ -31,12 +32,20 @@ Return ONLY valid JSON (no markdown, no explanation):
 }
 
 Guidelines:
-- overview: 1-3 short paragraphs, plain language
+- overview: 1-2 short paragraphs, plain language
 - steps: ordered walkthrough; keep each step concise
+- Make each explanation 1-3 short sentences
+- Prefer a small number of meaningful steps. Merge tiny follow-up edits into a nearby step when they are part of the same idea.
 - Avoid mentioning diff mechanics (hunks, change blocks, markers) in the explanation text
 - If you need to use a technical term, define it in the same sentence
+- Keep explanations direct and concrete
+- Avoid filler like "This matters because", "This change introduces", or "The purpose of this change is to"
 - Each step must include one or more change blocks
 - Group related change blocks into the same step when it helps readability
+- Use titles that still make sense when shown alone in a narrow step list
+- Start with the concrete change, then the reviewer takeaway
+- Do not restate the title in the explanation
+- If a step spans multiple files, explain how those files fit together
 - Do not return steps with empty change_blocks
 - change_block_index must match the @@ change_block N @@ markers in the diff below
 - Every change block in the diff must be included in exactly one step
@@ -54,56 +63,6 @@ Files Changed:
 %s
 
 Unified Diff:
-%s
-]]
-
-local MISSING_PROMPT_TEMPLATE = [[
-You are an AI assistant running inside a git repository at: %s
-
-Here are missing change blocks from a pull-requests diff. Provide walkthrough steps that cover EVERY change block listed below. Write in plain, everyday language with short sentences. Avoid jargon; if you must use a technical term, define it in the same sentence. Do not reference change blocks that are not shown.
-
-Rules:
-- Read files directly from disk using repo-relative paths when you need more context or to see the new version of added lines.
-- Only use git-tracked files; ignore untracked/build/vendor.
-- Use the PR title/description, file list, and diff below as the source of what changed.
-- Added lines and context lines in the diff are placeholders. Read the file contents to understand the new code.
-- Do not invent files, APIs, or behavior that are not present.
-
-Return ONLY valid JSON (no markdown, no explanation):
-{
-  "overview": "Very short summary of the missing changes (1-2 sentences).",
-  "steps": [
-    {
-      "title": "Short step title",
-      "explanation": "1-3 sentences explaining why this change exists and its implications.",
-      "change_blocks": [
-        { "file": "path/to/file", "change_block_index": 0 }
-      ]
-    }
-  ]
-}
-
-Guidelines:
-- Every change block listed below must be included in exactly one step
-- steps: ordered walkthrough; keep each step concise
-- Avoid mentioning diff mechanics (hunks, change blocks, markers) in the explanation text
-- If you need to use a technical term, define it in the same sentence
-- Each step must include one or more change blocks
-- Group related change blocks into the same step when it helps readability
-- Do not return steps with empty change_blocks
-- change_block_index must match the @@ change_block N @@ markers in the diff below
-
----
-
-PR Title: %s
-
-PR Description:
-%s
-
-Files Changed (missing only):
-%s
-
-Unified Diff (missing only):
 %s
 ]]
 
@@ -343,31 +302,6 @@ function M.build_prompt(review)
     return string.format(PROMPT_TEMPLATE, root, title, description, file_list, diff)
 end
 
----Build the prompt for missing change blocks analysis
----@param review NRReview
----@param missing NRAIWalkthroughChangeRef[]
----@return string
-function M.build_missing_prompt(review, missing)
-    local title = review.pr and review.pr.title or "Unknown"
-    local description = review.pr and review.pr.description or "(No description provided)"
-    local root = resolve_root(review) or "Unknown"
-
-    ---@type table<string, boolean>
-    local include_files = {}
-    ---@type table<string, table<integer, boolean>>
-    local include_change_blocks = {}
-    for _, block_ref in ipairs(missing) do
-        include_files[block_ref.file] = true
-        include_change_blocks[block_ref.file] = include_change_blocks[block_ref.file] or {}
-        include_change_blocks[block_ref.file][block_ref.change_block_index] = true
-    end
-
-    local file_list = build_file_list(review.files, include_files)
-    local diff = build_diff(review.files, include_change_blocks)
-
-    return string.format(MISSING_PROMPT_TEMPLATE, root, title, description, file_list, diff)
-end
-
 ---Parse JSON response from AI CLI
 ---@param output string
 ---@return NRAIAnalysis|nil, string|nil
@@ -451,17 +385,6 @@ function M.ensure_full_coverage(review, analysis)
     return append_placeholder_steps(analysis, missing), missing
 end
 
----@param base NRAIAnalysis
----@param extra NRAIAnalysis
----@return NRAIAnalysis
-local function merge_analysis(base, extra)
-    base.steps = base.steps or {}
-    for _, step in ipairs(extra.steps or {}) do
-        table.insert(base.steps, step)
-    end
-    return base
-end
-
 ---Run AI analysis on a PR review
 ---@param review NRReview
 ---@param callback fun(analysis: NRAIAnalysis|nil, err: string|nil)
@@ -513,27 +436,8 @@ function M.analyze_pr(review, callback)
             return
         end
 
-        analysis = normalize_steps_to_unique_change_blocks(review, analysis)
-        local missing = collect_missing_change_blocks(review, analysis)
-        if #missing == 0 then
-            callback(analysis, nil)
-            return
-        end
-
-        local missing_prompt = M.build_missing_prompt(review, missing)
-        run_prompt(missing_prompt, function(missing_analysis)
-            if missing_analysis then
-                analysis = merge_analysis(analysis, missing_analysis)
-                analysis = normalize_steps_to_unique_change_blocks(review, analysis)
-            end
-
-            local remaining = collect_missing_change_blocks(review, analysis)
-            if #remaining > 0 then
-                analysis = append_placeholder_steps(analysis, remaining)
-            end
-
-            callback(analysis, nil)
-        end)
+        analysis = M.ensure_full_coverage(review, analysis)
+        callback(analysis, nil)
     end)
 end
 

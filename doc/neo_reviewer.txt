@@ -28,6 +28,7 @@ your editor. It provides:
 - Multi-line comments with visual range selection
 - Submit reviews (approve or request changes)
 - Telescope integration for file picker
+- Optional Neo-tree changed-files review source
 - Local git diff review (review uncommitted changes before pushing)
 - AI-powered review analysis (optional, via Codex CLI by default)
 
@@ -37,6 +38,7 @@ your editor. It provides:
 - Neovim >= 0.9.0
 - plenary.nvim (required)
 - telescope.nvim (optional, for file picker)
+- neo-tree.nvim (optional, for changed-files review tree)
 - neo-reviewer CLI (Rust CLI tool)
 - GitHub authentication via `gh` CLI
 
@@ -105,14 +107,19 @@ Call setup() with your options: >lua
             periodic_interval_ms = 120000, -- 2 minutes
             cooldown_ms = 1500,          -- Min spacing between sync starts
         },
+        neo_tree = {
+            open_on_review = false,      -- Auto-open Neo-tree review source
+            position = "left",           -- Neo-tree window position
+        },
         ai = {
             enabled = false,                      -- Run AI analysis by default
             model = "gpt-5.3-codex", -- Model for Codex CLI (default)
             command = "codex",       -- Command to invoke
-            reasoning_effort = "medium", -- Reasoning effort hint (Codex CLI)
+            reasoning_effort = "low", -- Reasoning effort hint (Codex CLI)
             walkthrough_window = {
                 height = 0,                 -- Auto size to content (min height)
                 focus_on_open = false,      -- Keep focus on diff window
+                step_list_width = 52,       -- Preferred width of the step list pane
             },
         },
     })
@@ -138,11 +145,12 @@ input_window.keys ~
 
                                                   *neo_reviewer-config-review_diff*
 review_diff ~
-    Configure local diff review file filtering.
+    Configure review file filtering.
     - `skip_noise_files`: Skip common lock/noise files in |:ReviewDiff|
+      and |:ReviewPR|
       (default: true).
     - `noise_files`: Basenames to skip when `skip_noise_files` is enabled.
-      Any file with a matching basename is excluded from local diff review.
+      Any file with a matching basename is excluded from PR/local diff review.
 
                                                         *neo_reviewer-config-sync*
 sync ~
@@ -160,6 +168,28 @@ sync ~
     Automatic save/periodic sync runs silently on success (no "Synced"
     notifications). Errors still notify.
 
+                                                    *neo_reviewer-config-neo_tree*
+neo_tree ~
+    Configure optional Neo-tree integration for changed review files.
+    - `open_on_review`: Open the Neo-tree review source when a review starts
+      (default: false).
+    - `position`: Neo-tree window position for the review source
+      (default: "left").
+
+    To enable the source in Neo-tree, add
+    `"neo_reviewer.sources.review"` to your Neo-tree `sources` list. The
+    source name inside Neo-tree is `review`, so you can open it manually with
+    `:Neotree review` or include it in the source selector. Example: >
+        require("neo-tree").setup({
+            sources = {
+                "filesystem",
+                "buffers",
+                "git_status",
+                "neo_reviewer.sources.review",
+            },
+        })
+<
+
                                                            *neo_reviewer-config-ai*
 ai ~
     Configure AI-powered review analysis. Requires an AI CLI (Codex CLI by
@@ -168,16 +198,20 @@ ai ~
     - `model`: Model to use for analysis (default: "gpt-5.3-codex").
     - `command`: Command to invoke the AI CLI (default: "codex").
     - `reasoning_effort`: Reasoning effort hint for Codex CLI
-      (default: "medium", ignored by other CLIs).
+      (default: "low", ignored by other CLIs).
     - `walkthrough_window.height`: Minimum height of the walkthrough split
       (default: 0, auto-sized to content).
     - `walkthrough_window.focus_on_open`: Focus the walkthrough window when it opens (default: false).
+    - `walkthrough_window.step_list_width`: Preferred width of the walkthrough
+      step list pane (default: 52).
 
     When AI analysis is enabled, neo-reviewer generates a plain-language
-    overview and an ordered walkthrough of the PR with step-by-step
-    explanations. The walkthrough opens automatically and updates as you
-    navigate change blocks. Use |neo_reviewer.toggle_ai_feedback()| to open or
-    re-open the walkthrough window.
+    overview and an ordered walkthrough of the PR. While the AI is working, a
+    scratch window shows loading progress. The walkthrough then opens in a
+    two-pane layout: a compact step list on the left and the current step
+    explanation on the right. It updates as you navigate change blocks. Use
+    |neo_reviewer.toggle_ai_feedback()| to open or re-open the walkthrough
+    window.
     For context, the AI is allowed to read git-tracked files from disk using
     repo-relative paths. Make sure your working tree matches the PR before
     running analysis. The diff sent to the AI uses placeholders for added and
@@ -187,7 +221,8 @@ ai ~
     blocks and appends any remaining uncovered change blocks as minimal
     "Uncovered change" steps. It also normalizes AI output so each change block
     is referenced by at most one walkthrough step while preserving grouped
-    one-to-many steps.
+    one-to-many steps. The prompt also pushes the AI to use reviewer-friendly
+    step titles and thematic grouping instead of a raw file-by-file dump.
 
     Codebase explorations reuse this AI configuration and the walkthrough
     window settings. See |:Ask| for a guided tour of the codebase.
@@ -208,6 +243,9 @@ These user commands are created when you call `setup()`.
 
     Diff hunks are generated from local git using the PR base/head commits
     (`git diff -w base...head`), so whitespace-only changes are excluded.
+    Common lock/noise files (for example `pnpm-lock.yaml`, `Cargo.lock`) are
+    skipped by default. Configure this via `review_diff.skip_noise_files` and
+    `review_diff.noise_files`.
     If required commits are missing locally, neo-reviewer first attempts to
     fetch the needed refs automatically before failing.
 
@@ -255,9 +293,10 @@ These user commands are created when you call `setup()`.
     expects the AI tool to read files directly from disk.
     The AI decides whether to return a code-focused walkthrough or a more
     conceptual explanation.
-    While the walkthrough is being generated, a temporary window shows a
-    loading message. When ready, the first step jumps to its first anchor
-    (if any).
+    While the walkthrough is being generated, a temporary scratch window shows
+    loading progress. When ready, the walkthrough opens in the same two-pane
+    overview/details layout used for review AI and the first step jumps to its
+    first anchor (if any).
     When the exploration window is open, |neo_reviewer.next_change()| and
     |neo_reviewer.prev_change()| move through anchors in the current step
     first, then move between exploration steps.
@@ -286,15 +325,17 @@ These user commands are created when you call `setup()`.
     Sync the current active review.
     - During PR review: fetches latest comments/metadata from GitHub and
       rebuilds diff changes from local git (same base/head commit range and
-      whitespace filtering as |:ReviewPR|).
+      whitespace filtering as |:ReviewPR|). Noise file filtering from
+      `review_diff.*` is reapplied.
     - During local diff review: re-runs local `git diff` sourcing with the
       same target/selector options used by |:ReviewDiff| and reapplies markers.
     Preserves cursor position, expanded change block state, and AI summary when
     possible.
     By default, sync also runs automatically on save for reviewed files and as
     a periodic background refresh every 2 minutes. Save-triggered PR sync skips
-    comment refresh (diff/highlights only). Automatic sync keeps the AI
-    walkthrough window open if it is already open. Configure via `sync.*`.
+    comment refresh (diff/highlights only). Automatic sync refreshes already-
+    open Neo-tree/AI walkthrough windows in place instead of reopening them.
+    Configure via `sync.*`.
 
 ==============================================================================
 6. FUNCTIONS                                            *neo_reviewer-functions*
@@ -308,6 +349,8 @@ require("neo_reviewer").review_pr({arg})                   *neo_reviewer.review_
 
     PR diff hunks are computed from local git using `base...head` with
     whitespace ignored (`-w`).
+    Common lock/noise files are skipped using `review_diff.skip_noise_files`
+    and `review_diff.noise_files`.
 
 require("neo_reviewer").review_diff({opts})               *neo_reviewer.review_diff()*
     Review local git diff before committing. By default this includes
@@ -440,7 +483,8 @@ require("neo_reviewer").sync()                                   *neo_reviewer.s
     Preserves cursor position and expanded change block state when possible.
     Manual sync (`:ReviewSync`) always refreshes comments for PR reviews.
     Automatic save-triggered sync refreshes diff/highlights but skips comment
-    refresh for PR reviews.
+    refresh for PR reviews, while keeping open Neo-tree/AI review panes in
+    place instead of reopening them.
     See |:ReviewSync|.
 
 require("neo_reviewer").toggle_ai_feedback()     *neo_reviewer.toggle_ai_feedback()*

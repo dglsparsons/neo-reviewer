@@ -3,10 +3,10 @@ package.path = cwd .. "/lua/tests/?.lua;" .. cwd .. "/lua/tests/?/init.lua;" .. 
 
 local helpers = require("plenary.helpers")
 
-local function find_walkthrough_buffer()
+local function find_buffer_by_filetype(filetype)
     local fallback = nil
     for _, buf in ipairs(vim.api.nvim_list_bufs()) do
-        if vim.bo[buf].filetype == "neo-reviewer-walkthrough" then
+        if vim.bo[buf].filetype == filetype then
             if vim.fn.bufwinid(buf) ~= -1 then
                 return buf
             end
@@ -19,8 +19,15 @@ end
 describe("neo_reviewer.ui.walkthrough", function()
     local walkthrough_ui
     local state
+    local original_columns
+    local original_lines
 
     before_each(function()
+        original_columns = vim.o.columns
+        original_lines = vim.o.lines
+        vim.o.columns = 120
+        vim.o.lines = 40
+
         package.loaded["neo_reviewer.ui.walkthrough"] = nil
         package.loaded["neo_reviewer.state"] = nil
         package.loaded["neo_reviewer.ui.nav"] = nil
@@ -31,6 +38,8 @@ describe("neo_reviewer.ui.walkthrough", function()
     end)
 
     after_each(function()
+        vim.o.columns = original_columns
+        vim.o.lines = original_lines
         walkthrough_ui.close()
         state.clear_walkthrough()
         state.clear_review()
@@ -40,13 +49,30 @@ describe("neo_reviewer.ui.walkthrough", function()
     it("shows a loading message while waiting for a walkthrough", function()
         walkthrough_ui.show_loading()
 
-        local walkthrough_bufnr = assert(find_walkthrough_buffer())
-        local rendered = vim.api.nvim_buf_get_lines(walkthrough_bufnr, 0, -1, false)
+        local loading_bufnr = assert(find_buffer_by_filetype("neo-reviewer-loading"))
+        local rendered = vim.api.nvim_buf_get_lines(loading_bufnr, 0, -1, false)
         local combined = table.concat(rendered, "\n")
         assert.is_truthy(combined:find("Ask: generating walkthrough"))
     end)
 
-    it("renders overview and step content in the walkthrough buffer", function()
+    it("re-registers the loading preload before closing when plugin state is partial", function()
+        local original_plugin = package.loaded["neo_reviewer.plugin"]
+        package.preload["neo_reviewer.ui.loading"] = nil
+        package.loaded["neo_reviewer.ui.loading"] = nil
+        package.loaded["neo_reviewer.plugin"] = {
+            register_preloads = function() end,
+        }
+
+        local ok, closed = pcall(walkthrough_ui.close)
+
+        package.loaded["neo_reviewer.plugin"] = original_plugin
+
+        assert.is_true(ok)
+        assert.is_false(closed)
+        assert.is_function(package.preload["neo_reviewer.ui.loading"])
+    end)
+
+    it("renders a step navigator and a separate detail pane", function()
         local root = vim.fn.getcwd()
         local file_path = root .. "/tmp_walkthrough_test.lua"
         local bufnr = helpers.create_test_buffer({ "line 1", "line 2", "line 3" })
@@ -71,12 +97,21 @@ describe("neo_reviewer.ui.walkthrough", function()
 
         walkthrough_ui.open()
 
-        local walkthrough_bufnr = assert(find_walkthrough_buffer())
-        local rendered = vim.api.nvim_buf_get_lines(walkthrough_bufnr, 0, -1, false)
-        local combined = table.concat(rendered, "\n")
-        assert.is_truthy(combined:find("Overview:"))
-        assert.is_truthy(combined:find("Step 1/1: Step One"))
-        assert.is_truthy(combined:find("Explains the first step"))
+        local detail_bufnr = assert(find_buffer_by_filetype("neo-reviewer-walkthrough"))
+        local nav_bufnr = assert(find_buffer_by_filetype("neo-reviewer-walkthrough-nav"))
+        local detail = table.concat(vim.api.nvim_buf_get_lines(detail_bufnr, 0, -1, false), "\n")
+        local navigator = table.concat(vim.api.nvim_buf_get_lines(nav_bufnr, 0, -1, false), "\n")
+
+        assert.is_truthy(navigator:find("Overview", 1, true))
+        assert.is_truthy(navigator:find("Steps (1)", 1, true))
+        assert.is_truthy(navigator:find("> 1. Step One", 1, true))
+
+        assert.is_truthy(detail:find("Step 1/1", 1, true))
+        assert.is_truthy(detail:find("Step One", 1, true))
+        assert.is_truthy(detail:find("Details", 1, true))
+        assert.is_truthy(detail:find("Explains the first step", 1, true))
+        assert.is_truthy(detail:find("Files In This Step", 1, true))
+        assert.is_truthy(detail:find("tmp_walkthrough_test.lua", 1, true))
     end)
 
     it("highlights the current step anchors", function()
@@ -106,6 +141,70 @@ describe("neo_reviewer.ui.walkthrough", function()
 
         local extmarks = helpers.get_extmarks(bufnr, "nr_walkthrough")
         assert.is_true(#extmarks > 0)
+    end)
+
+    it("uses a muted walkthrough range background highlight", function()
+        local root = vim.fn.getcwd()
+        local file_path = root .. "/tmp_walkthrough_highlight.lua"
+        local bufnr = helpers.create_test_buffer({ "line 1", "line 2" })
+        vim.api.nvim_buf_set_name(bufnr, file_path)
+        vim.bo[bufnr].buftype = ""
+
+        state.set_walkthrough({
+            mode = "walkthrough",
+            overview = "Overview",
+            steps = {
+                {
+                    title = "Step One",
+                    explanation = "Highlight test",
+                    anchors = {
+                        { file = "tmp_walkthrough_highlight.lua", start_line = 1, end_line = 1 },
+                    },
+                },
+            },
+            prompt = "Prompt",
+            root = root,
+        })
+
+        walkthrough_ui.open()
+
+        local extmarks = helpers.get_extmarks(bufnr, "nr_walkthrough")
+        assert.are.equal("NRWalkthroughRange", extmarks[1][4].line_hl_group)
+
+        local hl = vim.api.nvim_get_hl(0, { name = "NRWalkthroughRange", link = false })
+        assert.are.equal(tonumber("31404a", 16), hl.bg)
+        assert.is_nil(hl.link)
+    end)
+
+    it("overrides a stale walkthrough highlight definition", function()
+        local root = vim.fn.getcwd()
+        local file_path = root .. "/tmp_walkthrough_stale.lua"
+        local bufnr = helpers.create_test_buffer({ "line 1", "line 2" })
+        vim.api.nvim_buf_set_name(bufnr, file_path)
+        vim.bo[bufnr].buftype = ""
+
+        vim.api.nvim_set_hl(0, "NRWalkthroughRange", { fg = "#ffffff" })
+
+        state.set_walkthrough({
+            mode = "walkthrough",
+            overview = "Overview",
+            steps = {
+                {
+                    title = "Step One",
+                    explanation = "Highlight test",
+                    anchors = {
+                        { file = "tmp_walkthrough_stale.lua", start_line = 1, end_line = 1 },
+                    },
+                },
+            },
+            prompt = "Prompt",
+            root = root,
+        })
+
+        walkthrough_ui.open()
+
+        local hl = vim.api.nvim_get_hl(0, { name = "NRWalkthroughRange", link = false })
+        assert.are.equal(tonumber("31404a", 16), hl.bg)
     end)
 
     it("jumps to the first anchor when opening with jump_to_first", function()
@@ -250,10 +349,10 @@ describe("neo_reviewer.ui.walkthrough", function()
         local cursor = vim.api.nvim_win_get_cursor(0)
         assert.are.equal(3, cursor[1])
 
-        local walkthrough_bufnr = assert(find_walkthrough_buffer())
+        local walkthrough_bufnr = assert(find_buffer_by_filetype("neo-reviewer-walkthrough"))
         local rendered = vim.api.nvim_buf_get_lines(walkthrough_bufnr, 0, -1, false)
         local combined = table.concat(rendered, "\n")
-        assert.is_truthy(combined:find("Step 1/2: Step One", 1, true))
+        assert.is_truthy(combined:find("Step 1/2", 1, true))
 
         neo_reviewer.next_change()
         cursor = vim.api.nvim_win_get_cursor(0)
@@ -261,7 +360,7 @@ describe("neo_reviewer.ui.walkthrough", function()
 
         rendered = vim.api.nvim_buf_get_lines(walkthrough_bufnr, 0, -1, false)
         combined = table.concat(rendered, "\n")
-        assert.is_truthy(combined:find("Step 2/2: Step Two", 1, true))
+        assert.is_truthy(combined:find("Step 2/2", 1, true))
     end)
 
     it("navigates backwards through anchors before moving to the previous step", function()

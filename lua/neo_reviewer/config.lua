@@ -31,10 +31,15 @@
 ---@class NRAIWalkthroughWindow
 ---@field height integer Minimum height of the walkthrough split (0 = auto)
 ---@field focus_on_open boolean Whether to focus the walkthrough window on open
+---@field step_list_width integer Preferred width of the AI step list pane
+
+---@class NRNeoTree
+---@field open_on_review boolean Open the Neo-tree review source when a review starts
+---@field position string Neo-tree window position for the review source
 
 ---@class NRReviewDiff
----@field skip_noise_files boolean Whether to skip common lock/noise files in local diff reviews
----@field noise_files string[] Basenames to skip in local diff reviews when skip_noise_files is enabled
+---@field skip_noise_files boolean Whether to skip common lock/noise files in PR and local diff reviews
+---@field noise_files string[] Basenames to skip in PR and local diff reviews when skip_noise_files is enabled
 
 ---@class NRSync
 ---@field on_save boolean Whether to trigger sync after saving a reviewed file
@@ -52,6 +57,7 @@
 ---@field input_window NRInputWindow
 ---@field review_diff NRReviewDiff
 ---@field sync NRSync
+---@field neo_tree NRNeoTree Optional Neo-tree integration for changed review files
 ---@field ai NRAI AI analysis configuration
 
 ---@class NRPartialSigns
@@ -80,10 +86,15 @@
 ---@class NRPartialAIWalkthroughWindow
 ---@field height? integer Minimum height of the walkthrough split (0 = auto)
 ---@field focus_on_open? boolean Whether to focus the walkthrough window on open
+---@field step_list_width? integer Preferred width of the AI step list pane
+
+---@class NRPartialNeoTree
+---@field open_on_review? boolean Open the Neo-tree review source when a review starts
+---@field position? string Neo-tree window position for the review source
 
 ---@class NRPartialReviewDiff
----@field skip_noise_files? boolean Whether to skip common lock/noise files in local diff reviews
----@field noise_files? string[] Basenames to skip in local diff reviews when skip_noise_files is enabled
+---@field skip_noise_files? boolean Whether to skip common lock/noise files in PR and local diff reviews
+---@field noise_files? string[] Basenames to skip in PR and local diff reviews when skip_noise_files is enabled
 
 ---@class NRPartialSync
 ---@field on_save? boolean Whether to trigger sync after saving a reviewed file
@@ -108,6 +119,7 @@
 ---@field input_window? NRPartialInputWindow
 ---@field review_diff? NRPartialReviewDiff
 ---@field sync? NRPartialSync
+---@field neo_tree? NRPartialNeoTree Optional Neo-tree integration for changed review files
 ---@field ai? NRPartialAI AI analysis configuration
 
 ---@class NRConfigModule
@@ -183,6 +195,10 @@ M.values = {
         periodic_interval_ms = 120000,
         cooldown_ms = 1500,
     },
+    neo_tree = {
+        open_on_review = false,
+        position = "left",
+    },
     ai = {
         enabled = false,
         model = "gpt-5.3-codex",
@@ -191,6 +207,7 @@ M.values = {
         walkthrough_window = {
             height = 0,
             focus_on_open = false,
+            step_list_width = 52,
         },
     },
 }
