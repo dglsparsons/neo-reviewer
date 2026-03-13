@@ -28,7 +28,6 @@ your editor. It provides:
 - Multi-line comments with visual range selection
 - Submit reviews (approve or request changes)
 - Telescope integration for file picker
-- Optional Neo-tree changed-files review source
 - Local git diff review (review uncommitted changes before pushing)
 - AI-powered review analysis (optional, via Codex CLI by default)
 
@@ -38,7 +37,6 @@ your editor. It provides:
 - Neovim >= 0.9.0
 - plenary.nvim (required)
 - telescope.nvim (optional, for file picker)
-- neo-tree.nvim (optional, for changed-files review tree)
 - neo-reviewer CLI (Rust CLI tool)
 - GitHub authentication via `gh` CLI
 
@@ -107,10 +105,6 @@ Call setup() with your options: >lua
             periodic_interval_ms = 120000, -- 2 minutes
             cooldown_ms = 1500,          -- Min spacing between sync starts
         },
-        neo_tree = {
-            open_on_review = false,      -- Auto-open Neo-tree review source
-            position = "left",           -- Neo-tree window position
-        },
         ai = {
             enabled = false,                      -- Run AI analysis by default
             model = "gpt-5.3-codex", -- Model for Codex CLI (default)
@@ -167,28 +161,6 @@ sync ~
       (default: 1500). This guards against stacked sync runs.
     Automatic save/periodic sync runs silently on success (no "Synced"
     notifications). Errors still notify.
-
-                                                    *neo_reviewer-config-neo_tree*
-neo_tree ~
-    Configure optional Neo-tree integration for changed review files.
-    - `open_on_review`: Open the Neo-tree review source when a review starts
-      (default: false).
-    - `position`: Neo-tree window position for the review source
-      (default: "left").
-
-    To enable the source in Neo-tree, add
-    `"neo_reviewer.sources.review"` to your Neo-tree `sources` list. The
-    source name inside Neo-tree is `review`, so you can open it manually with
-    `:Neotree review` or include it in the source selector. Example: >
-        require("neo-tree").setup({
-            sources = {
-                "filesystem",
-                "buffers",
-                "git_status",
-                "neo_reviewer.sources.review",
-            },
-        })
-<
 
                                                            *neo_reviewer-config-ai*
 ai ~
@@ -334,7 +306,7 @@ These user commands are created when you call `setup()`.
     By default, sync also runs automatically on save for reviewed files and as
     a periodic background refresh every 2 minutes. Save-triggered PR sync skips
     comment refresh (diff/highlights only). Automatic sync refreshes already-
-    open Neo-tree/AI walkthrough windows in place instead of reopening them.
+    open AI walkthrough windows in place instead of reopening them.
     Configure via `sync.*`.
 
 ==============================================================================
@@ -483,8 +455,8 @@ require("neo_reviewer").sync()                                   *neo_reviewer.s
     Preserves cursor position and expanded change block state when possible.
     Manual sync (`:ReviewSync`) always refreshes comments for PR reviews.
     Automatic save-triggered sync refreshes diff/highlights but skips comment
-    refresh for PR reviews, while keeping open Neo-tree/AI review panes in
-    place instead of reopening them.
+    refresh for PR reviews, while keeping open AI review panes in place instead
+    of reopening them.
     See |:ReviewSync|.
 
 require("neo_reviewer").toggle_ai_feedback()     *neo_reviewer.toggle_ai_feedback()*

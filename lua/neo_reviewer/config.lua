@@ -33,10 +33,6 @@
 ---@field focus_on_open boolean Whether to focus the walkthrough window on open
 ---@field step_list_width integer Preferred width of the AI step list pane
 
----@class NRNeoTree
----@field open_on_review boolean Open the Neo-tree review source when a review starts
----@field position string Neo-tree window position for the review source
-
 ---@class NRReviewDiff
 ---@field skip_noise_files boolean Whether to skip common lock/noise files in PR and local diff reviews
 ---@field noise_files string[] Basenames to skip in PR and local diff reviews when skip_noise_files is enabled
@@ -57,7 +53,6 @@
 ---@field input_window NRInputWindow
 ---@field review_diff NRReviewDiff
 ---@field sync NRSync
----@field neo_tree NRNeoTree Optional Neo-tree integration for changed review files
 ---@field ai NRAI AI analysis configuration
 
 ---@class NRPartialSigns
@@ -88,10 +83,6 @@
 ---@field focus_on_open? boolean Whether to focus the walkthrough window on open
 ---@field step_list_width? integer Preferred width of the AI step list pane
 
----@class NRPartialNeoTree
----@field open_on_review? boolean Open the Neo-tree review source when a review starts
----@field position? string Neo-tree window position for the review source
-
 ---@class NRPartialReviewDiff
 ---@field skip_noise_files? boolean Whether to skip common lock/noise files in PR and local diff reviews
 ---@field noise_files? string[] Basenames to skip in PR and local diff reviews when skip_noise_files is enabled
@@ -119,7 +110,6 @@
 ---@field input_window? NRPartialInputWindow
 ---@field review_diff? NRPartialReviewDiff
 ---@field sync? NRPartialSync
----@field neo_tree? NRPartialNeoTree Optional Neo-tree integration for changed review files
 ---@field ai? NRPartialAI AI analysis configuration
 
 ---@class NRConfigModule
@@ -194,10 +184,6 @@ M.values = {
         periodic_enabled = true,
         periodic_interval_ms = 120000,
         cooldown_ms = 1500,
-    },
-    neo_tree = {
-        open_on_review = false,
-        position = "left",
     },
     ai = {
         enabled = false,

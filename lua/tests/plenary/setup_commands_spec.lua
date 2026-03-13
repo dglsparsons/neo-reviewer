@@ -113,8 +113,7 @@ describe("neo_reviewer setup commands", function()
     it("tolerates neo_reviewer.plugin being partially initialized", function()
         package.loaded["neo_reviewer"] = nil
         package.loaded["neo_reviewer.plugin"] = {}
-        package.preload["neo_reviewer.neotree"] = nil
-        package.preload["neo_reviewer.sources.review"] = nil
+        package.preload["neo_reviewer.ui.loading"] = nil
 
         local ok, err = pcall(require, "neo_reviewer")
         if not ok then
@@ -122,7 +121,6 @@ describe("neo_reviewer setup commands", function()
         end
 
         assert.is_true(ok)
-        assert.is_function(package.preload["neo_reviewer.neotree"])
-        assert.is_function(package.preload["neo_reviewer.sources.review"])
+        assert.is_function(package.preload["neo_reviewer.ui.loading"])
     end)
 end)

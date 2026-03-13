@@ -61,17 +61,11 @@ local function register_preloads_with(plugin)
 
     plugin.register_preloads()
     return package.preload["neo_reviewer.ui.loading"] ~= nil
-        and package.preload["neo_reviewer.neotree"] ~= nil
-        and package.preload["neo_reviewer.sources.review"] ~= nil
 end
 
 ---@return nil
 local function ensure_preloads()
-    if
-        package.preload["neo_reviewer.ui.loading"]
-        and package.preload["neo_reviewer.neotree"]
-        and package.preload["neo_reviewer.sources.review"]
-    then
+    if package.preload["neo_reviewer.ui.loading"] then
         return
     end
 
@@ -140,15 +134,12 @@ function M._stop_autosync()
     stop_autosync()
 end
 
----@param opts? { keep_ai_ui?: boolean, keep_neotree?: boolean }
+---@param opts? { keep_ai_ui?: boolean }
 local function clear_active_review(opts)
     local state = require("neo_reviewer.state")
     stop_autosync()
     get_loading_ui().close()
     state.clear_review(opts)
-    if not (opts and opts.keep_neotree) then
-        require("neo_reviewer.neotree").on_review_cleared()
-    end
 end
 
 ---@param bufnr integer
@@ -660,7 +651,6 @@ function M.review_diff(opts)
 
         local function finish_setup()
             M.enable_overlay()
-            require("neo_reviewer.neotree").on_review_changed()
 
             if skipped_count > 0 then
                 vim.notify(
@@ -783,7 +773,6 @@ function M.fetch_and_enable(url, on_ready, opts)
 
         local function finish_setup()
             M.enable_overlay()
-            require("neo_reviewer.neotree").on_review_changed()
 
             local nav = require("neo_reviewer.ui.nav")
             nav.first_change()
@@ -1400,9 +1389,7 @@ function M.sync(opts)
             ai_analysis = review.ai_analysis,
         }
         local ai_ui = require("neo_reviewer.ui.ai")
-        local neotree = require("neo_reviewer.neotree")
         local keep_ai_ui_open = ai_ui.is_open() and preserved.ai_analysis ~= nil
-        local keep_neotree_open = neotree.is_open()
         local cursor_pos = vim.api.nvim_win_get_cursor(0)
 
         if is_manual then
@@ -1418,12 +1405,9 @@ function M.sync(opts)
 
             local filtered_files, skipped_count = filter_review_files(data.files, config.values.review_diff)
 
-            clear_active_review({ keep_ai_ui = keep_ai_ui_open, keep_neotree = keep_neotree_open })
+            clear_active_review({ keep_ai_ui = keep_ai_ui_open })
 
             if #filtered_files == 0 then
-                if keep_neotree_open then
-                    neotree.on_review_cleared()
-                end
                 finish_sync()
                 if is_manual and #data.files == 0 then
                     vim.notify("No changes to review", vim.log.levels.WARN)
@@ -1456,7 +1440,6 @@ function M.sync(opts)
             if keep_ai_ui_open then
                 ai_ui.open({ preserve_layout = true })
             end
-            neotree.on_review_changed({ open = keep_neotree_open })
 
             pcall(vim.api.nvim_win_set_cursor, 0, cursor_pos)
 
@@ -1499,9 +1482,7 @@ function M.sync(opts)
         ai_analysis = review.ai_analysis,
     }
     local ai_ui = require("neo_reviewer.ui.ai")
-    local neotree = require("neo_reviewer.neotree")
     local keep_ai_ui_open = ai_ui.is_open() and preserved.ai_analysis ~= nil
-    local keep_neotree_open = neotree.is_open()
     local old_comment_count = #review.comments
     local cursor_pos = vim.api.nvim_win_get_cursor(0)
 
@@ -1522,11 +1503,8 @@ function M.sync(opts)
             data.comments = review.comments
         end
 
-        clear_active_review({ keep_ai_ui = keep_ai_ui_open, keep_neotree = keep_neotree_open })
+        clear_active_review({ keep_ai_ui = keep_ai_ui_open })
         if #filtered_files == 0 then
-            if keep_neotree_open then
-                neotree.on_review_cleared()
-            end
             finish_sync()
             if is_manual and #data.files == 0 then
                 vim.notify("No changes to review", vim.log.levels.WARN)
@@ -1567,7 +1545,6 @@ function M.sync(opts)
         if keep_ai_ui_open then
             ai_ui.open({ preserve_layout = true })
         end
-        neotree.on_review_changed({ open = keep_neotree_open })
 
         pcall(vim.api.nvim_win_set_cursor, 0, cursor_pos)
 

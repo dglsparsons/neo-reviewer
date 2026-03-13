@@ -54,11 +54,8 @@
 - Auto-sync timers are owned by `init.lua`; `state.clear_review()` should call `neo_reviewer._stop_autosync()` when available to avoid leaking periodic timers across teardown paths and tests.
 - To keep the AI walkthrough panel stable during sync, plumb `keep_ai_ui` through `state.clear_review()` and re-render with `ai_ui.open()` after rebuilding review state.
 
-## Learned while implementing the Neo-tree review source and AI pane split
+## Learned while implementing the AI pane split
 
-- `nix flake check` only sees git-tracked paths; if a Lua module exists only as a new untracked file, Nix builds/tests fail with `module not found`. For temporary or optional modules, registering them through `package.preload` inside a tracked file keeps checks honest without needing git writes.
-- Neo-tree custom sources must expose `components` on the root module or provide a tracked `mod_root .. ".components"` module; preloading only the source and commands still fails during `setup()`.
-- If a custom source should look like Neo-tree filesystem output, render `{ root }` instead of `root.children` and populate source state such as `git_status_lookup`; borrowing filesystem components alone is not enough.
 - `topleft {width}vsplit` from the AI walkthrough pane creates a full-height column across the whole tab, not a split inside the bottom walkthrough area. Use `leftabove {width}vsplit` from the detail window to keep the navigator inside the walkthrough pane; otherwise the main editor window collapses and stacked walkthrough windows fail with `E36`.
 - Transient loading panes need the same split-base exclusions as AI/Ask walkthrough panes; if `find_split_base_window()` can target `neo-reviewer-loading`, the final navigator/detail splits open relative to the loading scratch window instead of the editor layout.
 
@@ -79,8 +76,6 @@
 
 ## Learned while smoothing ReviewSync UI refresh
 
-- `neo_reviewer.neotree.is_open()` cannot rely on `manager.get_state("review").winid` alone; Neo-tree source state can point at a valid sidebar window whose visible buffer belongs to another source. Confirm `vim.b[bufnr].neo_tree_source == "review"` before deciding the review tree is already open.
-- `neo_reviewer.neotree.on_review_changed({ open = true })` should still refresh, not re-open, when the review source buffer is already visible; otherwise autosync re-runs the Neo-tree open command and disturbs the layout.
 - For AI review panes, re-rendering existing split buffers during sync should preserve current window sizes; reusing `open()` without a layout-preserving option causes background refreshes to resize walkthrough splits.
 
 ## Project Overview

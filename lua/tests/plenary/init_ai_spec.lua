@@ -13,7 +13,6 @@ describe("neo_reviewer init AI auto-open", function()
         package.loaded["neo_reviewer.ai"] = nil
         package.loaded["neo_reviewer.ui.ai"] = nil
         package.loaded["neo_reviewer.config"] = nil
-        package.loaded["neo_reviewer.neotree"] = nil
 
         require("neo_reviewer.plugin").register_preloads()
     end)
@@ -50,16 +49,9 @@ describe("neo_reviewer init AI auto-open", function()
             called = called + 1
         end
 
-        local tree_updates = 0
-        local neotree = require("neo_reviewer.neotree")
-        neotree.on_review_changed = function()
-            tree_updates = tree_updates + 1
-        end
-
         local neo_reviewer = require("neo_reviewer")
         neo_reviewer.review_diff({ analyze = true })
 
         assert.are.equal(1, called)
-        assert.are.equal(1, tree_updates)
     end)
 end)

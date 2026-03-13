@@ -9,13 +9,9 @@ describe("neo_reviewer.sync", function()
     local cli
     local config
     local ai_ui
-    local neotree
     local ai_is_open_stub
     local ai_open_stub
     local ai_close_stub
-    local neotree_is_open_stub
-    local neotree_changed_stub
-    local neotree_cleared_stub
     local notifications
 
     before_each(function()
@@ -25,27 +21,19 @@ describe("neo_reviewer.sync", function()
         package.loaded["neo_reviewer.cli"] = nil
         package.loaded["neo_reviewer.config"] = nil
         package.loaded["neo_reviewer.ui.ai"] = nil
-        package.loaded["neo_reviewer.neotree"] = nil
 
         require("neo_reviewer.plugin").register_preloads()
         state = require("neo_reviewer.state")
         cli = require("neo_reviewer.cli")
         config = require("neo_reviewer.config")
         ai_ui = require("neo_reviewer.ui.ai")
-        neotree = require("neo_reviewer.neotree")
 
         stub(cli, "fetch_pr")
         stub(cli, "get_local_diff")
         ai_is_open_stub = stub(ai_ui, "is_open")
         ai_open_stub = stub(ai_ui, "open")
         ai_close_stub = stub(ai_ui, "close")
-        neotree_is_open_stub = stub(neotree, "is_open")
-        neotree_changed_stub = stub(neotree, "on_review_changed")
-        neotree_cleared_stub = stub(neotree, "on_review_cleared")
         ai_is_open_stub.invokes(function()
-            return false
-        end)
-        neotree_is_open_stub.invokes(function()
             return false
         end)
 
@@ -60,9 +48,6 @@ describe("neo_reviewer.sync", function()
         ai_is_open_stub:revert()
         ai_open_stub:revert()
         ai_close_stub:revert()
-        neotree_is_open_stub:revert()
-        neotree_changed_stub:revert()
-        neotree_cleared_stub:revert()
 
         notifications.restore()
         state.clear_review()
@@ -214,29 +199,6 @@ describe("neo_reviewer.sync", function()
             neo_reviewer.sync()
 
             assert.are.same(analysis, state.get_ai_analysis())
-        end)
-
-        it("preserves the Neo-tree review source when syncing an open local review tree", function()
-            state.set_local_review(mock_data.local_diff, {
-                target = "main",
-            })
-            neotree_is_open_stub.invokes(function()
-                return true
-            end)
-
-            cli.get_local_diff.invokes(function(_, callback)
-                callback({
-                    git_root = "/tmp/test",
-                    files = {
-                        { path = "src/synced.lua", status = "modified", change_blocks = {} },
-                    },
-                }, nil)
-            end)
-
-            neo_reviewer.sync()
-
-            assert.stub(neotree_changed_stub).was_called_with({ open = true })
-            assert.stub(neotree_cleared_stub).was_not_called()
         end)
 
         it("notifies user when local diff sync is in progress", function()
@@ -412,7 +374,6 @@ describe("neo_reviewer.sync", function()
             neo_reviewer.sync()
 
             assert.is_nil(state.get_review())
-            assert.stub(neotree_cleared_stub).was_called(1)
 
             local found = false
             for _, n in ipairs(notifications.get()) do
