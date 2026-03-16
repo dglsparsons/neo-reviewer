@@ -376,9 +376,9 @@ function M.setup(opts)
         M.add_comment({ line1 = ctx.line1, line2 = ctx.line2 })
     end, { range = true, desc = "Add comment at cursor or on visual selection" })
 
-    vim.api.nvim_create_user_command("CopyReviewFeedback", function()
-        M.copy_review_feedback()
-    end, { desc = "Copy diff comments and Codex prompt stub to clipboard" })
+    vim.api.nvim_create_user_command("CopyComments", function()
+        M.copy_comments()
+    end, { desc = "Copy review comments and Codex prompt stub to clipboard" })
 
     vim.api.nvim_create_user_command("Approve", function()
         M.approve()
@@ -639,9 +639,6 @@ function M.review_diff(opts)
 
         clear_active_review()
         local review = state.set_local_review(filtered_data, diff_opts)
-
-        local comments_file = require("neo_reviewer.ui.comments_file")
-        comments_file.clear()
 
         local should_analyze = opts.analyze
         if should_analyze == nil then
@@ -1060,25 +1057,22 @@ function M.show_comment()
 end
 
 ---@return nil
-function M.copy_review_feedback()
-    local comments_file = require("neo_reviewer.ui.comments_file")
-    local path = comments_file.get_path()
-    local file = io.open(path, "r")
-    if not file then
-        vim.notify("No REVIEW_COMMENTS.md found", vim.log.levels.WARN)
+function M.copy_comments()
+    local state = require("neo_reviewer.state")
+    if not state.get_review() then
+        vim.notify("No active review", vim.log.levels.WARN)
         return
     end
 
-    local content = file:read("*a")
-    file:close()
-
-    if type(content) ~= "string" then
-        vim.notify("Failed to read REVIEW_COMMENTS.md", vim.log.levels.ERROR)
+    local comments = require("neo_reviewer.ui.comments")
+    local content = comments.format_comments_markdown()
+    if type(content) ~= "string" or content == "" then
+        vim.notify("No comments to copy", vim.log.levels.WARN)
         return
     end
 
-    vim.fn.setreg("+", content .. "\n## My request for Codex:\n")
-    vim.notify("Copied review feedback to clipboard", vim.log.levels.INFO)
+    vim.fn.setreg("+", content .. "## My request for Codex:\n")
+    vim.notify("Copied comments to clipboard", vim.log.levels.INFO)
 end
 
 function M.toggle_ai_feedback()

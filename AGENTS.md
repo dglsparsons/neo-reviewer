@@ -54,9 +54,10 @@
 - Auto-sync timers are owned by `init.lua`; `state.clear_review()` should call `neo_reviewer._stop_autosync()` when available to avoid leaking periodic timers across teardown paths and tests.
 - To keep the AI walkthrough panel stable during sync, plumb `keep_ai_ui` through `state.clear_review()` and re-render with `ai_ui.open()` after rebuilding review state.
 
-## Learned while implementing diff comment export
+## Learned while removing diff comment file persistence
 
-- `REVIEW_COMMENTS.md` rewrites should serialize only local root comments; replies stay thread/UI state and should not be treated as persisted export entries.
+- Local diff comments are state-only now; `:CopyComments` serializes current local root comments from review state.
+- PR comment export needs thread-aware formatting from `review.comments`; flattening the list drops reply context, and orphan replies should still be emitted rather than silently discarded.
 
 ## Learned while implementing the AI pane split
 

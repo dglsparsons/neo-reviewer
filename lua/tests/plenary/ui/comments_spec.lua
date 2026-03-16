@@ -14,7 +14,6 @@ describe("neo_reviewer.ui.comments", function()
         package.loaded["neo_reviewer.state"] = nil
         package.loaded["neo_reviewer.config"] = nil
         package.loaded["neo_reviewer.cli"] = nil
-        package.loaded["neo_reviewer.ui.comments_file"] = nil
 
         state = require("neo_reviewer.state")
         comments = require("neo_reviewer.ui.comments")
@@ -260,7 +259,7 @@ describe("neo_reviewer.ui.comments", function()
             end
         end)
 
-        it("edits local comments and rewrites REVIEW_COMMENTS.md", function()
+        it("edits local comments in memory", function()
             state.set_local_review({
                 git_root = "/tmp/test-repo",
                 files = {
@@ -289,14 +288,6 @@ describe("neo_reviewer.ui.comments", function()
             vim.api.nvim_buf_set_var(bufnr, "nr_file", file)
             helpers.set_cursor(2)
 
-            local wrote_comments = nil
-            package.loaded["neo_reviewer.ui.comments_file"] = {
-                write_all = function(comment_list)
-                    wrote_comments = comment_list
-                    return true
-                end,
-            }
-
             local mappings, restore_mappings = capture_thread_mappings()
             comments.show_thread()
             restore_mappings()
@@ -310,14 +301,9 @@ describe("neo_reviewer.ui.comments", function()
             mappings.e()
 
             comments.open_multiline_input = original_input
-            package.loaded["neo_reviewer.ui.comments_file"] = nil
 
             local file_comments = state.get_comments_for_file("test.lua")
             assert.are.equal("updated local comment", file_comments[1].body)
-            assert.is_not_nil(wrote_comments)
-            if wrote_comments then
-                assert.are.equal("updated local comment", wrote_comments[1].body)
-            end
         end)
 
         it("edits PR comments through CLI", function()
@@ -412,12 +398,6 @@ describe("neo_reviewer.ui.comments", function()
                 created_at = "2024-01-01T12:00:00Z",
             })
 
-            package.loaded["neo_reviewer.ui.comments_file"] = {
-                write_all = function()
-                    return true
-                end,
-            }
-
             local local_file = state.get_review().files[1]
             local local_buf = helpers.create_test_buffer({ "line 1", "line 2" })
             vim.api.nvim_buf_set_var(local_buf, "nr_file", local_file)
@@ -430,7 +410,6 @@ describe("neo_reviewer.ui.comments", function()
             local_mappings.d()
 
             assert.are.equal(0, #state.get_comments_for_file("local.lua"))
-            package.loaded["neo_reviewer.ui.comments_file"] = nil
 
             -- PR flow
             state.set_review({
@@ -960,57 +939,54 @@ describe("neo_reviewer.ui.comments", function()
         end)
     end)
 
-    describe("comments_file persistence", function()
-        it("writes local comments in markdown format", function()
-            local comments_file = require("neo_reviewer.ui.comments_file")
-            local tempdir = vim.fn.tempname()
-            vim.fn.mkdir(tempdir, "p")
-
-            state.set_local_review({ git_root = tempdir, files = {} })
-
-            local ok = comments_file.write_all({
-                {
-                    id = 4,
-                    path = "src/main.lua",
-                    line = 42,
-                    side = "RIGHT",
-                    body = "Single line comment",
-                    author = "you",
-                },
-                {
-                    id = 7,
-                    path = "src/main.lua",
-                    start_line = 100,
-                    line = 105,
-                    side = "RIGHT",
-                    body = "Range comment",
-                    author = "you",
-                },
+    describe("comment export", function()
+        it("formats local comments as markdown", function()
+            state.set_local_review({ git_root = "/tmp/test-repo", files = {} })
+            state.add_comment({
+                id = 4,
+                path = "src/main.lua",
+                line = 42,
+                side = "RIGHT",
+                body = "Single line comment",
+                author = "you",
+                created_at = "2024-01-01T12:00:00Z",
+            })
+            state.add_comment({
+                id = 7,
+                path = "src/main.lua",
+                start_line = 100,
+                line = 105,
+                side = "RIGHT",
+                body = "Range comment",
+                author = "you",
+                created_at = "2024-01-01T12:01:00Z",
+            })
+            state.add_comment({
+                id = 8,
+                path = "src/main.lua",
+                line = 105,
+                side = "RIGHT",
+                body = "Reply should not be exported",
+                author = "you",
+                created_at = "2024-01-01T12:02:00Z",
+                in_reply_to_id = 7,
             })
 
-            assert.is_true(ok)
+            local content = comments.format_comments_markdown()
 
-            local file = io.open(comments_file.get_path(), "r")
-            assert.is_not_nil(file)
-            ---@cast file file*
-            local content = file:read("*a")
-            file:close()
-
-            assert.is_not_nil(content:find("# Diff comments", 1, true))
-            assert.is_not_nil(content:find("## Comment 4 (src/main.lua:42)", 1, true))
-            assert.is_not_nil(content:find("## Comment 7 (src/main.lua:100-105)", 1, true))
-
-            vim.fn.delete(tempdir, "rf")
+            assert.are.equal(
+                "# Diff comments\n\n"
+                    .. "## Comment 4 (src/main.lua:42)\n"
+                    .. "Single line comment\n\n"
+                    .. "## Comment 7 (src/main.lua:100-105)\n"
+                    .. "Range comment\n\n",
+                content
+            )
         end)
 
-        it("skips malformed comments when writing file", function()
-            local comments_file = require("neo_reviewer.ui.comments_file")
-            local tempdir = vim.fn.tempname()
-            vim.fn.mkdir(tempdir, "p")
-
-            state.set_local_review({ git_root = tempdir, files = {} })
-
-            local ok = comments_file.write_all({
+        it("skips malformed comments when formatting markdown", function()
+            state.set_local_review({ git_root = "/tmp/test-repo", files = {} })
+            state.set_comments({
                 {
                     id = 1,
                     body = "missing path and line",
@@ -1033,19 +1009,81 @@ describe("neo_reviewer.ui.comments", function()
                 },
             })
 
-            assert.is_true(ok)
-
-            local file = io.open(comments_file.get_path(), "r")
-            assert.is_not_nil(file)
-            ---@cast file file*
-            local content = file:read("*a")
-            file:close()
+            local content = comments.format_comments_markdown()
 
             assert.is_nil(content:find("missing path and line", 1, true))
             assert.is_not_nil(content:find("src/valid.lua", 1, true))
             assert.is_nil(content:find("missing id", 1, true))
+        end)
 
-            vim.fn.delete(tempdir, "rf")
+        it("formats PR threads with replies and LEFT-side annotations", function()
+            state.set_review({
+                pr = { number = 123, title = "Thread export", author = "author" },
+                files = {},
+                comments = {
+                    {
+                        id = 10,
+                        path = "src/foo.lua",
+                        line = 4,
+                        side = "LEFT",
+                        body = "Comment on deleted code",
+                        author = "reviewer",
+                        created_at = "2024-01-02T09:00:00Z",
+                    },
+                    {
+                        id = 11,
+                        path = "src/foo.lua",
+                        line = 4,
+                        side = "LEFT",
+                        body = "Reply on the same thread",
+                        author = "author",
+                        created_at = "2024-01-02T10:00:00Z",
+                        in_reply_to_id = 10,
+                    },
+                },
+            })
+
+            local content = comments.format_comments_markdown()
+
+            assert.are.equal(
+                "# PR comments\n\n"
+                    .. "## Comment 10 (src/foo.lua:4 [LEFT])\n"
+                    .. "@reviewer 2024-01-02 09:00\n\n"
+                    .. "Comment on deleted code\n\n"
+                    .. "### Reply 11 (src/foo.lua:4 [LEFT])\n"
+                    .. "@author 2024-01-02 10:00\n\n"
+                    .. "Reply on the same thread\n\n",
+                content
+            )
+        end)
+
+        it("keeps orphan PR replies in the export", function()
+            state.set_review({
+                pr = { number = 124, title = "Orphan reply export", author = "author" },
+                files = {},
+                comments = {
+                    {
+                        id = 22,
+                        path = "src/orphan.lua",
+                        line = 8,
+                        side = "RIGHT",
+                        body = "Orphaned reply",
+                        author = "reviewer",
+                        created_at = "2024-01-03T09:00:00Z",
+                        in_reply_to_id = 21,
+                    },
+                },
+            })
+
+            local content = comments.format_comments_markdown()
+
+            assert.are.equal(
+                "# PR comments\n\n"
+                    .. "## Reply to Comment 21 (src/orphan.lua:8)\n"
+                    .. "@reviewer 2024-01-03 09:00\n\n"
+                    .. "Orphaned reply\n\n",
+                content
+            )
         end)
 
         it("assigns monotonic local IDs starting at 1", function()

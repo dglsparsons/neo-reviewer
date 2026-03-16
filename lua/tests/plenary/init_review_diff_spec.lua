@@ -7,7 +7,6 @@ describe("neo_reviewer review noise filtering", function()
     local cli
     local config
     local nav
-    local comments_file
     local notifications
 
     ---@return integer|nil
@@ -54,18 +53,14 @@ describe("neo_reviewer review noise filtering", function()
         package.loaded["neo_reviewer.ai"] = nil
         package.loaded["neo_reviewer.ui.ai"] = nil
         package.loaded["neo_reviewer.ui.nav"] = nil
-        package.loaded["neo_reviewer.ui.comments_file"] = nil
-
         state = require("neo_reviewer.state")
         cli = require("neo_reviewer.cli")
         config = require("neo_reviewer.config")
         neo_reviewer = require("neo_reviewer")
         nav = require("neo_reviewer.ui.nav")
-        comments_file = require("neo_reviewer.ui.comments_file")
 
         stub(neo_reviewer, "enable_overlay")
         stub(nav, "first_change")
-        stub(comments_file, "clear")
 
         notifications = helpers.capture_notifications()
     end)
@@ -73,7 +68,6 @@ describe("neo_reviewer review noise filtering", function()
     after_each(function()
         neo_reviewer.enable_overlay:revert()
         nav.first_change:revert()
-        comments_file.clear:revert()
 
         notifications.restore()
         state.clear_review()

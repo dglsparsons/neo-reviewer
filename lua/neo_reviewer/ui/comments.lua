@@ -38,6 +38,8 @@ local thread_buf = nil
 local input_win = nil
 ---@type integer?
 local input_buf = nil
+local LOCAL_COMMENTS_HEADER = "# Diff comments\n\n"
+local PR_COMMENTS_HEADER = "# PR comments\n\n"
 
 ---@return string
 local function get_viewer_display_name()
@@ -55,6 +57,26 @@ local function refresh_comment_overlays(source_bufnr, file_path)
     M.show_existing(source_bufnr, file_path)
 end
 
+---@param comment NRComment
+---@return boolean
+local function is_reply(comment)
+    return type(comment.in_reply_to_id) == "number"
+end
+
+---@param iso_date? string
+---@return string
+local function format_date(iso_date)
+    if not iso_date then
+        return ""
+    end
+    local pattern = "(%d+)-(%d+)-(%d+)T(%d+):(%d+)"
+    local year, month, day, hour, min = iso_date:match(pattern)
+    if year then
+        return string.format("%s-%s-%s %s:%s", year, month, day, hour, min)
+    end
+    return iso_date
+end
+
 ---@return NRComment[]
 local function get_local_root_comments()
     local review = state.get_review()
@@ -65,16 +87,196 @@ local function get_local_root_comments()
     ---@type NRComment[]
     local comments = {}
     for _, comment in ipairs(review.comments or {}) do
-        if type(comment.in_reply_to_id) ~= "number" then
+        if not is_reply(comment) then
             table.insert(comments, comment)
         end
     end
     return comments
 end
 
-local function persist_local_comments()
-    local comments_file = require("neo_reviewer.ui.comments_file")
-    return comments_file.write_all(get_local_root_comments())
+---@param line integer
+---@param end_line integer
+---@return string
+local function build_line_spec(line, end_line)
+    if end_line ~= line then
+        return string.format("%d-%d", line, end_line)
+    end
+    return tostring(line)
+end
+
+---@param comment NRComment
+---@return string?
+local function build_comment_location(comment)
+    if type(comment.path) ~= "string" or type(comment.line) ~= "number" then
+        return nil
+    end
+
+    local start_line = comment.start_line or comment.line
+    local location = string.format("%s:%s", comment.path, build_line_spec(start_line, comment.line))
+    local end_side = type(comment.side) == "string" and comment.side or nil
+    local start_side = type(comment.start_side) == "string" and comment.start_side or end_side
+
+    if start_side and end_side and start_side ~= end_side then
+        return string.format("%s [%s->%s]", location, start_side, end_side)
+    end
+    if end_side == "LEFT" then
+        return string.format("%s [%s]", location, end_side)
+    end
+    return location
+end
+
+---@param comment_id integer
+---@param file_path string
+---@param line integer
+---@param end_line integer
+---@return string
+local function build_comment_heading(comment_id, file_path, line, end_line)
+    return string.format("## Comment %d (%s:%s)\n", comment_id, file_path, build_line_spec(line, end_line))
+end
+
+---@return string?
+local function format_local_comments_markdown()
+    if not state.is_local_review() then
+        return nil
+    end
+
+    local chunks = { LOCAL_COMMENTS_HEADER }
+    local has_comments = false
+
+    for _, comment in ipairs(get_local_root_comments()) do
+        if type(comment.id) == "number" and type(comment.line) == "number" and type(comment.path) == "string" then
+            local start_line = comment.start_line or comment.line
+            table.insert(chunks, build_comment_heading(comment.id, comment.path, start_line, comment.line))
+            table.insert(chunks, (comment.body or "") .. "\n\n")
+            has_comments = true
+        end
+    end
+
+    if not has_comments then
+        return nil
+    end
+
+    return table.concat(chunks)
+end
+
+---@param chunks string[]
+---@param comment NRComment
+---@param heading_level integer
+---@param label string
+local function append_pr_comment(chunks, comment, heading_level, label)
+    local heading = string.rep("#", heading_level) .. " " .. label
+    local location = build_comment_location(comment)
+    if location then
+        heading = string.format("%s (%s)", heading, location)
+    end
+
+    table.insert(chunks, heading .. "\n")
+
+    local byline = "@" .. (comment.author or "unknown")
+    local timestamp = format_date(comment.created_at)
+    if timestamp ~= "" then
+        byline = byline .. " " .. timestamp
+    end
+    table.insert(chunks, byline .. "\n\n")
+    table.insert(chunks, (comment.body or "") .. "\n\n")
+end
+
+---@param comment_id integer
+---@return string
+local function build_pr_reply_label(comment_id)
+    return string.format("Reply %d", comment_id)
+end
+
+---@param parent_id integer
+---@return string
+local function build_pr_orphan_reply_label(parent_id)
+    return string.format("Reply to Comment %d", parent_id)
+end
+
+---@param comment NRComment
+---@return string
+local function build_pr_comment_label(comment)
+    if type(comment.id) == "number" then
+        return string.format("Comment %d", comment.id)
+    end
+    return "Comment"
+end
+
+---@return string?
+local function format_pr_comments_markdown()
+    local review = state.get_review()
+    if not review or state.is_local_review() then
+        return nil
+    end
+
+    local review_comments = review.comments or {}
+    local chunks = { PR_COMMENTS_HEADER }
+    local has_comments = false
+    ---@type table<integer, NRComment[]>
+    local replies_by_parent = {}
+    ---@type table<integer, boolean>
+    local rendered = {}
+    ---@type NRComment[]
+    local root_comments = {}
+
+    for _, comment in ipairs(review_comments) do
+        if is_reply(comment) then
+            local parent_id = comment.in_reply_to_id --[[@as integer]]
+            replies_by_parent[parent_id] = replies_by_parent[parent_id] or {}
+            table.insert(replies_by_parent[parent_id], comment)
+        else
+            table.insert(root_comments, comment)
+        end
+    end
+
+    for _, comment in ipairs(root_comments) do
+        append_pr_comment(chunks, comment, 2, build_pr_comment_label(comment))
+        if type(comment.id) == "number" then
+            rendered[comment.id] = true
+        end
+        has_comments = true
+
+        local parent_id = type(comment.id) == "number" and comment.id or nil
+        for _, reply in ipairs(parent_id and replies_by_parent[parent_id] or {}) do
+            local label = type(reply.id) == "number" and build_pr_reply_label(reply.id) or "Reply"
+            append_pr_comment(chunks, reply, 3, label)
+            if type(reply.id) == "number" then
+                rendered[reply.id] = true
+            end
+        end
+    end
+
+    for _, comment in ipairs(review_comments) do
+        local comment_id = type(comment.id) == "number" and comment.id or nil
+        if comment_id and not rendered[comment_id] then
+            if is_reply(comment) then
+                append_pr_comment(
+                    chunks,
+                    comment,
+                    2,
+                    build_pr_orphan_reply_label(comment.in_reply_to_id --[[@as integer]])
+                )
+            else
+                append_pr_comment(chunks, comment, 2, build_pr_comment_label(comment))
+            end
+            rendered[comment_id] = true
+            has_comments = true
+        end
+    end
+
+    if not has_comments then
+        return nil
+    end
+
+    return table.concat(chunks)
+end
+
+---@return string?
+function M.format_comments_markdown()
+    if state.is_local_review() then
+        return format_local_comments_markdown()
+    end
+    return format_pr_comments_markdown()
 end
 
 ---@return integer
@@ -316,14 +518,7 @@ function M.add_local_comment(file, start_line, end_line, body)
         created_at = os.date("%Y-%m-%dT%H:%M:%S") --[[@as string]],
     }
     state.add_comment(comment)
-
-    if not persist_local_comments() then
-        state.remove_comment(comment.id)
-        vim.notify("Failed to write comment", vim.log.levels.ERROR)
-        return
-    end
-
-    vim.notify("Comment added to REVIEW_COMMENTS.md", vim.log.levels.INFO)
+    vim.notify("Comment added", vim.log.levels.INFO)
 
     local bufnr = vim.api.nvim_get_current_buf()
     M.show_comment(bufnr, comment)
@@ -546,12 +741,6 @@ function M.show_comment(bufnr, comment, change_blocks, reply_count)
     end
 end
 
----@param comment NRComment
----@return boolean
-local function is_reply(comment)
-    return type(comment.in_reply_to_id) == "number"
-end
-
 ---@param bufnr integer
 ---@param file_path string
 function M.show_existing(bufnr, file_path)
@@ -663,20 +852,6 @@ local function get_threads_for_line(file_path, line, change_blocks, line_count)
     end
 
     return threads
-end
-
----@param iso_date? string
----@return string
-local function format_date(iso_date)
-    if not iso_date then
-        return ""
-    end
-    local pattern = "(%d+)-(%d+)-(%d+)T(%d+):(%d+)"
-    local year, month, day, hour, min = iso_date:match(pattern)
-    if year then
-        return string.format("%s-%s-%s %s:%s", year, month, day, hour, min)
-    end
-    return iso_date
 end
 
 ---@param threads NRComment[][]
@@ -978,14 +1153,9 @@ local function prompt_edit(comment, ctx)
                 vim.notify("Failed to update comment", vim.log.levels.ERROR)
                 return
             end
-            if not persist_local_comments() then
-                state.update_comment(comment.id, old_body)
-                vim.notify("Failed to update REVIEW_COMMENTS.md", vim.log.levels.ERROR)
-                return
-            end
 
             refresh_comment_overlays(ctx.source_bufnr, ctx.file_path)
-            vim.notify("Comment updated in REVIEW_COMMENTS.md", vim.log.levels.INFO)
+            vim.notify("Comment updated", vim.log.levels.INFO)
             return
         end
 
@@ -1024,21 +1194,14 @@ local function prompt_delete(comment, ctx)
     end
 
     if ctx.is_local_review then
-        local review = state.get_review()
-        local previous_comments = vim.deepcopy(review and review.comments or {})
         if not state.remove_comment(comment.id) then
             vim.notify("Failed to delete comment", vim.log.levels.ERROR)
-            return
-        end
-        if not persist_local_comments() then
-            state.set_comments(previous_comments)
-            vim.notify("Failed to update REVIEW_COMMENTS.md", vim.log.levels.ERROR)
             return
         end
 
         close_thread_window()
         refresh_comment_overlays(ctx.source_bufnr, ctx.file_path)
-        vim.notify("Comment deleted from REVIEW_COMMENTS.md", vim.log.levels.INFO)
+        vim.notify("Comment deleted", vim.log.levels.INFO)
         return
     end
 
