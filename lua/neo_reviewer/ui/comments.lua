@@ -104,15 +104,26 @@ local function build_line_spec(line, end_line)
     return tostring(line)
 end
 
+---@param value any
+---@return integer?
+local function coerce_integer(value)
+    -- vim.json.decode represents JSON null as vim.NIL, which is truthy userdata.
+    if type(value) == "number" then
+        return value
+    end
+    return nil
+end
+
 ---@param comment NRComment
 ---@return string?
 local function build_comment_location(comment)
-    if type(comment.path) ~= "string" or type(comment.line) ~= "number" then
+    local end_line = coerce_integer(comment.line)
+    if type(comment.path) ~= "string" or not end_line then
         return nil
     end
 
-    local start_line = comment.start_line or comment.line
-    local location = string.format("%s:%s", comment.path, build_line_spec(start_line, comment.line))
+    local start_line = coerce_integer(comment.start_line) or end_line
+    local location = string.format("%s:%s", comment.path, build_line_spec(start_line, end_line))
     local end_side = type(comment.side) == "string" and comment.side or nil
     local start_side = type(comment.start_side) == "string" and comment.start_side or end_side
 
@@ -144,9 +155,10 @@ local function format_local_comments_markdown()
     local has_comments = false
 
     for _, comment in ipairs(get_local_root_comments()) do
-        if type(comment.id) == "number" and type(comment.line) == "number" and type(comment.path) == "string" then
-            local start_line = comment.start_line or comment.line
-            table.insert(chunks, build_comment_heading(comment.id, comment.path, start_line, comment.line))
+        local end_line = coerce_integer(comment.line)
+        if type(comment.id) == "number" and end_line and type(comment.path) == "string" then
+            local start_line = coerce_integer(comment.start_line) or end_line
+            table.insert(chunks, build_comment_heading(comment.id, comment.path, start_line, end_line))
             table.insert(chunks, (comment.body or "") .. "\n\n")
             has_comments = true
         end
@@ -1229,8 +1241,8 @@ end
 ---@param comment NRComment
 ---@return string[]
 local function get_current_code_lines(source_bufnr, comment)
-    local start_line = comment.start_line or comment.line
-    local end_line = comment.line
+    local end_line = coerce_integer(comment.line)
+    local start_line = coerce_integer(comment.start_line) or end_line
     if not start_line or not end_line then
         return {}
     end
@@ -1314,8 +1326,8 @@ local function apply_suggestion(source_bufnr, suggestions, file_path)
     end
 
     local comment = sugg.comment
-    local start_line = comment.start_line or comment.line
-    local end_line = comment.line
+    local end_line = coerce_integer(comment.line)
+    local start_line = coerce_integer(comment.start_line) or end_line
 
     if not start_line or not end_line then
         vim.notify("Invalid suggestion line range", vim.log.levels.ERROR)

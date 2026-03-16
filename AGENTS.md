@@ -83,6 +83,10 @@
 
 - For AI review panes, re-rendering existing split buffers during sync should preserve current window sizes; reusing `open()` without a layout-preserving option causes background refreshes to resize walkthrough splits.
 
+## Learned while hardening comment export against JSON nulls
+
+- `vim.json.decode()` turns JSON `null` into truthy `vim.NIL` userdata, so `comment.start_line or comment.line` is unsafe on decoded PR comment payloads. Normalize optional numeric fields with an explicit `type(value) == "number"` check before formatting ranges or applying suggestions.
+
 ## Project Overview
 
 `neo-reviewer` is a Neovim plugin for reviewing GitHub PRs. Hybrid architecture: Rust CLI for GitHub API/diff parsing, Lua plugin for UI.

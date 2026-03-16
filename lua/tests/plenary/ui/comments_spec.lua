@@ -1057,6 +1057,52 @@ describe("neo_reviewer.ui.comments", function()
             )
         end)
 
+        it("ignores vim.NIL line metadata when formatting PR exports", function()
+            state.set_review({
+                pr = { number = 125, title = "Null metadata export", author = "author" },
+                files = {},
+                comments = {
+                    {
+                        id = 30,
+                        path = "src/nulls.lua",
+                        line = 12,
+                        start_line = vim.NIL,
+                        side = "RIGHT",
+                        start_side = vim.NIL,
+                        body = "Root comment with null range metadata",
+                        author = "reviewer",
+                        created_at = "2024-01-04T09:00:00Z",
+                        in_reply_to_id = vim.NIL,
+                    },
+                    {
+                        id = 31,
+                        path = "src/nulls.lua",
+                        line = 12,
+                        start_line = vim.NIL,
+                        side = "RIGHT",
+                        start_side = vim.NIL,
+                        body = "Reply with null range metadata",
+                        author = "author",
+                        created_at = "2024-01-04T10:00:00Z",
+                        in_reply_to_id = 30,
+                    },
+                },
+            })
+
+            local content = comments.format_comments_markdown()
+
+            assert.are.equal(
+                "# PR comments\n\n"
+                    .. "## Comment 30 (src/nulls.lua:12)\n"
+                    .. "@reviewer 2024-01-04 09:00\n\n"
+                    .. "Root comment with null range metadata\n\n"
+                    .. "### Reply 31 (src/nulls.lua:12)\n"
+                    .. "@author 2024-01-04 10:00\n\n"
+                    .. "Reply with null range metadata\n\n",
+                content
+            )
+        end)
+
         it("keeps orphan PR replies in the export", function()
             state.set_review({
                 pr = { number = 124, title = "Orphan reply export", author = "author" },
