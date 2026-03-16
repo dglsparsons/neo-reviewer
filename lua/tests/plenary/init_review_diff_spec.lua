@@ -53,6 +53,7 @@ describe("neo_reviewer review noise filtering", function()
         package.loaded["neo_reviewer.ai"] = nil
         package.loaded["neo_reviewer.ui.ai"] = nil
         package.loaded["neo_reviewer.ui.nav"] = nil
+        package.loaded["neo_reviewer.ui.comments"] = nil
         state = require("neo_reviewer.state")
         cli = require("neo_reviewer.cli")
         config = require("neo_reviewer.config")
@@ -190,6 +191,57 @@ describe("neo_reviewer review noise filtering", function()
 
         assert.are.equal(1, opened)
         assert.is_nil(find_loading_buffer())
+    end)
+
+    it("re-renders local comments when a reviewed file buffer is reopened", function()
+        local repo_root = vim.fn.tempname()
+        vim.fn.mkdir(repo_root .. "/src", "p")
+        vim.fn.writefile({ "line 1", "line 2", "line 3" }, repo_root .. "/src/main.lua")
+        vim.fn.writefile({ "line 1", "line 2" }, repo_root .. "/src/other.lua")
+
+        state.set_local_review({
+            git_root = repo_root,
+            files = {
+                {
+                    path = "src/main.lua",
+                    status = "modified",
+                    change_blocks = {},
+                },
+                {
+                    path = "src/other.lua",
+                    status = "modified",
+                    change_blocks = {},
+                },
+            },
+        })
+
+        state.add_comment({
+            id = 7,
+            path = "src/main.lua",
+            line = 2,
+            side = "RIGHT",
+            body = "keep this comment",
+            author = "you",
+            created_at = "2025-01-01T00:00:00Z",
+        })
+
+        vim.cmd("edit " .. vim.fn.fnameescape(repo_root .. "/src/main.lua"))
+        local first_main = vim.api.nvim_get_current_buf()
+        neo_reviewer.apply_overlay_to_buffer(first_main)
+        assert.is_true(#helpers.get_extmarks(first_main, "nr_comments") > 0)
+
+        vim.cmd("edit " .. vim.fn.fnameescape(repo_root .. "/src/other.lua"))
+        local other = vim.api.nvim_get_current_buf()
+        neo_reviewer.apply_overlay_to_buffer(other)
+
+        vim.api.nvim_buf_delete(first_main, { force = true })
+
+        vim.cmd("edit " .. vim.fn.fnameescape(repo_root .. "/src/main.lua"))
+        local reopened_main = vim.api.nvim_get_current_buf()
+        neo_reviewer.apply_overlay_to_buffer(reopened_main)
+
+        local extmarks = helpers.get_extmarks(reopened_main, "nr_comments")
+        assert.is_true(#extmarks > 0)
     end)
 
     it("skips default noise files in PR reviews", function()

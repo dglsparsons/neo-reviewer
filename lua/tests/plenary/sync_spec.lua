@@ -201,6 +201,49 @@ describe("neo_reviewer.sync", function()
             assert.are.same(analysis, state.get_ai_analysis())
         end)
 
+        it("preserves local comments for files that remain in the synced diff", function()
+            state.set_local_review(mock_data.local_diff, {
+                target = "main",
+            })
+            state.add_comment({
+                id = 77,
+                path = "src/main.lua",
+                line = 2,
+                side = "RIGHT",
+                body = "keep me",
+                author = "you",
+                created_at = "2025-01-01T00:00:00Z",
+            })
+            state.add_comment({
+                id = 78,
+                path = "src/removed.lua",
+                line = 1,
+                side = "RIGHT",
+                body = "drop me",
+                author = "you",
+                created_at = "2025-01-01T00:00:00Z",
+            })
+
+            cli.get_local_diff.invokes(function(_, callback)
+                callback({
+                    git_root = "/tmp/test",
+                    files = {
+                        { path = "src/main.lua", status = "modified", change_blocks = {} },
+                    },
+                }, nil)
+            end)
+
+            neo_reviewer.sync()
+
+            local review = state.get_review()
+            assert.is_not_nil(review)
+            if review then
+                assert.are.equal(1, #review.comments)
+                assert.are.equal(77, review.comments[1].id)
+                assert.are.equal("keep me", review.comments[1].body)
+            end
+        end)
+
         it("notifies user when local diff sync is in progress", function()
             state.set_local_review(mock_data.local_diff)
 

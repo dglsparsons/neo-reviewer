@@ -42,6 +42,7 @@
 
 - Store `ReviewDiff` selector options (`target`, `--cached-only`, `--uncached-only`, `--merge-base`, `--tracked-only`) on the active local review so `ReviewSync` can re-run the same diff mode instead of silently falling back to default `diff`.
 - Do not carry `expanded_changes` extmark IDs across `ReviewSync`; extmarks are buffer-local and cleared by `state.clear_review()`, so stale IDs prevent old-code expansion from reapplying.
+- Local diff comments are state-only, so both reopened buffers and local `ReviewSync` need to repopulate overlays from `review.comments`; PR-only redraw paths make comments appear to vanish while navigation state is still intact.
 
 ## Learned while fixing PR comment pagination and LEFT-side rendering
 

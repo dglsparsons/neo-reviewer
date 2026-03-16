@@ -900,10 +900,8 @@ function M.apply_overlay_to_buffer(bufnr)
     local signs = require("neo_reviewer.ui.signs")
     signs.place(bufnr, file.change_blocks)
 
-    if not state.is_local_review() then
-        local comments_ui = require("neo_reviewer.ui.comments")
-        comments_ui.show_existing(bufnr, file.path)
-    end
+    local comments_ui = require("neo_reviewer.ui.comments")
+    comments_ui.show_existing(bufnr, file.path)
 
     local buffer = require("neo_reviewer.ui.buffer")
     buffer.place_change_block_marks(bufnr, file)
@@ -1407,6 +1405,7 @@ function M.sync(opts)
             diff_opts = review.local_diff_opts or {},
             show_old_code = review.show_old_code,
             ai_analysis = review.ai_analysis,
+            comments = review.comments or {},
         }
         local ai_ui = require("neo_reviewer.ui.ai")
         local keep_ai_ui_open = ai_ui.is_open() and preserved.ai_analysis ~= nil
@@ -1455,6 +1454,22 @@ function M.sync(opts)
             local new_review = state.set_local_review(filtered_data, preserved.diff_opts)
             new_review.show_old_code = preserved.show_old_code
             new_review.ai_analysis = preserved.ai_analysis
+
+            ---@type table<string, boolean>
+            local retained_paths = {}
+            for _, file in ipairs(filtered_files) do
+                retained_paths[file.path] = true
+            end
+
+            ---@type NRComment[]
+            local retained_comments = {}
+            -- Keep local notes only for files that still exist in the refreshed diff.
+            for _, comment in ipairs(preserved.comments) do
+                if retained_paths[comment.path] then
+                    table.insert(retained_comments, comment)
+                end
+            end
+            new_review.comments = retained_comments
 
             M.enable_overlay()
             if keep_ai_ui_open then
