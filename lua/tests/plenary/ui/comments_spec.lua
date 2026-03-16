@@ -970,7 +970,7 @@ describe("neo_reviewer.ui.comments", function()
 
             local ok = comments_file.write_all({
                 {
-                    id = 1,
+                    id = 4,
                     path = "src/main.lua",
                     line = 42,
                     side = "RIGHT",
@@ -978,7 +978,7 @@ describe("neo_reviewer.ui.comments", function()
                     author = "you",
                 },
                 {
-                    id = 2,
+                    id = 7,
                     path = "src/main.lua",
                     start_line = 100,
                     line = 105,
@@ -996,9 +996,9 @@ describe("neo_reviewer.ui.comments", function()
             local content = file:read("*a")
             file:close()
 
-            assert.is_not_nil(content:find("# Review Comments", 1, true))
-            assert.is_not_nil(content:find("## file=src/main.lua:line=42", 1, true))
-            assert.is_not_nil(content:find("## file=src/main.lua:line=100-105", 1, true))
+            assert.is_not_nil(content:find("# Diff comments", 1, true))
+            assert.is_not_nil(content:find("## Comment 4 (src/main.lua:42)", 1, true))
+            assert.is_not_nil(content:find("## Comment 7 (src/main.lua:100-105)", 1, true))
 
             vim.fn.delete(tempdir, "rf")
         end)
@@ -1024,6 +1024,13 @@ describe("neo_reviewer.ui.comments", function()
                     body = "valid",
                     author = "you",
                 },
+                {
+                    path = "src/missing_id.lua",
+                    line = 6,
+                    side = "RIGHT",
+                    body = "missing id",
+                    author = "you",
+                },
             })
 
             assert.is_true(ok)
@@ -1036,6 +1043,47 @@ describe("neo_reviewer.ui.comments", function()
 
             assert.is_nil(content:find("missing path and line", 1, true))
             assert.is_not_nil(content:find("src/valid.lua", 1, true))
+            assert.is_nil(content:find("missing id", 1, true))
+
+            vim.fn.delete(tempdir, "rf")
+        end)
+
+        it("assigns monotonic local IDs starting at 1", function()
+            local tempdir = vim.fn.tempname()
+            vim.fn.mkdir(tempdir, "p")
+
+            state.set_local_review({
+                git_root = tempdir,
+                files = {
+                    {
+                        path = "test.lua",
+                        status = "modified",
+                        content = "line 1\nline 2\nline 3",
+                        change_blocks = {},
+                    },
+                },
+            })
+
+            local review = state.get_review()
+            local file = review.files[1]
+            helpers.create_test_buffer({ "line 1", "line 2", "line 3" })
+
+            local original_show_comment = comments.show_comment
+            comments.show_comment = function(_, _, _) end
+
+            comments.add_local_comment(file, nil, 1, "first")
+            comments.add_local_comment(file, nil, 2, "second")
+            state.remove_comment(1)
+            comments.add_local_comment(file, nil, 3, "third")
+
+            comments.show_comment = original_show_comment
+
+            local ids = {}
+            for _, comment in ipairs(state.get_review().comments) do
+                table.insert(ids, comment.id)
+            end
+
+            assert.are.same({ 2, 3 }, ids)
 
             vim.fn.delete(tempdir, "rf")
         end)

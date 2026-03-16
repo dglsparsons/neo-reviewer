@@ -2,7 +2,7 @@
 local M = {}
 
 local COMMENTS_FILE = "REVIEW_COMMENTS.md"
-local HEADER = "# Review Comments\n\n"
+local HEADER = "# Diff comments\n\n"
 
 ---@return string
 function M.get_path()
@@ -19,21 +19,6 @@ function M.clear()
     os.remove(path)
 end
 
-local function ensure_file_exists(path)
-    local file = io.open(path, "r")
-    if file then
-        file:close()
-        return true
-    end
-    file = io.open(path, "w")
-    if file then
-        file:write(HEADER)
-        file:close()
-        return true
-    end
-    return false
-end
-
 ---@param line integer
 ---@param end_line integer
 ---@return string
@@ -44,32 +29,13 @@ local function build_line_spec(line, end_line)
     return tostring(line)
 end
 
+---@param comment_id integer
 ---@param file_path string
 ---@param line integer
 ---@param end_line integer
----@param body string
----@return boolean
-function M.write(file_path, line, end_line, body)
-    local path = M.get_path()
-
-    if not ensure_file_exists(path) then
-        vim.notify("Failed to open " .. COMMENTS_FILE, vim.log.levels.ERROR)
-        return false
-    end
-
-    local file = io.open(path, "a")
-    if not file then
-        vim.notify("Failed to open " .. COMMENTS_FILE, vim.log.levels.ERROR)
-        return false
-    end
-
-    local line_spec = build_line_spec(line, end_line)
-
-    file:write(string.format("## file=%s:line=%s\n", file_path, line_spec))
-    file:write(body .. "\n\n")
-    file:close()
-
-    return true
+---@return string
+local function build_comment_heading(comment_id, file_path, line, end_line)
+    return string.format("## Comment %d (%s:%s)\n", comment_id, file_path, build_line_spec(line, end_line))
 end
 
 ---@param comments table[]
@@ -85,11 +51,10 @@ function M.write_all(comments)
     file:write(HEADER)
 
     for _, comment in ipairs(comments or {}) do
-        if type(comment.line) == "number" and type(comment.path) == "string" then
+        if type(comment.id) == "number" and type(comment.line) == "number" and type(comment.path) == "string" then
             local line = comment.start_line or comment.line
             local end_line = comment.line
-            local line_spec = build_line_spec(line, end_line)
-            file:write(string.format("## file=%s:line=%s\n", comment.path, line_spec))
+            file:write(build_comment_heading(comment.id, comment.path, line, end_line))
             file:write((comment.body or "") .. "\n\n")
         end
     end

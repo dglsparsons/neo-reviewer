@@ -54,6 +54,10 @@
 - Auto-sync timers are owned by `init.lua`; `state.clear_review()` should call `neo_reviewer._stop_autosync()` when available to avoid leaking periodic timers across teardown paths and tests.
 - To keep the AI walkthrough panel stable during sync, plumb `keep_ai_ui` through `state.clear_review()` and re-render with `ai_ui.open()` after rebuilding review state.
 
+## Learned while implementing diff comment export
+
+- `REVIEW_COMMENTS.md` rewrites should serialize only local root comments; replies stay thread/UI state and should not be treated as persisted export entries.
+
 ## Learned while implementing the AI pane split
 
 - `topleft {width}vsplit` from the AI walkthrough pane creates a full-height column across the whole tab, not a split inside the bottom walkthrough area. Use `leftabove {width}vsplit` from the detail window to keep the navigator inside the walkthrough pane; otherwise the main editor window collapses and stacked walkthrough windows fail with `E36`.

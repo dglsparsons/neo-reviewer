@@ -376,6 +376,10 @@ function M.setup(opts)
         M.add_comment({ line1 = ctx.line1, line2 = ctx.line2 })
     end, { range = true, desc = "Add comment at cursor or on visual selection" })
 
+    vim.api.nvim_create_user_command("CopyReviewFeedback", function()
+        M.copy_review_feedback()
+    end, { desc = "Copy diff comments and Codex prompt stub to clipboard" })
+
     vim.api.nvim_create_user_command("Approve", function()
         M.approve()
     end, { desc = "Approve the PR" })
@@ -1053,6 +1057,28 @@ end
 function M.show_comment()
     local comments = require("neo_reviewer.ui.comments")
     comments.show_thread()
+end
+
+---@return nil
+function M.copy_review_feedback()
+    local comments_file = require("neo_reviewer.ui.comments_file")
+    local path = comments_file.get_path()
+    local file = io.open(path, "r")
+    if not file then
+        vim.notify("No REVIEW_COMMENTS.md found", vim.log.levels.WARN)
+        return
+    end
+
+    local content = file:read("*a")
+    file:close()
+
+    if type(content) ~= "string" then
+        vim.notify("Failed to read REVIEW_COMMENTS.md", vim.log.levels.ERROR)
+        return
+    end
+
+    vim.fn.setreg("+", content .. "\n## My request for Codex:\n")
+    vim.notify("Copied review feedback to clipboard", vim.log.levels.INFO)
 end
 
 function M.toggle_ai_feedback()

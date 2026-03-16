@@ -278,6 +278,14 @@ These user commands are created when you call `setup()`.
     for multi-line comments. In visual mode, the selected lines become the
     comment range.
 
+:CopyReviewFeedback                                      *:CopyReviewFeedback*
+    Copy `REVIEW_COMMENTS.md` to the system clipboard and append:
+>
+        ## My request for Codex:
+<
+    This is intended for local diff reviews and preserves the on-disk comment
+    numbering/format exactly as written.
+
 :Approve                                                              *:Approve*
     Submit an approval for the current PR review. If the review checked out
     a PR branch, restores the previous branch after a successful submission.
@@ -341,12 +349,12 @@ require("neo_reviewer").review_diff({opts})               *neo_reviewer.review_d
     Comments are written to `REVIEW_COMMENTS.md` in the project root with
     the format:
 >
-        # Review Comments
+        # Diff comments
 
-        ## file=path/to/file.lua:line=42
+        ## Comment 1 (path/to/file.lua:42)
         Your comment about the code here.
 
-        ## file=path/to/file.lua:line=100-105
+        ## Comment 2 (path/to/file.lua:100-105)
         Multi-line comment spanning lines 100-105.
 <
     This file can be fed to an AI agent or used as a review checklist.
@@ -403,6 +411,13 @@ require("neo_reviewer").show_comment()                   *neo_reviewer.show_comm
     you can view the full thread and edit/delete the comment under cursor.
     In PR reviews, reply remains available and edit/delete apply to your own
     comments. In local diff reviews, edit/delete update `REVIEW_COMMENTS.md`.
+
+require("neo_reviewer").copy_review_feedback() *neo_reviewer.copy_review_feedback()*
+    Copy `REVIEW_COMMENTS.md` to the system clipboard and append:
+>
+        ## My request for Codex:
+<
+    Warns if the comments file does not exist yet.
 
     GitHub Suggestions ~
     Comments containing GitHub suggestions (```suggestion blocks) are

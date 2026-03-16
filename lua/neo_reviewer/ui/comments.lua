@@ -79,10 +79,16 @@ end
 
 ---@return integer
 local function generate_local_comment_id()
-    if vim.uv and vim.uv.hrtime then
-        return math.floor(vim.uv.hrtime() / 1000)
+    local review = state.get_review()
+    local next_id = 1
+
+    for _, comment in ipairs(review and review.comments or {}) do
+        if type(comment.id) == "number" and comment.id >= next_id then
+            next_id = comment.id + 1
+        end
     end
-    return math.floor(os.time() * 1000000 + vim.fn.rand())
+
+    return next_id
 end
 
 local function close_input_window()

@@ -56,6 +56,23 @@ describe("neo_reviewer setup commands", function()
         assert.is_nil(rawget(neo_reviewer, "explore"))
     end)
 
+    it("registers CopyReviewFeedback and forwards to the module function", function()
+        local neo_reviewer = require("neo_reviewer")
+        neo_reviewer.setup()
+
+        local called = false
+        local original_copy_review_feedback = neo_reviewer.copy_review_feedback
+        neo_reviewer.copy_review_feedback = function()
+            called = true
+        end
+
+        created_commands.CopyReviewFeedback({})
+
+        neo_reviewer.copy_review_feedback = original_copy_review_feedback
+
+        assert.is_true(called)
+    end)
+
     it("parses ReviewDiff target and selector flags", function()
         local neo_reviewer = require("neo_reviewer")
         neo_reviewer.setup()
