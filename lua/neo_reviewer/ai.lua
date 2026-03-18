@@ -6,7 +6,7 @@ local M = {}
 local PROMPT_TEMPLATE = [[
 You are an AI assistant running inside a git repository at: %s
 
-Here is the contents of a pull-requests diff. Explain it to a human who is new to this codebase. Use plain, everyday language and short sentences. Avoid jargon, acronyms, and framework-speak; if you must use one, define it in the same sentence. The goal is to help them understand what changed, why it changed, and what it affects so they can comment on the PR.
+Here is the contents of a pull request diff. Walk a reviewer through it the way the author would in a live PR review. Assume the reviewer is new to this codebase. Use plain, everyday language and short sentences. Avoid jargon, acronyms, and framework-speak; if you must use one, define it in the same sentence. The goal is to give them the context they need to understand what changed, why it changed, how the pieces fit together, and what to pay attention to while reviewing.
 
 Rules:
 - Read files directly from disk using repo-relative paths when you need more context or to see the new version of added lines.
@@ -15,7 +15,7 @@ Rules:
 - Added lines and context lines in the diff are placeholders. Read the file contents to understand the new code.
 - Make sure you don't invent files, APIs, or behavior that are not present.
 - Watch out for formatting only changes. These do not actually do anything.
-- Think like a reviewer guide. Organize the walkthrough around meaningful concerns or themes, not a file-by-file dump.
+- Think like the PR author guiding a reviewer. Organize the walkthrough around the story of the change: motivation, main implementation, supporting edits, and anything subtle the reviewer should inspect.
 
 Return ONLY valid JSON (no markdown, no explanation):
 {
@@ -26,6 +26,9 @@ Return ONLY valid JSON (no markdown, no explanation):
       "explanation": "1-3 short sentences describing the change and what the reviewer should notice.",
       "change_blocks": [
         { "file": "path/to/file", "change_block_index": 0 }
+      ],
+      "anchors": [
+        { "file": "path/to/file", "start_line": 1, "end_line": 10 }
       ]
     }
   ]
@@ -33,20 +36,25 @@ Return ONLY valid JSON (no markdown, no explanation):
 
 Guidelines:
 - overview: 1-2 short paragraphs, plain language
+- Use the overview to frame the review: first the problem or goal, then the overall approach and main review focus areas
 - steps: ordered walkthrough; keep each step concise
+- Order steps the way a human would explain the PR: motivation or entry point first, then the main behavior changes, then supporting edits or follow-ups
 - Make each explanation 1-3 short sentences
+- In each explanation, give enough context for why the change exists before pointing at the code
 - Prefer a small number of meaningful steps. Merge tiny follow-up edits into a nearby step when they are part of the same idea.
 - Avoid mentioning diff mechanics (hunks, change blocks, markers) in the explanation text
 - If you need to use a technical term, define it in the same sentence
 - Keep explanations direct and concrete
 - Avoid filler like "This matters because", "This change introduces", or "The purpose of this change is to"
 - Each step must include one or more change blocks
+- Include anchors when they help point at the new code on disk; otherwise use an empty array
 - Group related change blocks into the same step when it helps readability
 - Use titles that still make sense when shown alone in a narrow step list
-- Start with the concrete change, then the reviewer takeaway
+- Lead with the intent or behavior change, then the concrete code, then the reviewer takeaway
 - Do not restate the title in the explanation
 - If a step spans multiple files, explain how those files fit together
 - Do not return steps with empty change_blocks
+- Keep anchors tight (aim for 3-20 lines) and use repo-relative paths
 - change_block_index must match the @@ change_block N @@ markers in the diff below
 - Every change block in the diff must be included in exactly one step
 - Put cross-cutting or high-level notes in the overview, not extra steps
@@ -247,6 +255,7 @@ local function normalize_steps_to_unique_change_blocks(review, analysis)
                 title = step.title,
                 explanation = step.explanation,
                 change_blocks = change_blocks,
+                anchors = step.anchors or {},
             })
         end
     end
@@ -269,6 +278,7 @@ local function append_placeholder_steps(analysis, missing)
                     change_block_index = block_ref.change_block_index,
                 },
             },
+            anchors = {},
         })
     end
     return analysis
@@ -340,6 +350,9 @@ local function parse_response(output)
         if type(step.change_blocks) ~= "table" then
             return nil, string.format("steps[%d]: missing 'change_blocks'", i)
         end
+        if type(step.anchors) ~= "table" then
+            return nil, string.format("steps[%d]: missing 'anchors'", i)
+        end
 
         ---@type NRAIWalkthroughChangeRef[]
         local change_blocks = {}
@@ -357,10 +370,31 @@ local function parse_response(output)
             })
         end
 
+        ---@type NRWalkthroughAnchor[]
+        local anchors = {}
+        for j, anchor in ipairs(step.anchors) do
+            if type(anchor.file) ~= "string" then
+                return nil, string.format("steps[%d].anchors[%d]: missing 'file'", i, j)
+            end
+            if type(anchor.start_line) ~= "number" then
+                return nil, string.format("steps[%d].anchors[%d]: missing 'start_line'", i, j)
+            end
+            if type(anchor.end_line) ~= "number" then
+                return nil, string.format("steps[%d].anchors[%d]: missing 'end_line'", i, j)
+            end
+
+            table.insert(anchors, {
+                file = anchor.file,
+                start_line = anchor.start_line,
+                end_line = anchor.end_line,
+            })
+        end
+
         table.insert(steps, {
             title = step.title,
             explanation = step.explanation,
             change_blocks = change_blocks,
+            anchors = anchors,
         })
     end
 

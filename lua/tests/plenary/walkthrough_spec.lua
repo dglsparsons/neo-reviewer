@@ -24,6 +24,8 @@ describe("neo_reviewer.walkthrough", function()
             assert.is_truthy(prompt:find("lua/neo_reviewer/init.lua"))
             assert.is_truthy(prompt:find("Lines: 10-20", 1, true))
             assert.is_truthy(prompt:find("function M.setup() end", 1, true))
+            assert.is_truthy(prompt:find('"change_blocks"'))
+            assert.is_truthy(prompt:find('"anchors"'))
         end)
     end)
 
@@ -37,6 +39,7 @@ describe("neo_reviewer.walkthrough", function()
     {
       "title": "Step One",
       "explanation": "Explains the first step",
+      "change_blocks": [],
       "anchors": [
         { "file": "src/main.lua", "start_line": 1, "end_line": 3 }
       ]
@@ -62,7 +65,8 @@ describe("neo_reviewer.walkthrough", function()
   "steps": [
     {
       "title": "Step One",
-      "explanation": "Explains the first step"
+      "explanation": "Explains the first step",
+      "change_blocks": []
     }
   ]
 }
@@ -81,6 +85,7 @@ describe("neo_reviewer.walkthrough", function()
     {
       "title": "Step One",
       "explanation": "Explains the first step",
+      "change_blocks": [],
       "anchors": []
     }
   ]

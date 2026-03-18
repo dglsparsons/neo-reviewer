@@ -112,6 +112,7 @@ describe("neo_reviewer.ai", function()
             assert.is_truthy(prompt:find("Return ONLY valid JSON"))
             assert.is_truthy(prompt:find('"overview"'))
             assert.is_truthy(prompt:find('"steps"'))
+            assert.is_truthy(prompt:find('"anchors"'))
         end)
 
         it("allows steps to group related change blocks", function()
@@ -131,11 +132,12 @@ describe("neo_reviewer.ai", function()
             local prompt = ai.build_prompt(review)
 
             assert.is_truthy(prompt:find("Each step must include one or more change blocks", 1, true))
+            assert.is_truthy(prompt:find("otherwise use an empty array", 1, true))
             assert.is_truthy(prompt:find("Group related change blocks into the same step", 1, true))
             assert.is_truthy(prompt:find("Do not return steps with empty change_blocks", 1, true))
         end)
 
-        it("asks for reviewer-friendly grouping and standalone step titles", function()
+        it("asks for an author-style walkthrough with reviewer context", function()
             ---@type NRReview
             local review = {
                 review_type = "pr",
@@ -151,12 +153,29 @@ describe("neo_reviewer.ai", function()
 
             local prompt = ai.build_prompt(review)
 
-            assert.is_truthy(prompt:find("Think like a reviewer guide", 1, true))
+            assert.is_truthy(
+                prompt:find("Walk a reviewer through it the way the author would in a live PR review", 1, true)
+            )
+            assert.is_truthy(prompt:find("Think like the PR author guiding a reviewer", 1, true))
+            assert.is_truthy(
+                prompt:find(
+                    "Use the overview to frame the review: first the problem or goal, then the overall approach and main review focus areas",
+                    1,
+                    true
+                )
+            )
+            assert.is_truthy(
+                prompt:find(
+                    "Order steps the way a human would explain the PR: motivation or entry point first, then the main behavior changes, then supporting edits or follow-ups",
+                    1,
+                    true
+                )
+            )
             assert.is_truthy(
                 prompt:find("Use titles that still make sense when shown alone in a narrow step list", 1, true)
             )
             assert.is_truthy(prompt:find('Avoid filler like "This matters because"', 1, true))
-            assert.is_truthy(prompt:find("Start with the concrete change", 1, true))
+            assert.is_truthy(prompt:find("Lead with the intent or behavior change", 1, true))
         end)
 
         it("includes repo root and file-reading rules", function()
@@ -410,7 +429,7 @@ describe("neo_reviewer.ai", function()
             local on_exit = job_instance._opts.on_exit
             on_stdout(
                 nil,
-                [[{"overview":"Overview","steps":[{"title":"Step One","explanation":"Direct summary.","change_blocks":[{"file":"test.lua","change_block_index":0}]}]}]]
+                [[{"overview":"Overview","steps":[{"title":"Step One","explanation":"Direct summary.","change_blocks":[{"file":"test.lua","change_block_index":0}],"anchors":[]}]}]]
             )
             on_exit(nil, 0)
 
@@ -424,6 +443,64 @@ describe("neo_reviewer.ai", function()
             assert.are.equal(2, #received_analysis.steps)
             assert.are.equal("Uncovered change: test.lua", received_analysis.steps[2].title)
             assert.are.same({ file = "test.lua", change_block_index = 1 }, received_analysis.steps[2].change_blocks[1])
+        end)
+
+        it("errors when the shared response shape omits anchors", function()
+            local file = {
+                path = "test.lua",
+                status = "modified",
+                additions = 1,
+                deletions = 0,
+                change_blocks = {
+                    {
+                        start_line = 1,
+                        end_line = 1,
+                        kind = "add",
+                        added_lines = { 1 },
+                        changed_lines = {},
+                        deletion_groups = {},
+                        old_to_new = {},
+                    },
+                },
+            }
+
+            ---@type NRReview
+            local review = {
+                review_type = "pr",
+                git_root = "/tmp/repo",
+                pr = { number = 1, title = "Test", description = "Coverage" },
+                files = { file },
+                files_by_path = {
+                    ["test.lua"] = file,
+                },
+                comments = {},
+                current_file_idx = 1,
+                expanded_changes = {},
+                applied_buffers = {},
+                overlays_visible = true,
+            }
+
+            local received_analysis
+            local received_err
+            ai.analyze_pr(review, function(analysis, err)
+                received_analysis = analysis
+                received_err = err
+            end)
+
+            local on_stdout = job_instance._opts.on_stdout
+            local on_exit = job_instance._opts.on_exit
+            on_stdout(
+                nil,
+                [[{"overview":"Overview","steps":[{"title":"Step One","explanation":"Direct summary.","change_blocks":[{"file":"test.lua","change_block_index":0}]}]}]]
+            )
+            on_exit(nil, 0)
+
+            vim.wait(100, function()
+                return received_analysis ~= nil or received_err ~= nil
+            end)
+
+            assert.is_nil(received_analysis)
+            assert.are.equal("steps[1]: missing 'anchors'", received_err)
         end)
     end)
 end)

@@ -11,6 +11,7 @@
 ---@field title string Step title
 ---@field explanation string Plain-language explanation of the change
 ---@field change_blocks NRAIWalkthroughChangeRef[] Change blocks referenced by this step
+---@field anchors? NRWalkthroughAnchor[] Optional code anchors from the shared AI response schema
 
 ---@class NRAIAnalysis
 ---@field overview string Concise walkthrough overview
@@ -25,6 +26,7 @@
 ---@field title string Step title
 ---@field explanation string Plain-language explanation
 ---@field anchors NRWalkthroughAnchor[] Code anchors for this step
+---@field change_blocks? NRAIWalkthroughChangeRef[] Optional diff refs from the shared AI response schema
 
 ---@class NRWalkthrough
 ---@field mode "walkthrough"|"conceptual"

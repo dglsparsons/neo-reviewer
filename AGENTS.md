@@ -79,6 +79,7 @@
 ## Learned while simplifying AI PR analysis
 
 - The second AI coverage pass adds a full extra model roundtrip for marginal cleanup value. With a prompt that already asks for exact change-block coverage, a better tradeoff is one AI response plus local placeholder steps for any uncovered blocks, and prompt guidance should explicitly ban filler phrases like `"This matters because"` so the detail pane reads tightly.
+- When changing the review walkthrough prompt, update both `lua/tests/plenary/ai_spec.lua` prompt assertions and the AI walkthrough help text in `doc/neo_reviewer.txt`; those two drift easily from `lua/neo_reviewer/ai.lua`, especially around the single-pass coverage behavior.
 
 ## Learned while smoothing ReviewSync UI refresh
 

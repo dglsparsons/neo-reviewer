@@ -32,12 +32,14 @@ Seed context (may be empty):
 
 Return ONLY valid JSON (no markdown, no extra text):
 {
-  "mode": "walkthrough" | "conceptual",
   "overview": "1-3 short paragraphs",
   "steps": [
     {
       "title": "Short step title",
       "explanation": "1-4 sentences",
+      "change_blocks": [
+        { "file": "path/to/file", "change_block_index": 0 }
+      ],
       "anchors": [
         { "file": "path/to/file", "start_line": 1, "end_line": 10 }
       ]
@@ -47,11 +49,10 @@ Return ONLY valid JSON (no markdown, no extra text):
 
 Guidelines:
 - Decide whether the user request is best answered as a code walkthrough or a conceptual explanation.
-- Use "walkthrough" when pointing to specific code will help; use "conceptual" for high-level or architecture questions.
 - Always include at least one step. Steps should be ordered for a human walkthrough.
-- If mode is "walkthrough", every step must include at least one anchor.
+- Use anchors when pointing to specific code will help; use an empty anchors array for high-level or architecture explanations.
+- If exact review diff block ids are already available in the conversation, include them in change_blocks; otherwise use an empty array.
 - Anchors should be tight (aim for 3-20 lines) and must use repo-relative paths.
-- If mode is "conceptual", anchors can be empty, but keep the field present.
 - If you mention a specific file or function, include an anchor even in conceptual mode.
 - Do not include follow-up questions; focus on the explanation.
 ]]
@@ -117,8 +118,27 @@ function M.parse_response(output)
         if type(step.explanation) ~= "string" then
             return nil, string.format("steps[%d]: missing 'explanation'", i)
         end
+        if type(step.change_blocks) ~= "table" then
+            return nil, string.format("steps[%d]: missing 'change_blocks'", i)
+        end
         if type(step.anchors) ~= "table" then
             return nil, string.format("steps[%d]: missing 'anchors'", i)
+        end
+
+        ---@type NRAIWalkthroughChangeRef[]
+        local change_blocks = {}
+        for j, block in ipairs(step.change_blocks) do
+            if type(block.file) ~= "string" then
+                return nil, string.format("steps[%d].change_blocks[%d]: missing 'file'", i, j)
+            end
+            if type(block.change_block_index) ~= "number" then
+                return nil, string.format("steps[%d].change_blocks[%d]: missing 'change_block_index'", i, j)
+            end
+
+            table.insert(change_blocks, {
+                file = block.file,
+                change_block_index = block.change_block_index,
+            })
         end
 
         ---@type NRWalkthroughAnchor[]
@@ -144,6 +164,7 @@ function M.parse_response(output)
         table.insert(steps, {
             title = step.title,
             explanation = step.explanation,
+            change_blocks = change_blocks,
             anchors = anchors,
         })
     end
