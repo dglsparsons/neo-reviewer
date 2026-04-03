@@ -85,6 +85,8 @@
 
 - Current `codex exec` emits banner/transcript text on stdout and may inspect inherited stdin even when the prompt is already provided, so AI jobs should send prompts through Plenary `writer` and read the final assistant text from `--output-last-message` instead of scraping stdout in `ai.lua` or `walkthrough.lua`.
 - Plenary job callbacks only surface process exit failures; hangs need an explicit `ai.timeout_ms` timer in `ai.lua` and `walkthrough.lua`, and the user-facing callers in `init.lua` should report those failures with `vim.log.levels.ERROR` so loading panes do not fail silently.
+- Diff analysis can legitimately take longer than two minutes when Codex reads changed files from disk, so the default `ai.timeout_ms` should stay generous (currently 10 minutes) and users can lower it explicitly if they want stricter failure behavior.
+- For faster AI walkthroughs, the best low-risk defaults are a short prompt plus `reasoning_effort = "low"`; the main latency floor is still file reading on larger diffs, so prompt trimming helps more reliably than aggressive timeouts.
 
 ## Learned while smoothing ReviewSync UI refresh
 

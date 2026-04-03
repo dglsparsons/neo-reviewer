@@ -15,18 +15,17 @@ local M = {}
 ---@field start fun(self: NRAIJob)
 
 local PROMPT_TEMPLATE = [[
-You are an AI assistant running inside a git repository at: %s
+You are an AI assistant running inside a git repo at: %s
 
-Here is the contents of a pull request diff. Walk a reviewer through it the way the author would in a live PR review. Assume the reviewer is new to this codebase. Use plain, everyday language and short sentences. Avoid jargon, acronyms, and framework-speak; if you must use one, define it in the same sentence. The goal is to give them the context they need to understand what changed, why it changed, how the pieces fit together, and what to pay attention to while reviewing.
+Explain this change to a reviewer who is new to the codebase. Explain it like a human would, using high-level, simple to grok concepts or abstractions. Be brief, concrete and use plain-language.
 
 Rules:
-- Read files directly from disk using repo-relative paths when you need more context or to see the new version of added lines.
+- Read repo-relative files from disk for context.
 - Only use git-tracked files; ignore untracked/build/vendor.
-- Use the PR title/description, file list, and diff below as the source of what changed.
-- Added lines and context lines in the diff are placeholders. Read the file contents to understand the new code.
-- Make sure you don't invent files, APIs, or behavior that are not present.
-- Watch out for formatting only changes. These do not actually do anything.
-- Think like the PR author guiding a reviewer. Organize the walkthrough around the story of the change: motivation, main implementation, supporting edits, and anything subtle the reviewer should inspect.
+- Use the PR title, description, file list, and diff below.
+- Added and context lines in the diff are placeholders; inspect files to understand the new code.
+- Treat formatting-only edits as non-functional.
+- Cover every change block exactly once.
 
 Return ONLY valid JSON (no markdown, no explanation):
 {
@@ -46,29 +45,15 @@ Return ONLY valid JSON (no markdown, no explanation):
 }
 
 Guidelines:
-- overview: 1-2 short paragraphs, plain language
-- Use the overview to frame the review: first the problem or goal, then the overall approach and main review focus areas
-- steps: ordered walkthrough; keep each step concise
-- Order steps the way a human would explain the PR: motivation or entry point first, then the main behavior changes, then supporting edits or follow-ups
-- Make each explanation 1-3 short sentences
-- In each explanation, give enough context for why the change exists before pointing at the code
-- Prefer a small number of meaningful steps. Merge tiny follow-up edits into a nearby step when they are part of the same idea.
-- Avoid mentioning diff mechanics (hunks, change blocks, markers) in the explanation text
-- If you need to use a technical term, define it in the same sentence
-- Keep explanations direct and concrete
-- Avoid filler like "This matters because", "This change introduces", or "The purpose of this change is to"
+- overview: 1 sentence
+- steps: ordered to explain the change to a human as logically as possible
+- Use a small number of meaningful steps and group related edits
+- Each explanation should be 1 short sentence with enough context to explain why the change exists
 - Each step must include one or more change blocks
-- Include anchors when they help point at the new code on disk; otherwise use an empty array
-- Group related change blocks into the same step when it helps readability
-- Use titles that still make sense when shown alone in a narrow step list
-- Lead with the intent or behavior change, then the concrete code, then the reviewer takeaway
-- Do not restate the title in the explanation
-- If a step spans multiple files, explain how those files fit together
-- Do not return steps with empty change_blocks
-- Keep anchors tight (aim for 3-20 lines) and use repo-relative paths
-- change_block_index must match the @@ change_block N @@ markers in the diff below
-- Every change block in the diff must be included in exactly one step
-- Put cross-cutting or high-level notes in the overview, not extra steps
+- Include anchors when they help; otherwise use an empty array
+- Titles should still make sense on their own
+- Keep anchors tight (about 3-20 lines) and repo-relative
+- change_block_index must match the @@ change_block N @@ markers below
 - If you are unsure, add a final step that references any remaining change blocks
 
 ---

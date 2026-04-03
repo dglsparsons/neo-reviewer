@@ -132,9 +132,11 @@ describe("neo_reviewer.ai", function()
             local prompt = ai.build_prompt(review)
 
             assert.is_truthy(prompt:find("Each step must include one or more change blocks", 1, true))
-            assert.is_truthy(prompt:find("otherwise use an empty array", 1, true))
-            assert.is_truthy(prompt:find("Group related change blocks into the same step", 1, true))
-            assert.is_truthy(prompt:find("Do not return steps with empty change_blocks", 1, true))
+            assert.is_truthy(prompt:find("Include anchors when they help; otherwise use an empty array", 1, true))
+            assert.is_truthy(prompt:find("Use a small number of meaningful steps and group related edits", 1, true))
+            assert.is_truthy(
+                prompt:find("change_block_index must match the @@ change_block N @@ markers below", 1, true)
+            )
         end)
 
         it("asks for an author-style walkthrough with reviewer context", function()
@@ -153,29 +155,14 @@ describe("neo_reviewer.ai", function()
 
             local prompt = ai.build_prompt(review)
 
+            assert.is_truthy(prompt:find("Explain this change to a reviewer who is new to the codebase", 1, true))
+            assert.is_truthy(prompt:find("Be brief, concrete, and plain-language", 1, true))
             assert.is_truthy(
-                prompt:find("Walk a reviewer through it the way the author would in a live PR review", 1, true)
+                prompt:find("overview: 1-2 short paragraphs covering goal, approach, and review focus", 1, true)
             )
-            assert.is_truthy(prompt:find("Think like the PR author guiding a reviewer", 1, true))
-            assert.is_truthy(
-                prompt:find(
-                    "Use the overview to frame the review: first the problem or goal, then the overall approach and main review focus areas",
-                    1,
-                    true
-                )
-            )
-            assert.is_truthy(
-                prompt:find(
-                    "Order steps the way a human would explain the PR: motivation or entry point first, then the main behavior changes, then supporting edits or follow-ups",
-                    1,
-                    true
-                )
-            )
-            assert.is_truthy(
-                prompt:find("Use titles that still make sense when shown alone in a narrow step list", 1, true)
-            )
-            assert.is_truthy(prompt:find('Avoid filler like "This matters because"', 1, true))
-            assert.is_truthy(prompt:find("Lead with the intent or behavior change", 1, true))
+            assert.is_truthy(prompt:find("Use a small number of meaningful steps and group related edits", 1, true))
+            assert.is_truthy(prompt:find("Titles should still make sense on their own", 1, true))
+            assert.is_truthy(prompt:find("Use direct wording and avoid filler", 1, true))
         end)
 
         it("includes repo root and file-reading rules", function()
@@ -196,8 +183,8 @@ describe("neo_reviewer.ai", function()
             local prompt = ai.build_prompt(review)
 
             assert.is_truthy(prompt:find("git repository at: /tmp/repo", 1, true))
-            assert.is_truthy(prompt:find("Read files directly from disk", 1, true))
-            assert.is_truthy(prompt:find("Added lines and context lines in the diff are placeholders", 1, true))
+            assert.is_truthy(prompt:find("Read repo-relative files from disk for context", 1, true))
+            assert.is_truthy(prompt:find("Added and context lines in the diff are placeholders", 1, true))
         end)
     end)
 
@@ -610,11 +597,11 @@ describe("neo_reviewer.config AI defaults", function()
     end)
 
     it("has default reasoning effort", function()
-        assert.are.equal("medium", config.values.ai.reasoning_effort)
+        assert.are.equal("low", config.values.ai.reasoning_effort)
     end)
 
     it("has default timeout", function()
-        assert.are.equal(120000, config.values.ai.timeout_ms)
+        assert.are.equal(600000, config.values.ai.timeout_ms)
     end)
 
     it("has walkthrough window defaults", function()
@@ -660,7 +647,7 @@ describe("neo_reviewer.config build_ai_command", function()
             "--output-last-message",
             spec.output_file,
             "--config",
-            'model_reasoning_effort="medium"',
+            'model_reasoning_effort="low"',
         }, spec.args)
     end)
 

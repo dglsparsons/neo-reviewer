@@ -33,9 +33,7 @@ Rules:
 - Only use git-tracked files (ignore untracked/build/vendor).
 - You may use git and ripgrep to locate relevant code.
 - Do not invent files, APIs, or behavior not present in the repo.
-- Provide a concise overview and an ordered walkthrough.
-- Use plain, everyday language and short sentences.
-- Avoid jargon and acronyms; if you must use one, define it in the same sentence.
+- Be brief, concrete, and plain-language.
 - Use 1-based, inclusive line numbers for anchors.
 
 Seed context (may be empty):
@@ -59,13 +57,13 @@ Return ONLY valid JSON (no markdown, no extra text):
 }
 
 Guidelines:
-- Decide whether the user request is best answered as a code walkthrough or a conceptual explanation.
-- Always include at least one step. Steps should be ordered for a human walkthrough.
-- Use anchors when pointing to specific code will help; use an empty anchors array for high-level or architecture explanations.
-- If exact review diff block ids are already available in the conversation, include them in change_blocks; otherwise use an empty array.
-- Anchors should be tight (aim for 3-20 lines) and must use repo-relative paths.
-- If you mention a specific file or function, include an anchor even in conceptual mode.
-- Do not include follow-up questions; focus on the explanation.
+- Decide whether the request is best answered as a code walkthrough or a conceptual explanation.
+- Always include at least one step, ordered for a human walkthrough.
+- Use anchors when they help; use an empty anchors array for high-level explanations.
+- If exact review diff block ids are already available, include them in change_blocks; otherwise use an empty array.
+- Anchors should be tight (about 3-20 lines) and repo-relative.
+- If you mention a specific file or function, include an anchor.
+- Focus on the explanation; do not include follow-up questions.
 ]]
 
 ---@param ctx NRWalkthroughContext
