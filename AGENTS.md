@@ -81,6 +81,11 @@
 - The second AI coverage pass adds a full extra model roundtrip for marginal cleanup value. With a prompt that already asks for exact change-block coverage, a better tradeoff is one AI response plus local placeholder steps for any uncovered blocks, and prompt guidance should explicitly ban filler phrases like `"This matters because"` so the detail pane reads tightly.
 - When changing the review walkthrough prompt, update both `lua/tests/plenary/ai_spec.lua` prompt assertions and the AI walkthrough help text in `doc/neo_reviewer.txt`; those two drift easily from `lua/neo_reviewer/ai.lua`, especially around the single-pass coverage behavior.
 
+## Learned while hardening Codex CLI AI execution
+
+- Current `codex exec` emits banner/transcript text on stdout and may inspect inherited stdin even when the prompt is already provided, so AI jobs should send prompts through Plenary `writer` and read the final assistant text from `--output-last-message` instead of scraping stdout in `ai.lua` or `walkthrough.lua`.
+- Plenary job callbacks only surface process exit failures; hangs need an explicit `ai.timeout_ms` timer in `ai.lua` and `walkthrough.lua`, and the user-facing callers in `init.lua` should report those failures with `vim.log.levels.ERROR` so loading panes do not fail silently.
+
 ## Learned while smoothing ReviewSync UI refresh
 
 - For AI review panes, re-rendering existing split buffers during sync should preserve current window sizes; reusing `open()` without a layout-preserving option causes background refreshes to resize walkthrough splits.

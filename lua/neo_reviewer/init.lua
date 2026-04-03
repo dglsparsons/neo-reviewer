@@ -695,7 +695,7 @@ function M.review_diff(opts)
                 end
 
                 if ai_err then
-                    vim.notify("[neo-reviewer] AI analysis failed: " .. ai_err, vim.log.levels.WARN)
+                    vim.notify("[neo-reviewer] AI analysis failed: " .. ai_err, vim.log.levels.ERROR)
                 elseif analysis then
                     state.set_ai_analysis(analysis)
                     local ai_ui = require("neo_reviewer.ui.ai")
@@ -801,7 +801,7 @@ function M.fetch_and_enable(url, on_ready, opts)
                 end
 
                 if ai_err then
-                    vim.notify("[neo-reviewer] AI analysis failed: " .. ai_err, vim.log.levels.WARN)
+                    vim.notify("[neo-reviewer] AI analysis failed: " .. ai_err, vim.log.levels.ERROR)
                 elseif analysis then
                     state.set_ai_analysis(analysis)
                     local ai_ui = require("neo_reviewer.ui.ai")
@@ -1210,12 +1210,12 @@ function M.ask(opts)
         }, function(result, err)
             if err then
                 walkthrough_ui.close()
-                vim.notify("[neo-reviewer] Ask failed: " .. err, vim.log.levels.WARN)
+                vim.notify("[neo-reviewer] Ask failed: " .. err, vim.log.levels.ERROR)
                 return
             end
             if not result then
                 walkthrough_ui.close()
-                vim.notify("[neo-reviewer] Ask failed: unknown error", vim.log.levels.WARN)
+                vim.notify("[neo-reviewer] Ask failed: unknown error", vim.log.levels.ERROR)
                 return
             end
 

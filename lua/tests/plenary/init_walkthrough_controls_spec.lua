@@ -37,6 +37,7 @@ describe("neo_reviewer Ask walkthrough controls", function()
         package.loaded["neo_reviewer.state"] = nil
         package.loaded["neo_reviewer.ui.walkthrough"] = nil
         package.loaded["neo_reviewer.ui.ai"] = nil
+        package.loaded["neo_reviewer.walkthrough"] = nil
 
         require("neo_reviewer.plugin").register_preloads()
         neo_reviewer = require("neo_reviewer")
@@ -253,5 +254,27 @@ describe("neo_reviewer Ask walkthrough controls", function()
 
         local active_hl = vim.api.nvim_get_hl(0, { name = "NRWalkthroughActiveStep", link = false })
         assert.are.equal(tonumber("28343d", 16), active_hl.bg)
+    end)
+
+    it("shows an error notification when Ask fails", function()
+        local walkthrough = require("neo_reviewer.walkthrough")
+        walkthrough.run = function(_, callback)
+            callback(nil, "codex timed out")
+        end
+
+        neo_reviewer.ask({
+            prompt = "Explain the current file",
+        })
+
+        assert.is_false(walkthrough_ui.is_open())
+
+        local found = false
+        for _, notif in ipairs(notifications.get()) do
+            if notif.msg == "[neo-reviewer] Ask failed: codex timed out" and notif.level == vim.log.levels.ERROR then
+                found = true
+                break
+            end
+        end
+        assert.is_true(found)
     end)
 end)

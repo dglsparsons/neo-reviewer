@@ -1,4 +1,15 @@
 local Job = require("plenary.job")
+local uv = vim.uv or vim.loop
+
+---@class NRProcessHandle: uv.uv_handle_t
+---@field kill fun(self: NRProcessHandle, signal: string)
+
+---@class NRWalkthroughJob
+---@field handle? NRProcessHandle
+---@field pid? integer
+---@field is_shutdown? boolean
+---@field shutdown? fun(self: NRWalkthroughJob, code?: integer, signal?: integer)
+---@field start fun(self: NRWalkthroughJob)
 
 ---@class NRWalkthroughContext
 ---@field prompt string
@@ -181,6 +192,100 @@ function M.parse_response(output)
     return walkthrough, nil
 end
 
+---@param spec NRAICommandSpec
+---@param stdout_lines string[]
+---@return string|nil, string|nil
+local function collect_command_output(spec, stdout_lines)
+    if not spec.output_file then
+        return table.concat(stdout_lines, "\n"), nil
+    end
+
+    local output_file = spec.output_file
+    if not output_file or output_file == "" then
+        return nil, string.format("%s did not declare an AI output file", spec.command)
+    end
+
+    if vim.fn.filereadable(output_file) ~= 1 then
+        return nil, string.format("%s did not write final output to %s", spec.command, output_file)
+    end
+
+    local lines = vim.fn.readfile(output_file)
+    local delete_ok = vim.fn.delete(output_file)
+    if delete_ok ~= 0 then
+        vim.schedule(function()
+            vim.notify(
+                string.format("[neo-reviewer] Failed to delete AI output file: %s", output_file),
+                vim.log.levels.WARN
+            )
+        end)
+    end
+
+    return table.concat(lines, "\n"), nil
+end
+
+---@param spec NRAICommandSpec
+---@return nil
+local function cleanup_output_file(spec)
+    local output_file = spec.output_file
+    if not output_file or output_file == "" then
+        return
+    end
+
+    if vim.fn.filereadable(output_file) ~= 1 then
+        return
+    end
+
+    local delete_ok = vim.fn.delete(output_file)
+    if delete_ok ~= 0 then
+        vim.schedule(function()
+            vim.notify(
+                string.format("[neo-reviewer] Failed to delete AI output file: %s", output_file),
+                vim.log.levels.WARN
+            )
+        end)
+    end
+end
+
+---@param timer uv.uv_timer_t?
+---@return nil
+local function stop_timer(timer)
+    if not timer then
+        return
+    end
+
+    if not uv.is_closing(timer) then
+        timer:stop()
+        timer:close()
+    end
+end
+
+---@param job NRWalkthroughJob
+---@return nil
+local function terminate_job(job)
+    if job.handle and job.handle.kill and not uv.is_closing(job.handle) then
+        pcall(job.handle.kill, job.handle, "sigterm")
+    elseif job.pid and uv.kill then
+        pcall(uv.kill, job.pid, 15)
+    end
+
+    if job.shutdown and not job.is_shutdown then
+        pcall(job.shutdown, job, 124, 15)
+    end
+end
+
+---@param command string
+---@param code integer
+---@param stderr_lines string[]
+---@return string
+local function build_job_failure(command, code, stderr_lines)
+    local stderr = table.concat(stderr_lines, "\n")
+    if stderr ~= "" then
+        return command .. " failed: " .. stderr
+    end
+
+    return string.format("%s failed with exit code %d", command, code)
+end
+
 ---@param ctx NRWalkthroughContext
 ---@param callback fun(result: NRWalkthrough|nil, err: string|nil)
 ---@return nil
@@ -194,8 +299,12 @@ function M.run(ctx, callback)
     local stdout_lines = {}
     local stderr_lines = {}
     local spec = config.build_ai_command(prompt)
+    local timeout_ms = config.values.ai.timeout_ms
+    local completed = false
+    ---@type uv.uv_timer_t?
+    local timeout_timer = nil
 
-    Job:new({
+    local job_opts = {
         command = spec.command,
         args = spec.args,
         cwd = ctx.root,
@@ -207,13 +316,25 @@ function M.run(ctx, callback)
             table.insert(stderr_lines, line)
         end,
         on_exit = vim.schedule_wrap(function(_, code)
-            if code ~= 0 then
-                local stderr = table.concat(stderr_lines, "\n")
-                callback(nil, spec.command .. " failed: " .. stderr)
+            if completed then
                 return
             end
 
-            local output = table.concat(stdout_lines, "\n")
+            completed = true
+            stop_timer(timeout_timer)
+
+            if code ~= 0 then
+                cleanup_output_file(spec)
+                callback(nil, build_job_failure(spec.command, code, stderr_lines))
+                return
+            end
+
+            local output, output_err = collect_command_output(spec, stdout_lines)
+            if not output then
+                callback(nil, output_err)
+                return
+            end
+
             local walkthrough, err = M.parse_response(output)
             if not walkthrough then
                 callback(nil, err)
@@ -225,7 +346,61 @@ function M.run(ctx, callback)
 
             callback(walkthrough, nil)
         end),
-    }):start()
+    }
+
+    local ok, new_job_or_err = pcall(function()
+        return Job:new(job_opts)
+    end)
+    if not ok then
+        cleanup_output_file(spec)
+        callback(nil, "Failed to initialize " .. spec.command .. ": " .. tostring(new_job_or_err))
+        return
+    end
+
+    ---@cast new_job_or_err NRWalkthroughJob
+    ---@type NRWalkthroughJob
+    local job = new_job_or_err
+    if timeout_ms > 0 then
+        timeout_timer = uv.new_timer()
+        if not timeout_timer then
+            cleanup_output_file(spec)
+            callback(nil, "Failed to create AI timeout timer")
+            return
+        end
+
+        timeout_timer:start(
+            timeout_ms,
+            0,
+            vim.schedule_wrap(function()
+                if completed then
+                    return
+                end
+
+                completed = true
+                stop_timer(timeout_timer)
+                terminate_job(job)
+                cleanup_output_file(spec)
+                callback(
+                    nil,
+                    string.format(
+                        "%s timed out after %d ms. Increase `ai.timeout_ms` if this walkthrough needs longer.",
+                        spec.command,
+                        timeout_ms
+                    )
+                )
+            end)
+        )
+    end
+
+    local started, start_err = pcall(function()
+        job:start()
+    end)
+    if not started then
+        completed = true
+        stop_timer(timeout_timer)
+        cleanup_output_file(spec)
+        callback(nil, "Failed to start " .. spec.command .. ": " .. tostring(start_err))
+    end
 end
 
 return M

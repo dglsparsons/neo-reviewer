@@ -360,6 +360,7 @@ describe("neo_reviewer.ai", function()
             Job = require("plenary.job")
             job_instance = {
                 start = function() end,
+                shutdown = function() end,
             }
 
             stub(Job, "new", function(_, opts)
@@ -372,7 +373,7 @@ describe("neo_reviewer.ai", function()
             Job.new:revert()
         end)
 
-        it("uses one AI response and appends placeholders for uncovered change_blocks", function()
+        it("reads the final Codex message from the output file and appends placeholders", function()
             local file = {
                 path = "test.lua",
                 status = "modified",
@@ -424,13 +425,16 @@ describe("neo_reviewer.ai", function()
             end)
 
             assert.stub(Job.new).was_called(1)
+            assert.is_truthy(job_instance._opts.writer)
 
             local on_stdout = job_instance._opts.on_stdout
             local on_exit = job_instance._opts.on_exit
-            on_stdout(
-                nil,
-                [[{"overview":"Overview","steps":[{"title":"Step One","explanation":"Direct summary.","change_blocks":[{"file":"test.lua","change_block_index":0}],"anchors":[]}]}]]
-            )
+            local output_file = job_instance._opts.args[5]
+            on_stdout(nil, "OpenAI Codex v0.118.0 (research preview)")
+            on_stdout(nil, 'user {"overview":"not the final response"}')
+            vim.fn.writefile({
+                [[{"overview":"Overview","steps":[{"title":"Step One","explanation":"Direct summary.","change_blocks":[{"file":"test.lua","change_block_index":0}],"anchors":[]}]}]],
+            }, output_file)
             on_exit(nil, 0)
 
             vim.wait(100, function()
@@ -489,10 +493,11 @@ describe("neo_reviewer.ai", function()
 
             local on_stdout = job_instance._opts.on_stdout
             local on_exit = job_instance._opts.on_exit
-            on_stdout(
-                nil,
-                [[{"overview":"Overview","steps":[{"title":"Step One","explanation":"Direct summary.","change_blocks":[{"file":"test.lua","change_block_index":0}]}]}]]
-            )
+            local output_file = job_instance._opts.args[5]
+            on_stdout(nil, "OpenAI Codex v0.118.0 (research preview)")
+            vim.fn.writefile({
+                [[{"overview":"Overview","steps":[{"title":"Step One","explanation":"Direct summary.","change_blocks":[{"file":"test.lua","change_block_index":0}]}]}]],
+            }, output_file)
             on_exit(nil, 0)
 
             vim.wait(100, function()
@@ -501,6 +506,85 @@ describe("neo_reviewer.ai", function()
 
             assert.is_nil(received_analysis)
             assert.are.equal("steps[1]: missing 'anchors'", received_err)
+        end)
+
+        it("returns an error when the AI job fails to start", function()
+            local config = require("neo_reviewer.config")
+            config.setup({
+                ai = {
+                    timeout_ms = 1000,
+                },
+            })
+
+            job_instance.start = function()
+                error("spawn failed")
+            end
+
+            local received_analysis
+            local received_err
+            ai.analyze_pr({
+                review_type = "pr",
+                git_root = "/tmp/repo",
+                pr = { number = 1, title = "Test", description = "Coverage" },
+                files = {},
+                files_by_path = {},
+                comments = {},
+                current_file_idx = 1,
+                expanded_changes = {},
+                applied_buffers = {},
+                overlays_visible = true,
+            }, function(analysis, err)
+                received_analysis = analysis
+                received_err = err
+            end)
+
+            vim.wait(100, function()
+                return received_analysis ~= nil or received_err ~= nil
+            end)
+
+            assert.is_nil(received_analysis)
+            assert.is_truthy(received_err:match("Failed to start codex:"))
+            assert.is_truthy(received_err:match("spawn failed"))
+        end)
+
+        it("times out when the AI job never exits", function()
+            local config = require("neo_reviewer.config")
+            config.setup({
+                ai = {
+                    timeout_ms = 10,
+                },
+            })
+
+            local shutdown_called = 0
+            job_instance.shutdown = function()
+                shutdown_called = shutdown_called + 1
+            end
+
+            local received_analysis
+            local received_err
+            ai.analyze_pr({
+                review_type = "pr",
+                git_root = "/tmp/repo",
+                pr = { number = 1, title = "Test", description = "Coverage" },
+                files = {},
+                files_by_path = {},
+                comments = {},
+                current_file_idx = 1,
+                expanded_changes = {},
+                applied_buffers = {},
+                overlays_visible = true,
+            }, function(analysis, err)
+                received_analysis = analysis
+                received_err = err
+            end)
+
+            vim.wait(200, function()
+                return received_analysis ~= nil or received_err ~= nil
+            end)
+
+            assert.is_nil(received_analysis)
+            assert.are.equal(1, shutdown_called)
+            assert.is_truthy(received_err:match("timed out after 10 ms"))
         end)
     end)
 end)
@@ -518,7 +602,7 @@ describe("neo_reviewer.config AI defaults", function()
     end)
 
     it("has default model", function()
-        assert.are.equal("gpt-5.3-codex", config.values.ai.model)
+        assert.are.equal("gpt-5.4-mini", config.values.ai.model)
     end)
 
     it("has default command", function()
@@ -526,7 +610,11 @@ describe("neo_reviewer.config AI defaults", function()
     end)
 
     it("has default reasoning effort", function()
-        assert.are.equal("low", config.values.ai.reasoning_effort)
+        assert.are.equal("medium", config.values.ai.reasoning_effort)
+    end)
+
+    it("has default timeout", function()
+        assert.are.equal(120000, config.values.ai.timeout_ms)
     end)
 
     it("has walkthrough window defaults", function()
@@ -540,11 +628,13 @@ describe("neo_reviewer.config AI defaults", function()
             ai = {
                 enabled = true,
                 model = "custom/model",
+                timeout_ms = 5000,
             },
         })
 
         assert.is_true(config.values.ai.enabled)
         assert.are.equal("custom/model", config.values.ai.model)
+        assert.are.equal(5000, config.values.ai.timeout_ms)
         assert.are.equal("codex", config.values.ai.command)
     end)
 end)
@@ -561,11 +651,17 @@ describe("neo_reviewer.config build_ai_command", function()
         local spec = config.build_ai_command("Explain this")
 
         assert.are.equal("codex", spec.command)
-        assert.is_nil(spec.writer)
-        assert.are.same(
-            { "exec", "--model", "gpt-5.3-codex", "--config", 'model_reasoning_effort="low"', "Explain this" },
-            spec.args
-        )
+        assert.are.equal("Explain this", spec.writer)
+        assert.is_not_nil(spec.output_file)
+        assert.are.same({
+            "exec",
+            "--model",
+            "gpt-5.4-mini",
+            "--output-last-message",
+            spec.output_file,
+            "--config",
+            'model_reasoning_effort="medium"',
+        }, spec.args)
     end)
 
     it("builds opencode args using stdin writer", function()

@@ -107,9 +107,10 @@ Call setup() with your options: >lua
         },
         ai = {
             enabled = false,                      -- Run AI analysis by default
-            model = "gpt-5.3-codex", -- Model for Codex CLI (default)
+            model = "gpt-5.4-mini", -- Model for Codex CLI (default)
             command = "codex",       -- Command to invoke
-            reasoning_effort = "low", -- Reasoning effort hint (Codex CLI)
+            reasoning_effort = "medium", -- Reasoning effort hint (Codex CLI)
+            timeout_ms = 120000,     -- Fail if the AI CLI does not finish in time
             walkthrough_window = {
                 height = 0,                 -- Auto size to content (min height)
                 focus_on_open = false,      -- Keep focus on diff window
@@ -167,10 +168,12 @@ ai ~
     Configure AI-powered review analysis. Requires an AI CLI (Codex CLI by
     default) to be installed and configured.
     - `enabled`: Run AI analysis by default (default: false).
-    - `model`: Model to use for analysis (default: "gpt-5.3-codex").
+    - `model`: Model to use for analysis (default: "gpt-5.4-mini").
     - `command`: Command to invoke the AI CLI (default: "codex").
     - `reasoning_effort`: Reasoning effort hint for Codex CLI
-      (default: "low", ignored by other CLIs).
+      (default: "medium", ignored by other CLIs).
+    - `timeout_ms`: Maximum time to wait for the AI CLI before failing
+      (default: 120000 / 2 minutes).
     - `walkthrough_window.height`: Minimum height of the walkthrough split
       (default: 0, auto-sized to content).
     - `walkthrough_window.focus_on_open`: Focus the walkthrough window when it opens (default: false).

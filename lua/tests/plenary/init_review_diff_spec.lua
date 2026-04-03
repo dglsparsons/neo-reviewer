@@ -193,6 +193,33 @@ describe("neo_reviewer review noise filtering", function()
         assert.is_nil(find_loading_buffer())
     end)
 
+    it("shows an error notification when local diff AI analysis fails", function()
+        cli.get_local_diff = function(_, callback)
+            callback({
+                git_root = "/tmp/test-repo",
+                files = {
+                    {
+                        path = "src/main.lua",
+                        status = "modified",
+                        change_blocks = { { start_line = 1, end_line = 1 } },
+                    },
+                },
+            }, nil)
+        end
+
+        local ai = require("neo_reviewer.ai")
+        ai.analyze_pr = function(_, callback)
+            callback(nil, "codex timed out")
+        end
+
+        config.setup({ ai = { enabled = true } })
+
+        neo_reviewer.review_diff({ analyze = true })
+
+        assert.is_true(has_notification("%[neo%-reviewer%] AI analysis failed: codex timed out", vim.log.levels.ERROR))
+        assert.is_nil(find_loading_buffer())
+    end)
+
     it("re-renders local comments when a reviewed file buffer is reopened", function()
         local repo_root = vim.fn.tempname()
         vim.fn.mkdir(repo_root .. "/src", "p")
@@ -365,6 +392,36 @@ describe("neo_reviewer review noise filtering", function()
         pending_callback({ overview = "ok", steps = {} }, nil)
 
         assert.are.equal(1, opened)
+        assert.is_nil(find_loading_buffer())
+    end)
+
+    it("shows an error notification when PR AI analysis fails", function()
+        cli.fetch_pr = function(_, callback)
+            callback(
+                pr_data({
+                    {
+                        path = "src/main.lua",
+                        status = "modified",
+                        change_blocks = { { start_line = 1, end_line = 1 } },
+                    },
+                }),
+                nil
+            )
+        end
+        cli.get_git_root = function()
+            return "/tmp/test-repo"
+        end
+
+        local ai = require("neo_reviewer.ai")
+        ai.analyze_pr = function(_, callback)
+            callback(nil, "codex timed out")
+        end
+
+        config.setup({ ai = { enabled = true } })
+
+        neo_reviewer.fetch_and_enable("https://github.com/owner/repo/pull/123", nil, { analyze = true })
+
+        assert.is_true(has_notification("%[neo%-reviewer%] AI analysis failed: codex timed out", vim.log.levels.ERROR))
         assert.is_nil(find_loading_buffer())
     end)
 

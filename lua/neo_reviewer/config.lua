@@ -3,6 +3,7 @@
 ---@field model string Model for AI CLI
 ---@field command string Command to invoke AI CLI
 ---@field reasoning_effort? string Reasoning effort hint for the AI CLI
+---@field timeout_ms integer Maximum time to wait for the AI CLI before failing
 ---@field walkthrough_window NRAIWalkthroughWindow Walkthrough window configuration
 
 ---@class NRSigns
@@ -99,6 +100,7 @@
 ---@field model? string Model for AI CLI
 ---@field command? string Command to invoke AI CLI
 ---@field reasoning_effort? string Reasoning effort hint for the AI CLI
+---@field timeout_ms? integer Maximum time to wait for the AI CLI before failing
 ---@field walkthrough_window? NRPartialAIWalkthroughWindow Walkthrough window configuration
 
 ---@class NRPartialConfig
@@ -187,9 +189,10 @@ M.values = {
     },
     ai = {
         enabled = false,
-        model = "gpt-5.3-codex",
+        model = "gpt-5.4-mini",
         command = "codex",
-        reasoning_effort = "low",
+        reasoning_effort = "medium",
+        timeout_ms = 120000,
         walkthrough_window = {
             height = 0,
             focus_on_open = false,
@@ -202,6 +205,7 @@ M.values = {
 ---@field command string
 ---@field args string[]
 ---@field writer? string
+---@field output_file? string
 
 ---@param prompt string
 ---@return NRAICommandSpec
@@ -209,14 +213,19 @@ function M.build_ai_command(prompt)
     local cmd = M.values.ai.command
     local model = M.values.ai.model
     if cmd == "codex" then
-        local args = { "exec", "--model", model }
+        local output_file = vim.fn.tempname()
+        local args = { "exec", "--model", model, "--output-last-message", output_file }
         local effort = M.values.ai.reasoning_effort
         if effort and effort ~= "" then
             table.insert(args, "--config")
             table.insert(args, string.format('model_reasoning_effort="%s"', effort))
         end
-        table.insert(args, prompt)
-        return { command = cmd, args = args }
+        return {
+            command = cmd,
+            args = args,
+            writer = prompt,
+            output_file = output_file,
+        }
     end
 
     return {
